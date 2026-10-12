@@ -1,0 +1,28 @@
+[package]
+name = "embedag-llm"
+description = "Constrained LLM extraction, schema derivation, oxillama & candle inference and multi-tiered waterfall resolution for embedag."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = ["candle", "oxillama"]
+candle = ["dep:candle-core"]
+oxillama = ["dep:oxillama"]
+
+[dependencies]
+embedag-core = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+gbnf = { workspace = true }
+candle-core = { workspace = true, optional = true }
+oxillama = { workspace = true, optional = true }
+
+[dev-dependencies]
+jsonschema = { workspace = true }
