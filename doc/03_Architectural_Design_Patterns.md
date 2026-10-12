@@ -4,7 +4,7 @@
 | :--- | :--- |
 | **Document ID** | `03_Architectural_Design_Patterns` |
 | **Domain** | Software Design Patterns & Quality Guardrails |
-| **Responsibility** | Catalog of Architectural Design Patterns, Rust Idioms, and Code Complexity Limits |
+| **Responsibility** | Catalog of Architectural Design Patterns, Rust Idioms, KitaSan Stack Patterns, and Code Complexity Limits |
 | **Target Crates** | Entire `embedag` Workspace |
 | **Status** | Definitive Architectural Specification |
 
@@ -33,8 +33,9 @@ flowchart LR
     end
 
     subgraph DrivenAdapters ["Driven Adapters (Infrastructure)"]
-        Diesel["embedag-diesel (PostgreSQL / SQLite)"]
-        LLM["embedag-llm (oxibonsai / trustformers)"]
+        Diesel["embedag-diesel (PostgreSQL / SQLite via diesel-cte-ext)"]
+        LLM["embedag-llm (oxibonsai / oxillama)"]
+        RAG["embedag-rag (oxirag 4-layer & oxirs)"]
     end
 
     subgraph TestHarness ["Mandatory Test Harness"]
@@ -117,24 +118,35 @@ flowchart LR
   ```
 - **Benefit**: Preserves natural language chain-of-thought while delivering 100% syntactically valid JSON.
 
-### 2.6 Cycle-Guarded Recursive CTE Visitor Pattern
+### 2.6 Cycle-Guarded Recursive CTE Visitor Pattern (`leynos/diesel-cte-ext`)
 - **Motivation**: Prevent infinite recursion in relational SQL engines during multi-parent graph traversals.
 - **Implementation**:
-  Queries using `leynos/diesel-cte-ext` maintain an array of visited node IDs:
+  Queries built via `leynos/diesel-cte-ext`'s `RecursiveCTEExt` maintain an array of visited node IDs in PostgreSQL or path string in SQLite:
   ```sql
   WHERE NOT (child_id = ANY(visited_path))
   ```
+  And use `with_recursive_not_all` when recursive deduplication (`UNION`) is needed across diamond DAG topologies.
 - **Benefit**: Guaranteed acyclic termination in SQL without external depth counters.
 
 ### 2.7 Mandatory Ephemeral Containerized Integration Testing Pattern (`rust.testcontainers.org`)
 - **Motivation**: Testing database adapters against mock repositories or in-memory SQLite creates a false sense of security (the *impedance mismatch fallacy*), masking defects in dialect-specific SQL features such as `pgvector` HNSW indexes, PostgreSQL transaction isolation levels, and array-tracked recursive CTE cycle prevention.
 - **Implementation**:
-  Persistent storage adapters (`embedag-diesel`) mandate the use of **[Testcontainers for Rust](https://rust.testcontainers.org)** (`testcontainers`) for integration testing:
-  1. The test harness spins up an ephemeral Docker container running `pgvector/pgvector:pg16` with dynamically bound ports.
-  2. Diesel migrations run on the blank container to construct real tables, indexes, and constraints.
+  Persistent storage adapters (`embedag-diesel`) mandate the use of **[Testcontainers for Rust](https://rust.testcontainers.org)** (`testcontainers`):
+  1. Ephemeral Docker container running `pgvector/pgvector:pg16` with dynamically bound ports.
+  2. Diesel migrations run on the container to construct real tables, indexes, and constraints.
   3. Integration tests validate real SQL statements, transactional `SAVEPOINT` rollbacks, and vector search operations.
   4. RAII container guards terminate and purge the container upon completion.
 - **Benefit**: 100% production fidelity, deterministic reproduction of database constraints, zero cross-test interference, and elimination of host-installed database requirements.
+
+### 2.8 KitaSan Sovereign Pure-Rust Ecosystem Pattern
+- **Motivation**: Eliminate dynamic C/C++ runtime linkages (LibTorch, `llama.cpp`, OpenCV, FFmpeg), CMake compilation steps, and Python runtimes that create security vulnerabilities, container bloat, and platform lock-in.
+- **Implementation**:
+  - LLM Inference: `cool-japan/oxibonsai` (sub-2-bit ternary/1-bit, PDA masking) and `cool-japan/oxillama` (GGUF, 25 architectures, Q4..Q8 quants).
+  - Retrieval & Verification: `cool-japan/oxirag` (4-layer RAG: Echo vector store, Speculator, Judge SMT verification via OxiZ, GraphRAG).
+  - Semantic Web: `cool-japan/oxirs` (SPARQL 1.1/1.2, RDF-Star, TDB2 storage).
+  - Multimedia & Computer Vision: `cool-japan/oximedia` (pure Rust clean-room FFmpeg + OpenCV reconstruction, patent-free codecs).
+- **Rule**: Strictly open source (Apache-2.0 / ISC); zero commercial vertical workspaces.
+- **Benefit**: 100% single-binary static compilation, `fail0 + Clippy0` compliance, and total platform sovereignty.
 
 ---
 

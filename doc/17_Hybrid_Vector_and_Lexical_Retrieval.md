@@ -4,7 +4,7 @@
 | :--- | :--- |
 | **Document ID** | `17_Hybrid_Vector_and_Lexical_Retrieval` |
 | **Domain** | Information Retrieval & Search Fusion |
-| **Responsibility** | Stage 1 Retrieval Engine: Dense Vector Search (pgvector), Sparse Lexical Matching, and Reciprocal Rank Fusion |
+| **Responsibility** | Stage 1 Retrieval Engine: Dense Vector Search (`oxirag` Layer 1: Echo & pgvector), Sparse Lexical Matching, and Reciprocal Rank Fusion |
 | **Target Crates** | `embedag-rag`, `embedag-diesel` |
 | **Status** | Definitive Architectural Specification |
 
@@ -16,22 +16,26 @@ Retrieving relevant context from an enterprise graph cannot rely solely on dense
 - **Dense Vector Search (HNSW)** excels at semantic understanding and broad intent, but fails on exact SKUs, codes, and numerical identifiers (e.g., searching for `"SKU-90210"` often matches unrelated product codes).
 - **Sparse Lexical Search (BM25 / Trigram)** excels at exact keywords and alphanumeric codes, but fails on paraphrasing and vocabulary mismatches.
 
-`embedag-rag` implements **Stage 1 Hybrid Retrieval**, executing dense and sparse queries in parallel and merging their candidate lists via **Reciprocal Rank Fusion (RRF)**.
+`embedag-rag` implements **Stage 1 Hybrid Retrieval**, integrating **`cool-japan/oxirag` (Layer 1: Echo Vector Store)** and database vector indexes with sparse token matches, merging candidates via **Reciprocal Rank Fusion (RRF)**.
 
 ---
 
-## 2. Stage 1 Retrieval Architecture
+## 2. Stage 1 Retrieval Architecture with `oxirag` (Layer 1: Echo)
 
 ```mermaid
 flowchart TD
     Query["Incoming User Query<br/>e.g. 'carlos chocolate bar 50g'"] --> Splitter{"Parallel Dispatch"}
-    Splitter --> DenseBranch["Dense Embedding Search<br/>(trustformers BGE-M3 + pgvector HNSW)"]
+    Splitter --> DenseBranch["Dense Embedding Search<br/>(oxirag Layer 1 Echo Store / pgvector HNSW)"]
     Splitter --> SparseBranch["Sparse Lexical Search<br/>(BM25 / Trigram Exact Token Match)"]
     DenseBranch --> TopKDense["Top-K Dense Ranked List<br/>[Node A (1), Node B (2), ...]"]
     SparseBranch --> TopKSparse["Top-K Sparse Ranked List<br/>[Node B (1), Node C (2), ...]"]
     TopKDense & TopKSparse --> RRF["Reciprocal Rank Fusion (RRF)<br/>Score = SUM( 1 / (60 + rank_i) )"]
     RRF --> FusedCandidates["Top-N Unified Candidate Nodes"]
 ```
+
+### 2.1 The `oxirag` Echo Vector Store & Prefix Caching
+- **Echo Layer**: Pure-Rust in-memory vector storage supporting Cosine, Euclidean, and Dot Product similarity functions with configurable capacity.
+- **Context-Aware Prefix Caching**: Caches key-value states and document prefixes for frequent domain taxonomies (e.g. standard category headers, organizational trees), bypassing redundant transformer token passes.
 
 ---
 
@@ -87,7 +91,7 @@ impl RrfRanker {
 
 ## 4. Typo Resilience & Alphanumeric Accuracy
 
-- **Typo Immunity**: If a user enters `"carls v chcolate"`, dense vector similarity recovers the semantic target (`Carlos V Chocolate`) despite lexical spelling errors.
+- **Typo Immunity**: If a user enters `"carls v chcolate"`, dense vector similarity from `oxirag` Echo recovers the semantic target (`Carlos V Chocolate`) despite lexical spelling errors.
 - **Exact SKU Preservation**: If a user enters `"SKU-8820"`, BM25 scores this exact match rank #1, ensuring it survives into the fused candidate pool even if its generic vector similarity is modest.
 
 ---
@@ -96,3 +100,4 @@ impl RrfRanker {
 
 1. **Sub-10ms Stage 1 Latency**: Vector HNSW index scans and PostgreSQL trigram/BM25 lookups run concurrently via `tokio::join!`.
 2. **Deterministic Tie-Breaking**: When two items have identical RRF scores, tie-breaking falls back to business key lexicographical order.
+3. **Pure-Rust In-Memory Fast Path**: When operating in-memory or on edge nodes, `oxirag` Echo store executes local vector retrieval in $< 1\,\text{ms}$ with zero SQLite/Postgres overhead.
