@@ -1,0 +1,19 @@
+[package]
+name = "embedag-rag"
+description = "Two-stage hybrid Graph-RAG query engine with RRF and topological distance decay for embedag."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+embedag-core = { workspace = true }
+uuid = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+petgraph = { workspace = true }
+async-trait = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
