@@ -1,6 +1,6 @@
 # Project Status & Ticket Log
 
-**Progress:** 45/48 completed (94%) — **Milestones 1, 2, 3, 4, 5 & 6 COMPLETE**  
+**Progress:** 46/49 completed (94%) — **Milestones 1, 2, 3, 4, 5 & 6 COMPLETE**  
 **Current Focus:** `Ticket 7.1.1` (SurrealDB Multi-Model Storage Implementation (`embedag-surrealdb`))
 
 ---
@@ -41,6 +41,7 @@
 - [x] Ticket 3.4.2: Generic Hierarchical CTE Traversal via `diesel-cte-ext` for SQLite & PostgreSQL (`embedag-diesel`)
 - [x] Ticket 3.4.3: External Domain Ingestion & Diamond Deduplication Demo (`embedag-example-receipts`)
 - [x] Ticket 3.4.4: Dynamic On-the-Fly LLM Taxonomy Pipeline & Deduplication (`embedag-example-receipts`)
+- [x] Ticket 3.4.5: Finance Invoice Graph Pipeline with Dual-Mode Density Categorization, Time-Dependency, and Dynamic User Reclassification (Candle & OxiLLaMa) (`embedag-example-receipts`)
 
 ### Milestone 4: Two-Stage Hybrid Graph-RAG Query Engine
 - [x] Ticket 4.1.1: Dense Vector & Sparse FTS Indexing with `oxirag` Echo Store (`embedag-rag`)

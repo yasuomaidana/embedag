@@ -1,6 +1,64 @@
-[package]
-name = "embedag"
+[workspace]
+members = [
+    "crates/embedag-core",
+    "crates/embedag-derive",
+    "crates/embedag-llm",
+    "crates/embedag-diesel",
+    "crates/embedag-rag",
+    "crates/embedag",
+    "crates/embedag-example-receipts",
+]
+resolver = "3"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/yasuomaidana/embedag"
 
-[dependencies]
+[workspace.dependencies]
+# Internal crates
+embedag = { path = "crates/embedag", version = "0.1.0" }
+embedag-core = { path = "crates/embedag-core", version = "0.1.0" }
+embedag-derive = { path = "crates/embedag-derive", version = "0.1.0" }
+embedag-llm = { path = "crates/embedag-llm", version = "0.1.0" }
+embedag-diesel = { path = "crates/embedag-diesel", version = "0.1.0" }
+embedag-rag = { path = "crates/embedag-rag", version = "0.1.0" }
+
+# Core domain
+petgraph = { version = "0.8", default-features = false, features = ["std", "graphmap", "stable_graph"] }
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }
+h3o = "0.11"
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# LLM & Schema
+schemars = { version = "1.0", features = ["derive"] }
+gbnf = "0.2"
+async-trait = "0.1"
+tokio = { version = "1", features = ["full"] }
+candle-core = { version = "0.11", default-features = false }
+oxillama = { version = "0.1.4", default-features = false }
+
+# Relational Persistence
+diesel = { version = "2.3", features = ["postgres_backend", "sqlite", "returning_clauses_for_sqlite_3_35", "chrono", "uuid", "serde_json"] }
+diesel-async = { version = "0.9", features = ["postgres", "tokio-postgres", "deadpool"] }
+diesel-cte-ext = { version = "0.3.0", default-features = false }
+tokio-postgres = { version = "0.7", features = ["with-uuid-1", "with-serde_json-1", "with-chrono-0_4"] }
+libsqlite3-sys = { version = "0.30", features = ["bundled"] }
+pgvector = { version = "0.4", features = ["diesel", "postgres"] }
+
+# Procedural macros
+syn = { version = "2", features = ["full", "extra-traits"] }
+quote = "1"
+proc-macro2 = "1"
+proc-macro-crate = "3"
+
+# Testing
+proptest = "1"
+trybuild = "1"
+jsonschema = "0.58"
+testcontainers = "0.27"
+testcontainers-modules = { version = "0.15", features = ["postgres"] }

@@ -51,7 +51,7 @@ pub trait LlmProvider: Send + Sync {
     ) -> Result<(ExtractionDirective, ProvenanceNotes), LlmError> {
         let schema = generate_extraction_schema();
         let value = self.generate_structured(prompt, &schema).await?;
-        let json_str = serde_json::to_string(&value)?;
+        let json_str = serde_json::to_string(&value)? ;
         PromptFormatter::parse_envelope(&json_str)
             .map_err(|e| LlmError::ConstrainedSamplingError(e.to_string()))
     }
@@ -389,15 +389,39 @@ fn extract_incoming_entity_text(prompt: &str) -> String {
         let end = rest.find("\n\n###").unwrap_or(rest.len());
         let slice = rest[..end].trim();
 
-        // If JSON, try to extract item_name or name
-        if let Ok(v) = serde_json::from_str::<Value>(slice)
-            && let Some(name) = v
+        // If JSON, extract entity name with merchant context, tags, and price point
+        if let Ok(v) = serde_json::from_str::<Value>(slice) {
+            let mut text = String::new();
+            if let Some(name) = v
                 .get("item_name")
                 .or_else(|| v.get("name"))
                 .or_else(|| v.get("title"))
                 .and_then(|s| s.as_str())
-        {
-            return name.to_string();
+            {
+                text.push_str(name);
+            }
+            if let Some(m_name) = v.get("merchant_name").and_then(|s| s.as_str())
+                && !m_name.is_empty()
+            {
+                text.push_str(&format!(" @ {m_name}"));
+            }
+            if let Some(m_cat) = v.get("merchant_category").and_then(|s| s.as_str())
+                && !m_cat.is_empty()
+            {
+                text.push_str(&format!(" ({m_cat})"));
+            }
+            if let Some(m_tags) = v.get("merchant_tags").and_then(|s| s.as_array()) {
+                let tags: Vec<&str> = m_tags.iter().filter_map(|t| t.as_str()).collect();
+                if !tags.is_empty() {
+                    text.push_str(&format!(" [{}]", tags.join(", ")));
+                }
+            }
+            if let Some(price) = v.get("unit_price").and_then(|p| p.as_f64()) {
+                text.push_str(&format!(" ${price:.2}"));
+            }
+            if !text.is_empty() {
+                return text;
+            }
         }
         return slice.to_string();
     }
@@ -477,6 +501,43 @@ fn find_best_matching_candidate<'a>(
         if is_household(&lower_incoming) && is_household(&lower_cand) {
             return Some(cand);
         }
+        if is_confectionery(&lower_incoming) && is_confectionery(&lower_cand) {
+            if is_luxury(&lower_incoming) {
+                if lower_cand.contains("luxury") {
+                    return Some(cand);
+                }
+            } else if !lower_cand.contains("luxury") {
+                return Some(cand);
+            }
+        }
+        if is_merchant_entity(&lower_incoming) && is_merchant_entity(&lower_cand) {
+            if lower_cand.contains("convenience") {
+                if lower_incoming.contains("convenience") {
+                    return Some(cand);
+                }
+            } else {
+                return Some(cand);
+            }
+        }
+        if lower_cand.contains("holiday")
+            && (lower_incoming.contains("holiday") || lower_incoming.contains("christmas"))
+        {
+            return Some(cand);
+        }
+        if lower_cand.contains("retail")
+            && (lower_incoming.contains("retail") || lower_incoming.contains("everyday"))
+        {
+            return Some(cand);
+        }
+        if is_apparel(&lower_incoming) && is_apparel(&lower_cand) {
+            if is_luxury(&lower_incoming) {
+                if lower_cand.contains("luxury") || lower_cand.contains("designer") {
+                    return Some(cand);
+                }
+            } else if !lower_cand.contains("luxury") && !lower_cand.contains("designer") {
+                return Some(cand);
+            }
+        }
     }
 
     // Direct key matches
@@ -500,7 +561,21 @@ fn find_best_matching_candidate<'a>(
 
 fn infer_semantic_category(incoming_text: &str) -> String {
     let lower = incoming_text.to_lowercase();
-    if is_dairy(&lower) {
+    if lower.contains("holiday") || lower.contains("christmas") {
+        "Holiday Gifting".to_string()
+    } else if is_apparel(&lower) {
+        if is_luxury(&lower) {
+            "Luxury Designer Fashion".to_string()
+        } else {
+            "Everyday Casualwear".to_string()
+        }
+    } else if is_luxury(&lower) {
+        if is_confectionery(&lower) {
+            "Luxury Chocolate".to_string()
+        } else {
+            "Luxury Designer Fashion".to_string()
+        }
+    } else if is_dairy(&lower) {
         "Dairy".to_string()
     } else if is_bakery(&lower) {
         "Bakery".to_string()
@@ -508,9 +583,45 @@ fn infer_semantic_category(incoming_text: &str) -> String {
         "Produce".to_string()
     } else if is_household(&lower) {
         "Household".to_string()
+    } else if is_confectionery(&lower) {
+        if lower.contains("luxury") {
+            "Luxury Chocolate".to_string()
+        } else {
+            "Chocolate".to_string()
+        }
+    } else if is_merchant_entity(&lower) {
+        if lower.contains("convenience") {
+            "Convenience Store".to_string()
+        } else if lower.contains("grocery") || lower.contains("supermarket") {
+            "Supermarket".to_string()
+        } else {
+            "Retail Store".to_string()
+        }
     } else {
         "General Groceries".to_string()
     }
+}
+
+fn is_apparel(s: &str) -> bool {
+    s.contains("t-shirt")
+        || s.contains("shirt")
+        || s.contains("apparel")
+        || s.contains("clothing")
+        || s.contains("wear")
+        || s.contains("dress")
+        || s.contains("jacket")
+        || s.contains("pants")
+        || s.contains("fashion")
+}
+
+fn is_luxury(s: &str) -> bool {
+    s.contains("luxury")
+        || s.contains("prada")
+        || s.contains("gucci")
+        || s.contains("designer")
+        || s.contains("couture")
+        || s.contains("boutique")
+        || s.contains("high_fashion")
 }
 
 fn is_dairy(s: &str) -> bool {
@@ -549,6 +660,28 @@ fn is_household(s: &str) -> bool {
         || s.contains("clean")
         || s.contains("detergent")
         || s.contains("household")
+}
+
+fn is_confectionery(s: &str) -> bool {
+    s.contains("chocolate")
+        || s.contains("ferrero")
+        || s.contains("snicker")
+        || s.contains("candy")
+        || s.contains("confection")
+        || s.contains("sweet")
+        || s.contains("truffle")
+        || s.contains("bonbon")
+        || s.contains("cocoa")
+}
+
+fn is_merchant_entity(s: &str) -> bool {
+    s.contains("merchant")
+        || s.contains("store")
+        || s.contains("supermarket")
+        || s.contains("mart")
+        || s.contains("shop")
+        || s.contains("retailer")
+        || s.contains("convenience")
 }
 
 #[cfg(test)]
