@@ -5,7 +5,28 @@ This document establishes the comprehensive engineering roadmap for `embedag`. F
 - **Technical Description**
 - **Explicit Acceptance Criteria**
 - **Automated Verification & Test Specifications** (Unit, Integration, or Property tests)
-- **Specification Traceability** linking directly to the technical documentation in `doc/` (sequenced consecutively from `00` to `12`).
+- **Specification Traceability** linking directly to the technical documentation in `doc/` (sequenced consecutively from `00` to `20`).
+
+---
+
+```mermaid
+flowchart TD
+    M1["Milestone 1: Core Domain, Memory DAG Arena & Derive Macros<br/>(embedag-core, embedag-derive)"]
+    M2["Milestone 2: Constrained LLM Extraction & Waterfall Resolution<br/>(embedag-llm, oxibonsai)"]
+    M3["Milestone 3: Relational Persistence with Diesel & Dynamic Mutations<br/>(embedag-diesel, diesel-cte-ext)"]
+    M4["Milestone 4: Two-Stage Hybrid GraphRAG Query Engine<br/>(embedag-rag)"]
+    M5["Milestone 5: End-to-End Integration, Facade Crate & Benchmarks<br/>(embedag)"]
+    M6["Milestone 6: High-Value Features (Visual Exporters, Bitemporal, Communities)"]
+    M7["Milestone 7: Multi-Model & Native Graph Adapters (SurrealDB, Neo4j)"]
+
+    M1 --> M2
+    M1 --> M3
+    M2 --> M4
+    M3 --> M4
+    M4 --> M5
+    M5 --> M6
+    M5 --> M7
+```
 
 ---
 
@@ -14,7 +35,7 @@ This document establishes the comprehensive engineering roadmap for `embedag`. F
 **Target Crates**: `embedag-core`, `embedag-derive`.
 
 ### Epic 1.1: Core Domain Contracts & Memory Management
-*Traceability: [04_Core_Domain_and_DAG_Abstraction.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/04_Core_Domain_and_DAG_Abstraction.md), [12_Dynamic_Graph_Updates_and_Mixed_Modality_Resolution.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/12_Dynamic_Graph_Updates_and_Mixed_Modality_Resolution.md)*
+*Traceability: [04_Core_Domain_and_Entity_Contracts.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/04_Core_Domain_and_Entity_Contracts.md), [05_In_Memory_DAG_and_Arena_Topology.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/05_In_Memory_DAG_and_Arena_Topology.md), [13_Topological_Cycle_Detection_and_Guards.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/13_Topological_Cycle_Detection_and_Guards.md)*
 
 #### Ticket 1.1.1: Core Traits & Data Representations
 - **Description**: Define `AsGraphContext`, `GraphTarget`, `NodePayload`, `EdgePayload`, `ProvenanceKind`, `FeatureMap`, and `MultimodalBlob` in `embedag-core`.
@@ -56,7 +77,7 @@ This document establishes the comprehensive engineering roadmap for `embedag`. F
 ---
 
 ### Epic 1.2: Deterministic Feature Encoders & Mixed-Modality Distance
-*Traceability: [05_Deterministic_Feature_Encoding_and_Multimodal.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/05_Deterministic_Feature_Encoding_and_Multimodal.md), [12_Dynamic_Graph_Updates_and_Mixed_Modality_Resolution.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/12_Dynamic_Graph_Updates_and_Mixed_Modality_Resolution.md)*
+*Traceability: [07_Deterministic_Feature_Encoding.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/07_Deterministic_Feature_Encoding.md), [08_Neural_and_Multimodal_Embeddings.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/08_Neural_and_Multimodal_Embeddings.md), [09_Mixed_Modality_Representation_and_Similarity.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/09_Mixed_Modality_Representation_and_Similarity.md)*
 
 #### Ticket 1.2.1: Continuous Scalar Encoders & Log Scaling
 - **Description**: Implement continuous normalization functions: `min_max_scale`, `log_scale`, and `relative_difference` for floating-point metrics.
@@ -95,7 +116,7 @@ This document establishes the comprehensive engineering roadmap for `embedag`. F
 ---
 
 ### Epic 1.3: Procedural Derive Macros (`embedag-derive`)
-*Traceability: [04_Core_Domain_and_DAG_Abstraction.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/04_Core_Domain_and_DAG_Abstraction.md)*
+*Traceability: [06_Procedural_Derive_Macros.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/06_Procedural_Derive_Macros.md)*
 
 #### Ticket 1.3.1: `#[derive(AsGraphContext)]`
 - **Description**: Create procedural macro parsing `#[graph(text)]`, `#[graph(scalar)]`, `#[graph(time)]`, and `#[graph(image)]`. Generate the `AsGraphContext` trait implementation.
@@ -121,7 +142,7 @@ This document establishes the comprehensive engineering roadmap for `embedag`. F
 **Target Crates**: `embedag-llm`, `embedag-core`.
 
 ### Epic 2.1: Schema Generation & Constrained Decoding
-*Traceability: [06_LLM_Extraction_and_Constrained_Decoding.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/06_LLM_Extraction_and_Constrained_Decoding.md), [10_External_Repositories_and_KitaSan_Stack.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/10_External_Repositories_and_KitaSan_Stack.md)*
+*Traceability: [10_Structured_Extraction_and_Schema_Derivation.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/10_Structured_Extraction_and_Schema_Derivation.md), [11_Pure_Rust_LLM_Inference_and_Constrained_Decoding.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/11_Pure_Rust_LLM_Inference_and_Constrained_Decoding.md), [19_External_Ecosystem_and_KitaSan_Stack.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/19_External_Ecosystem_and_KitaSan_Stack.md)*
 
 #### Ticket 2.1.1: Universal JSON Schema Generation with `schemars`
 - **Description**: Derive `schemars::JsonSchema` on `ExtractionDirective` and `ExtractionEnvelope<T>`. Implement schema extraction utilities in `embedag-llm`.
@@ -165,7 +186,7 @@ This document establishes the comprehensive engineering roadmap for `embedag`. F
 ---
 
 ### Epic 2.2: Multi-Tiered Waterfall Resolution Pipeline
-*Traceability: [07_Graph_Resolution_Diffing_and_Cycle_Guards.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/07_Graph_Resolution_Diffing_and_Cycle_Guards.md), [12_Dynamic_Graph_Updates_and_Mixed_Modality_Resolution.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/12_Dynamic_Graph_Updates_and_Mixed_Modality_Resolution.md)*
+*Traceability: [12_Multi_Tiered_Waterfall_Resolution.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/12_Multi_Tiered_Waterfall_Resolution.md), [09_Mixed_Modality_Representation_and_Similarity.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/09_Mixed_Modality_Representation_and_Similarity.md)*
 
 #### Ticket 2.2.1: Tier 1 Deterministic Alias Store & Inverted Index
 - **Description**: Implement in-memory and repository-backed alias store mapping normalized tokens to canonical node IDs.
@@ -198,7 +219,7 @@ This document establishes the comprehensive engineering roadmap for `embedag`. F
 **Target Crate**: `embedag-diesel`, `embedag-core`.
 
 ### Epic 3.1: Schema Migrations & Transaction Architecture
-*Traceability: [08_Relational_Persistence_Diesel_Postgres_SQLite.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/08_Relational_Persistence_Diesel_Postgres_SQLite.md), [12_Dynamic_Graph_Updates_and_Mixed_Modality_Resolution.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/12_Dynamic_Graph_Updates_and_Mixed_Modality_Resolution.md)*
+*Traceability: [15_Relational_Persistence_and_Schema_Engine.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/15_Relational_Persistence_and_Schema_Engine.md), [14_Dynamic_Graph_Mutations_and_Diffing.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/14_Dynamic_Graph_Mutations_and_Diffing.md)*
 
 #### Ticket 3.1.1: Relational Schema Migrations (PostgreSQL & SQLite)
 - **Description**: Author migrations for `semantic_nodes`, `semantic_edges`, and `semantic_aliases` with appropriate foreign keys and indexes.
@@ -235,7 +256,7 @@ This document establishes the comprehensive engineering roadmap for `embedag`. F
 ---
 
 ### Epic 3.2: Recursive CTE Traversals via `diesel-cte-ext`
-*Traceability: [08_Relational_Persistence_Diesel_Postgres_SQLite.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/08_Relational_Persistence_Diesel_Postgres_SQLite.md), [10_External_Repositories_and_KitaSan_Stack.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/10_External_Repositories_and_KitaSan_Stack.md)*
+*Traceability: [16_Hierarchical_Recursive_CTE_Traversals.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/16_Hierarchical_Recursive_CTE_Traversals.md), [19_External_Ecosystem_and_KitaSan_Stack.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/19_External_Ecosystem_and_KitaSan_Stack.md)*
 
 #### Ticket 3.2.1: Typed `WITH RECURSIVE` Traversal Builder
 - **Description**: Integrate `diesel-cte-ext` to construct type-checked recursive queries traversing DAG ancestors and descendants up to `max_depth`.
@@ -255,7 +276,7 @@ This document establishes the comprehensive engineering roadmap for `embedag`. F
 ---
 
 ### Epic 3.3: Storage Extensibility & Capability Sub-Traits
-*Traceability: [11_Multi_Database_Extensibility_and_Future_Adapters.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/11_Multi_Database_Extensibility_and_Future_Adapters.md)*
+*Traceability: [20_Multi_Database_Extensibility_and_Future_Adapters.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/20_Multi_Database_Extensibility_and_Future_Adapters.md)*
 
 #### Ticket 3.3.1: Capability Sub-Traits Refactoring
 - **Description**: Refactor persistence into composed traits: `GraphStorage` (topology), `VectorIndex` (similarity), and `AliasStorage` (Tier 1 lookup), with blanket implementation for `GraphRepository`.
@@ -271,7 +292,7 @@ This document establishes the comprehensive engineering roadmap for `embedag`. F
 **Target Crates**: `embedag-rag`, `embedag`.
 
 ### Epic 4.1: Hybrid Candidate Retrieval & Fusion
-*Traceability: [09_Hybrid_Graph_RAG_and_Query_Engine.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/09_Hybrid_Graph_RAG_and_Query_Engine.md)*
+*Traceability: [17_Hybrid_Vector_and_Lexical_Retrieval.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/17_Hybrid_Vector_and_Lexical_Retrieval.md)*
 
 #### Ticket 4.1.1: Dense Vector & Sparse FTS Indexing
 - **Description**: Implement candidate search using `pgvector` / SQLite BLOB dot product for dense search, and `tsvector` / SQLite `FTS5` for sparse keyword search.
@@ -292,7 +313,7 @@ This document establishes the comprehensive engineering roadmap for `embedag`. F
 ---
 
 ### Epic 4.2: Topological Subgraph Expansion & Evidence Packaging
-*Traceability: [09_Hybrid_Graph_RAG_and_Query_Engine.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/09_Hybrid_Graph_RAG_and_Query_Engine.md)*
+*Traceability: [18_Topological_Subgraph_Expansion_and_GraphRAG.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/18_Topological_Subgraph_Expansion_and_GraphRAG.md)*
 
 #### Ticket 4.2.1: Bounded Subgraph Expansion & Distance Decay
 - **Description**: Take top RRF candidate seeds, traverse k-hop ancestors/descendants, and apply topological distance decay: $Score(N) = Score(\text{Seed}) \times 0.85^{\text{hops}}$.
@@ -337,7 +358,7 @@ This document establishes the comprehensive engineering roadmap for `embedag`. F
 ---
 
 ## Milestone 6: High-Value Relevant Features (Visual Exporters, Migrations, Communities, Bitemporal)
-*Traceability: [11_Multi_Database_Extensibility_and_Future_Adapters.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/11_Multi_Database_Extensibility_and_Future_Adapters.md), [12_Dynamic_Graph_Updates_and_Mixed_Modality_Resolution.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/12_Dynamic_Graph_Updates_and_Mixed_Modality_Resolution.md)*
+*Traceability: [20_Multi_Database_Extensibility_and_Future_Adapters.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/20_Multi_Database_Extensibility_and_Future_Adapters.md)*
 **Goal**: Implement schema evolution, visual exporters, topological community detection, and bitemporal history.
 **Target Crates**: `embedag-core`, `embedag-rag`, `embedag-diesel`.
 
@@ -386,7 +407,7 @@ This document establishes the comprehensive engineering roadmap for `embedag`. F
 ---
 
 ## Milestone 7: Multi-Model & Native Graph Adapters (Future Horizon)
-*Traceability: [11_Multi_Database_Extensibility_and_Future_Adapters.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/11_Multi_Database_Extensibility_and_Future_Adapters.md)*
+*Traceability: [20_Multi_Database_Extensibility_and_Future_Adapters.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/20_Multi_Database_Extensibility_and_Future_Adapters.md)*
 **Goal**: Implement native non-SQL backend adapters for SurrealDB and Neo4j.
 **Target Crates**: `embedag-surrealdb`, `embedag-neo4j`.
 
