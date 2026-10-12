@@ -3,7 +3,7 @@
 | Metadata           | Details                                                                                                            |
 |:-------------------|:-------------------------------------------------------------------------------------------------------------------|
 | **Document ID**    | `02_Workspace_Crate_Topology`                                                                                      |
-| **Domain**         | Workspace Architec<br/>ture & Crate Boundaries                                                                     |
+| **Domain**         | Workspace Architecture & Crate Boundaries                                                                     |
 | **Responsibility** | Internal Workspace Crate Topology, Scopes, Isolation Layers, and Dependency Directionality                         |
 | **Target Crates**  | All Workspace Crates (`embedag-core`, `embedag-derive`, `embedag-llm`, `embedag-diesel`, `embedag-rag`, `embedag`) |
 | **Status**         | Definitive Architectural Specification                                                                             |
@@ -26,6 +26,7 @@ flowchart TD
     classDef adapter fill:#0f4c81,stroke:#333,stroke-width:1px,color:#fff;
     classDef core fill:#2d6a4f,stroke:#333,stroke-width:2px,color:#fff;
     classDef macro fill:#b05d03,stroke:#333,stroke-width:1px,color:#fff;
+    classDef testTool fill:#d90429,stroke:#333,stroke-width:1px,color:#fff;
 
     Facade["embedag<br/>(Facade & Prelude)"]:::facade
     Derive["embedag-derive<br/>(Proc Macro)"]:::macro
@@ -33,6 +34,7 @@ flowchart TD
     Diesel["embedag-diesel<br/>(PostgreSQL pgvector & SQLite CTEs)"]:::adapter
     LLM["embedag-llm<br/>(oxibonsai Inference & PDA Masking)"]:::adapter
     Core["embedag-core<br/>(Domain Contracts, MemoryDag, Encoders)"]:::core
+    TC["Testcontainers<br/>(rust.testcontainers.org)"]:::testTool
 
     Facade --> Core
     Facade --> Derive
@@ -47,6 +49,8 @@ flowchart TD
     Diesel --> Core
     LLM --> Core
     Derive --> Core
+
+    TC -.->|Mandatory Persistence Harness| Diesel
 ```
 
 ---
@@ -76,7 +80,8 @@ flowchart TD
 ### 3.4 `embedag-diesel` (Relational Persistence Adapter)
 - **Role**: Concrete implementation of `GraphRepository` using Diesel for PostgreSQL and SQLite.
 - **Key Technologies**: `diesel-async` (for PostgreSQL pooling), `diesel` with bundled `libsqlite3-sys` (for SQLite), `pgvector` for vector embeddings, and `leynos/diesel-cte-ext` for recursive SQL CTE queries.
-- **Invariants**: Supports atomic multi-row upserts (`INSERT ... ON CONFLICT`) and recursive cycle-defensive CTE traversals.
+- **Mandatory Testing Harness**: **[Testcontainers for Rust](https://rust.testcontainers.org)** (`testcontainers = "0.27"`, `testcontainers-modules = { version = "0.15", features = ["postgres"] }`). Real containerized PostgreSQL + `pgvector` execution is mandatory for all persistence integration tests.
+- **Invariants**: Supports atomic multi-row upserts (`INSERT ... ON CONFLICT`) and recursive cycle-defensive CTE traversals verified against containerized databases.
 
 ### 3.5 `embedag-rag` (Hybrid Retrieval & Query Engine)
 - **Role**: Two-stage hybrid GraphRAG orchestration.
@@ -114,6 +119,14 @@ resolver = "2"
 | `embedag-rag` | `full` | `bm25`, `metrics` |
 | `embedag` | `all` | `minimal`, `sqlite-only`, `pg-only` |
 
+### 4.1 Mandatory Test Dependencies Matrix
+
+| Target Layer | Test Harness | Crates / Tools | Mandate & Purpose |
+| :--- | :--- | :--- | :--- |
+| **Relational Persistence** (`embedag-diesel`) | Containerized Integration Tests | `testcontainers = "0.27"`<br/>`testcontainers-modules = { version = "0.15", features = ["postgres"] }` | **Mandatory**: Verifies real PostgreSQL migrations, `pgvector` HNSW indexes, `SAVEPOINT` rollbacks, and recursive CTE execution in ephemeral Docker containers. |
+| **In-Memory DAG & Core** (`embedag-core`) | Unit & Property Tests | `proptest`, `quickcheck` | Verifies topological invariants, Tarjan SCC cycle checks, and mathematical normalization bounds without I/O. |
+| **Metaprogramming** (`embedag-derive`) | Macro AST Tests | `trybuild` | Verifies compile-pass and compile-fail diagnostics for procedural attribute macros. |
+
 ---
 
 ## 5. Architectural Invariants & Governance
@@ -121,3 +134,4 @@ resolver = "2"
 1. **Unidirectional Dependency Direction**: Adapter crates depend on `embedag-core`; `embedag-core` never imports adapters.
 2. **Feature Gate Isolation**: Compiling `embedag-core` without database features must never trigger SQL compilation.
 3. **No Dynamic Runtime Linkage**: Every workspace crate must link statically, ensuring a single self-contained binary artifact.
+4. **Mandatory Containerized Persistence Verification**: Persistent layer adapters must provide integration test suites backed by real throwaway Docker containers managed via [Testcontainers for Rust](https://rust.testcontainers.org). No PR touching persistence code may be merged without passing containerized tests in CI.

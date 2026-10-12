@@ -4,7 +4,7 @@
 | :--- | :--- |
 | **Document ID** | `20_Multi_Database_Extensibility_and_Future_Adapters` |
 | **Domain** | Database Extensibility & Future Adapter Ecosystem |
-| **Responsibility** | Evaluation of Future Graph & Multi-Model Backends (SurrealDB, Neo4j, LanceDB, Oxigraph) and Adapter Roadmap |
+| **Responsibility** | Evaluation of Future Graph & Multi-Model Backends (SurrealDB, Neo4j, LanceDB, Oxigraph), Containerized Testing Parity, and Adapter Roadmap |
 | **Target Crates** | `embedag-core` (Ports), Future Crates (`embedag-surrealdb`, `embedag-neo4j`, etc.) |
 | **Status** | Definitive Architectural Specification |
 
@@ -41,12 +41,20 @@ flowchart TD
         Oxi["embedag-oxigraph (W3C RDF / SPARQL Triples)"]
     end
 
+    subgraph TestHarness ["Mandatory Test Harness"]
+        TC["Testcontainers (rust.testcontainers.org)"]
+    end
+
     Repo <|.. Pg
     Repo <|.. Sqlite
     Repo <|.. Surreal
     Repo <|.. Neo
     Repo <|.. Lance
     Repo <|.. Oxi
+
+    TC -.->|PostgreSQL + pgvector| Pg
+    TC -.->|SurrealDB Container| Surreal
+    TC -.->|Neo4j Container| Neo
 ```
 
 ### 2.1 SurrealDB (`embedag-surrealdb`) — The #1 Multi-Model Candidate
@@ -75,6 +83,14 @@ The `GraphRepository` trait port defined in `embedag-core` requires zero SQL con
 - All mutations pass through typed `MutationDirective<T>` vectors.
 
 This guarantees that any backend implementing `GraphRepository` will integrate seamlessly without breaking existing domain code.
+
+### 3.1 Consistent Containerized Test Mandate for Future Adapters
+Just as `embedag-diesel` enforces mandatory integration testing with **[Testcontainers for Rust](https://rust.testcontainers.org)** for PostgreSQL, every future persistence adapter must provide a dedicated integration test suite backed by real throwaway containers:
+- `embedag-surrealdb`: Verified using `testcontainers` SurrealDB image in distributed mode, alongside embedded `kv-mem`.
+- `embedag-neo4j`: Verified against real Neo4j container instances using the `testcontainers` Neo4j module.
+- `embedag-lancedb` & `embedag-oxigraph`: Verified against real embedded engines and persistent file stores.
+
+This guarantees zero architectural drift and unified quality assurance across all supported database backends.
 
 ---
 

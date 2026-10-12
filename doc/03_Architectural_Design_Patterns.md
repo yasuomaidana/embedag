@@ -37,11 +37,16 @@ flowchart LR
         LLM["embedag-llm (oxibonsai / trustformers)"]
     end
 
+    subgraph TestHarness ["Mandatory Test Harness"]
+        TC["Testcontainers (rust.testcontainers.org)"]
+    end
+
     CLI & REST --> AsContext
     AsContext --> Typestate
     Typestate --> RepoPort & LlmPort
     RepoPort --> Diesel
     LlmPort --> LLM
+    TC -.->|Ephemeral PostgreSQL + pgvector| Diesel
 ```
 
 ---
@@ -94,9 +99,9 @@ flowchart LR
 ### 2.4 Multi-Tiered Waterfall Resolution Pattern
 - **Motivation**: Maximize processing throughput and minimize computational cost by evaluating cheap deterministic rules first before executing expensive neural models.
 - **Execution Order**:
-  1. *Tier 1*: O(1) Deterministic Exact Key & In-Memory LRU Alias Cache ($pprox 0.05\,\mu	ext{s}$).
-  2. *Tier 2*: Composite Hybrid Distance Thresholding ($pprox 5\,\mu	ext{s}$).
-  3. *Tier 3*: Constrained Pure-Rust LLM Inference ($pprox 10\,	ext{ms}$).
+  1. *Tier 1*: O(1) Deterministic Exact Key & In-Memory LRU Alias Cache ($\approx 0.05\,\mu\text{s}$).
+  2. *Tier 2*: Composite Hybrid Distance Thresholding ($\approx 5\,\mu\text{s}$).
+  3. *Tier 3*: Constrained Pure-Rust LLM Inference ($\approx 10\,\text{ms}$).
   4. *Tier 4*: Dead-Letter Queue & Human-in-the-Loop Review.
 
 ### 2.5 Draft-Then-Decode Pattern (Cognitive Scratchpad)
@@ -121,6 +126,16 @@ flowchart LR
   ```
 - **Benefit**: Guaranteed acyclic termination in SQL without external depth counters.
 
+### 2.7 Mandatory Ephemeral Containerized Integration Testing Pattern (`rust.testcontainers.org`)
+- **Motivation**: Testing database adapters against mock repositories or in-memory SQLite creates a false sense of security (the *impedance mismatch fallacy*), masking defects in dialect-specific SQL features such as `pgvector` HNSW indexes, PostgreSQL transaction isolation levels, and array-tracked recursive CTE cycle prevention.
+- **Implementation**:
+  Persistent storage adapters (`embedag-diesel`) mandate the use of **[Testcontainers for Rust](https://rust.testcontainers.org)** (`testcontainers`) for integration testing:
+  1. The test harness spins up an ephemeral Docker container running `pgvector/pgvector:pg16` with dynamically bound ports.
+  2. Diesel migrations run on the blank container to construct real tables, indexes, and constraints.
+  3. Integration tests validate real SQL statements, transactional `SAVEPOINT` rollbacks, and vector search operations.
+  4. RAII container guards terminate and purge the container upon completion.
+- **Benefit**: 100% production fidelity, deterministic reproduction of database constraints, zero cross-test interference, and elimination of host-installed database requirements.
+
 ---
 
 ## 3. Code Quality & Complexity Guardrails
@@ -130,3 +145,4 @@ Governed by the `pattern-complexity-auditor` skill:
 2. **Cognitive Complexity**: No nested blocks beyond $3$ levels deep. Guard clauses (`let ... else { return; }`) must be used for early exits.
 3. **Error Handling**: No `unwrap()` or `expect()` in production library code (`embedag-core`, `embedag-diesel`, `embedag-rag`). Errors must be modeled as typed enums using `thiserror`.
 4. **Zero Unsound `unsafe`**: `#![forbid(unsafe_code)]` is enforced on all domain crates.
+5. **Mandatory Container Testing Gate**: No persistence layer code or schema migration may be released without verifying all integration tests against live containerized databases via `testcontainers`.

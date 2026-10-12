@@ -13,7 +13,7 @@ This document establishes the comprehensive engineering roadmap for `embedag`. F
 flowchart TD
     M1["Milestone 1: Core Domain, Memory DAG Arena & Derive Macros<br/>(embedag-core, embedag-derive)"]
     M2["Milestone 2: Constrained LLM Extraction & Waterfall Resolution<br/>(embedag-llm, oxibonsai)"]
-    M3["Milestone 3: Relational Persistence with Diesel & Dynamic Mutations<br/>(embedag-diesel, diesel-cte-ext)"]
+    M3["Milestone 3: Relational Persistence with Diesel & Dynamic Mutations<br/>(embedag-diesel, diesel-cte-ext, testcontainers)"]
     M4["Milestone 4: Two-Stage Hybrid GraphRAG Query Engine<br/>(embedag-rag)"]
     M5["Milestone 5: End-to-End Integration, Facade Crate & Benchmarks<br/>(embedag)"]
     M6["Milestone 6: High-Value Features (Visual Exporters, Bitemporal, Communities)"]
@@ -115,14 +115,13 @@ flowchart TD
 
 ---
 
-### Epic 1.3: Procedural Derive Macros (`embedag-derive`)
-*Traceability: [06_Procedural_Derive_Macros.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/06_Procedural_Derive_Macros.md)*
+### Epic 1.3: Procedural Derive Macros (`embedag-derive`)\n*Traceability: [06_Procedural_Derive_Macros.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/06_Procedural_Derive_Macros.md)*
 
 #### Ticket 1.3.1: `#[derive(AsGraphContext)]`
 - **Description**: Create procedural macro parsing `#[graph(text)]`, `#[graph(scalar)]`, `#[graph(time)]`, and `#[graph(image)]`. Generate the `AsGraphContext` trait implementation.
 - **Acceptance Criteria**:
   - String fields marked `#[graph(text)]` are concatenated into `text_context()`.
-  - Numeric fields marked `#[graph(scalar, normalize = "min..max")]` are projected into `scalar_features()`.
+  - Numeric fields marked `#[graph(scalar, normalize = \"min..max\")]` are projected into `scalar_features()`.
   - Compiles clean AST code with informative compile-error diagnostics on invalid attributes.
 - **Tests**:
   - `trybuild` compile-pass and compile-fail test suites verifying macro behavior.
@@ -216,9 +215,10 @@ flowchart TD
 
 ## Milestone 3: Relational Persistence with Diesel & Dynamic Graph Updates
 **Goal**: Implement `GraphRepository` using Diesel, `diesel-async`, and `diesel-cte-ext` for PostgreSQL and SQLite, while supporting live dynamic graph updates.
+**Mandatory Testing Tooling**: All PostgreSQL relational persistence features, migrations, transactions, savepoint isolations, upserts, mutations, and recursive CTE traversals MUST be verified against real disposable PostgreSQL containers with `pgvector` enabled, powered by **[Testcontainers for Rust](https://rust.testcontainers.org)** (`testcontainers` and `testcontainers-modules`). Testing against mock stubs or relying solely on SQLite is strictly prohibited for PostgreSQL verification.
 **Target Crate**: `embedag-diesel`, `embedag-core`.
 
-### Epic 3.1: Schema Migrations & Transaction Architecture
+### Epic 3.1: Schema Migrations, Transactions & Testcontainers Harness
 *Traceability: [15_Relational_Persistence_and_Schema_Engine.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/15_Relational_Persistence_and_Schema_Engine.md), [14_Dynamic_Graph_Mutations_and_Diffing.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/14_Dynamic_Graph_Mutations_and_Diffing.md)*
 
 #### Ticket 3.1.1: Relational Schema Migrations (PostgreSQL & SQLite)
@@ -227,7 +227,7 @@ flowchart TD
   - PostgreSQL migration includes `pgvector` extension and `vector(1024)` column.
   - SQLite migration includes valid foreign key pragmas and BLOB columns.
 - **Tests**:
-  - Run migrations up and down on real Postgres and SQLite test databases.
+  - Run migrations up and down on ephemeral PostgreSQL + `pgvector` container spun up via `testcontainers` (https://rust.testcontainers.org) and in-memory SQLite.
 
 #### Ticket 3.1.2: Asynchronous Transactions & Savepoints with `diesel-async`
 - **Description**: Implement transactional batch writes using `AsyncPgConnection::transaction` with automatic savepoint rollback on error.
@@ -235,7 +235,7 @@ flowchart TD
   - Partial batch failure rolls back to savepoint without poisoning connection pool.
   - Successful operations commit atomically.
 - **Tests**:
-  - `test_transaction_rollback_on_constraint_violation`: Simulate foreign key violation and assert no orphaned records persist.
+  - `test_transaction_rollback_on_constraint_violation`: Simulate foreign key violation on containerized PostgreSQL via `testcontainers` and assert no orphaned records persist.
 
 #### Ticket 3.1.3: High-Throughput Batch Upserts
 - **Description**: Implement batch upsert methods using Diesel's `.on_conflict()` APIs.
@@ -243,7 +243,7 @@ flowchart TD
   - Nodes table executes `INSERT ... ON CONFLICT (id) DO UPDATE`.
   - Edges table executes `INSERT ... ON CONFLICT DO NOTHING`.
 - **Tests**:
-  - `test_batch_upsert_performance`: Verify inserting $1,000$ nodes executes in a single round-trip.
+  - `test_batch_upsert_performance`: Verify inserting $1,000$ nodes executes in a single round-trip on containerized PostgreSQL via `testcontainers`.
 
 #### Ticket 3.1.4: Dynamic Graph Mutation Lifecycle Execution
 - **Description**: Implement end-to-end execution of `MutationDirective::UpdateNodePayload`, `InsertNode`, `AttachParent`, and `RetargetEdge` within an active transaction.
@@ -251,7 +251,17 @@ flowchart TD
   - Mutating an existing node updates dynamic JSONB attributes while preserving existing edge relationships.
   - Live in-memory LRU cache and Tier 1 alias maps are refreshed after commit.
 - **Tests**:
-  - `test_dynamic_graph_mutation_lifecycle`: Seed existing graph, submit variant item with weight update, and assert database and cache reflect updated node and new child edge.
+  - `test_dynamic_graph_mutation_lifecycle`: Seed existing graph on containerized PostgreSQL via `testcontainers`, submit variant item with weight update, and assert database and cache reflect updated node and new child edge.
+
+#### Ticket 3.1.5: Mandatory Testcontainers Test Harness for Persistence Layer (`rust.testcontainers.org`)
+- **Description**: Implement the reusable async integration testing fixture in `embedag-diesel/tests/common/container.rs` leveraging `testcontainers = "0.27"` and `testcontainers-modules = { version = "0.15", features = ["postgres"] }`. Provisions ephemeral `pgvector/pgvector:pg16` Docker containers, configures dynamic connection strings, runs automated Diesel migrations, and guarantees deterministic RAII teardown.
+- **Acceptance Criteria**:
+  - Zero host database dependencies required; test suite boots isolated disposable container.
+  - Test harness automatically applies Diesel migrations before test execution.
+  - Container terminates and releases Docker resources upon completion.
+  - Integrates as a blocking check in the mandatory CI job `persistence-testcontainers`.
+- **Tests**:
+  - `test_testcontainers_harness_bootstrap`: Verify ephemeral PostgreSQL container spins up, connects via `diesel-async`, verifies `pgvector` extension, and executes `SELECT 1`.
 
 ---
 
@@ -264,14 +274,14 @@ flowchart TD
   - Compiles and executes on both PostgreSQL (`diesel-async`) and SQLite.
   - Eliminates raw string SQL concatenation.
 - **Tests**:
-  - `test_cte_subgraph_traversal`: Retrieve 3-hop hierarchy and assert all descendants are returned.
+  - `test_cte_subgraph_traversal`: Retrieve 3-hop hierarchy and assert all descendants are returned on containerized PostgreSQL via `testcontainers` and SQLite.
 
 #### Ticket 3.2.2: SQL Cycle Guardrails
 - **Description**: Implement path tracking inside recursive CTE queries (`ARRAY[id]` in Postgres, path string in SQLite) to prevent infinite loops.
 - **Acceptance Criteria**:
   - If a cycle exists in database records, CTE terminates safely when it encounters an already-visited ID.
 - **Tests**:
-  - `test_cte_cycle_guard_termination`: Seed cyclic records in test DB and assert query terminates within expected depth without timeout.
+  - `test_cte_cycle_guard_termination`: Seed cyclic records in test DB on containerized PostgreSQL via `testcontainers` and assert query terminates within expected depth without timeout.
 
 ---
 
@@ -298,7 +308,7 @@ flowchart TD
 - **Description**: Implement candidate search using `pgvector` / SQLite BLOB dot product for dense search, and `tsvector` / SQLite `FTS5` for sparse keyword search.
 - **Acceptance Criteria**:
   - Dense query returns top-K nearest semantic neighbors.
-  - Sparse query finds misspelled proper nouns (e.g. `"Carols V"` matches `"Carlos V"`).
+  - Sparse query finds misspelled proper nouns (e.g. `\"Carols V\"` matches `\"Carlos V\"`).
 - **Tests**:
   - `test_sparse_fts_typo_resilience`: Verify misspelled query returns target entity in sparse results.
 
@@ -353,7 +363,7 @@ flowchart TD
   - Complete round-trip executes without errors.
   - Persisted graph matches expected topological relationships.
 - **Tests**:
-  - `tests/e2e_pipeline_test.rs`: Full automated test suite against local Postgres container and in-memory SQLite.
+  - `tests/e2e_pipeline_test.rs`: Full automated test suite against ephemeral PostgreSQL container via `testcontainers` (https://rust.testcontainers.org) and in-memory SQLite.
 
 ---
 
@@ -410,15 +420,17 @@ flowchart TD
 *Traceability: [20_Multi_Database_Extensibility_and_Future_Adapters.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/20_Multi_Database_Extensibility_and_Future_Adapters.md)*
 **Goal**: Implement native non-SQL backend adapters for SurrealDB and Neo4j.
 **Target Crates**: `embedag-surrealdb`, `embedag-neo4j`.
+**Containerized Testing**: Just as `embedag-diesel` mandates Testcontainers for PostgreSQL, future adapters for SurrealDB and Neo4j are required to implement mandatory integration suites using `testcontainers` SurrealDB and Neo4j modules.
 
-### Epic 7.1: SurrealDB Embedded Adapter (`embedag-surrealdb`)
+### Epic 7.1: SurrealDB Embedded & Containerized Adapter (`embedag-surrealdb`)
 #### Ticket 7.1.1: SurrealDB Multi-Model Storage Implementation
 - **Description**: Implement `GraphStorage` and `VectorIndex` for SurrealDB using native record links (`->belongs_to->`) and SurrealQL vector functions.
 - **Acceptance Criteria**:
-  - Runs embedded in-process (`kv-mem`) with zero C-FFI.
+  - Runs embedded in-process (`kv-mem`) with zero C-FFI, and validates against containerized SurrealDB instances via `testcontainers`.
   - Replaces CTEs with native SurrealQL graph traversals.
 - **Tests**:
   - `test_surrealdb_embedded_roundtrip`: In-memory integration test verifying node creation, edge wiring, and vector search.
+  - `test_surrealdb_testcontainers_roundtrip`: Containerized integration test validating distributed SurrealQL execution.
 
 ### Epic 7.2: Neo4j OpenCypher Bolt Adapter (`embedag-neo4j`)
 #### Ticket 7.2.1: OpenCypher Bolt Protocol Adapter
@@ -426,8 +438,9 @@ flowchart TD
 - **Acceptance Criteria**:
   - Translates `persist_graph_delta` into atomic OpenCypher `MERGE` queries.
   - Translates `fetch_subgraph` into variable-length Cypher pattern matching (`[:HAS_PARENT*1..N]`).
+  - Passes mandatory containerized integration test suite via `testcontainers` Neo4j module.
 - **Tests**:
-  - `test_neo4j_cypher_subgraph_traversal`: Test Cypher query formatting against mock Bolt server.
+  - `test_neo4j_cypher_subgraph_traversal`: Containerized integration test verifying pattern matching against real Neo4j container.
 
 ---
 
@@ -437,4 +450,5 @@ Aligned with project agent governance:
 - **Formatting**: `cargo fmt --check`
 - **Coverage**: Minimum 85% line and branch coverage measured via `cargo llvm-cov`
 - **Complexity**: Cyclomatic Complexity $\le 15$, Cognitive Complexity $\le 20$
-- **Security**: Zero advisories via `cargo audit`.
+- **Security**: Zero advisories via `cargo audit`
+- **Mandatory Persistence Verification (Testcontainers)**: All persistence integration tests for PostgreSQL, migrations, vector indices, and recursive CTEs must pass on ephemeral containers provisioned via `testcontainers` (https://rust.testcontainers.org). No mock-only or SQLite-only bypass is permitted for persistent layer certification.

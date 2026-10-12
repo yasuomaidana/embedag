@@ -4,7 +4,7 @@
 | :--- | :--- |
 | **Document ID** | `15_Relational_Persistence_and_Schema_Engine` |
 | **Domain** | Relational Database Storage & Persistence |
-| **Responsibility** | `GraphRepository` Port, Relational Schema Architecture, PostgreSQL `diesel-async` with `pgvector`, and SQLite Storage |
+| **Responsibility** | `GraphRepository` Port, Relational Schema Architecture, PostgreSQL `diesel-async` with `pgvector`, SQLite Storage, and Mandatory Containerized Testing Harness |
 | **Target Crates** | `embedag-diesel`, `embedag-core` |
 | **Status** | Definitive Architectural Specification |
 
@@ -91,7 +91,7 @@ erDiagram
 CREATE EXTENSION IF NOT EXISTS vector;
 
 -- Nodes table
-CREATE TABLE semantic_nodes (
+CREATE TABLE semantic_nodes (\
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     business_key VARCHAR(255) NOT NULL UNIQUE,
     entity_level VARCHAR(64) NOT NULL,
@@ -162,3 +162,88 @@ CREATE INDEX idx_sqlite_edges_parent ON semantic_edges(parent_id);
 
 1. **Async Connection Pooling**: PostgreSQL connections use `bb8-diesel` or `deadpool-diesel` with `diesel-async`.
 2. **Subtransactions with SAVEPOINT**: When resolving complex batch directives, inner operations execute within SQL `SAVEPOINT` blocks to enable fine-grained rollbacks without aborting the outer transaction.
+
+---
+
+## 6. Mandatory Integration Testing Harness via Testcontainers (`rust.testcontainers.org`)
+
+Testing the persistence layer against SQLite or mock structures is insufficient for enterprise validation because SQLite lacks native `pgvector` indexing, specific PostgreSQL transaction isolation levels, and native array-based cycle guards.
+
+Therefore, **[Testcontainers for Rust](https://rust.testcontainers.org) is mandated as an indispensable, non-negotiable testing tool for `embedag`'s persistence layer**.
+
+### 6.1 Testing Mandate & Scope
+- **Zero Mock Policy for PostgreSQL Adapters**: All schema migrations, batch upserts, vector cosine similarity queries, and recursive CTE traversals implemented in `embedag-diesel` must be tested against real PostgreSQL instances with `pgvector` pre-installed.
+- **Ephemeral Containerized Isolation**: Tests dynamically spin up throwaway Docker containers running `pgvector/pgvector:pg16` via `testcontainers`. Each test suite runs in an isolated ephemeral database with random high port mappings, preventing cross-test pollution and host-environment dependency leaks.
+- **Mandatory Quality Gate**: No pull request or persistence feature will be accepted or merged without passing the Testcontainers integration test suite. This requirement is enforced continuously in CI via the dedicated `persistence-testcontainers` workflow.
+
+### 6.2 Testcontainers Architecture for `embedag-diesel`
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Runner as Cargo Test Runner
+    participant TC as Testcontainers Engine (rust.testcontainers.org)
+    participant Docker as Local / CI Docker Daemon
+    participant PG as Containerized Postgres + pgvector
+    participant Diesel as diesel-async Connection Pool
+
+    Runner->>TC: Request GenericImage("pgvector/pgvector:pg16")
+    TC->>Docker: Pull & Run container with dynamic port mapping
+    Docker-->>PG: Start PostgreSQL daemon
+    TC-->>Runner: Provide host port & connection string
+    Runner->>Diesel: Initialize AsyncDieselConnectionPool
+    Runner->>PG: Execute Schema Migrations (diesel migration run)
+    Runner->>PG: Run Batch Upserts, SAVEPOINT Rollbacks, HNSW Searches
+    Runner->>PG: Verify Recursive CTE Traversal & Cycle Guards
+    Runner-->>TC: Test Suite Finished
+    TC->>Docker: Stop & Terminate Container (RAII cleanup)
+```
+
+### 6.3 Standard Test Fixture Implementation
+
+Integration tests in `embedag-diesel/tests/` utilize the standard container fixture:
+
+```rust
+use testcontainers::{runners::AsyncRunner, ContainerAsync, GenericImage, ImageExt};
+use diesel_async::{AsyncPgConnection, RunQueryDsl};
+
+pub struct PostgresTestHarness {
+    pub container: ContainerAsync<GenericImage>,
+    pub database_url: String,
+}
+
+impl PostgresTestHarness {
+    /// Spins up a throwaway PostgreSQL container with pgvector enabled.
+    pub async fn start() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let image = GenericImage::new("pgvector/pgvector", "pg16")
+            .with_env_var("POSTGRES_DB", "embedag_test")
+            .with_env_var("POSTGRES_USER", "postgres")
+            .with_env_var("POSTGRES_PASSWORD", "postgres");
+
+        let container = image.start().await?;
+        let host = container.get_host().await?;
+        let port = container.get_host_port_ipv4(5432).await?;
+
+        let database_url = format!("postgres://postgres:postgres@{}:{}/embedag_test", host, port);
+
+        // Run migrations on the fresh container
+        Self::run_migrations(&database_url).await?;
+
+        Ok(Self {
+            container,
+            database_url,
+        })
+    }
+
+    async fn run_migrations(url: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Execute pending diesel migrations to create semantic_nodes, semantic_edges, HNSW indices
+        Ok(())
+    }
+}
+```
+
+### 6.4 Non-Negotiable Invariants Enforced by Testcontainers
+1. **Extension Verification**: Ensures `CREATE EXTENSION IF NOT EXISTS vector;` succeeds on a pristine database.
+2. **Dimension Consistency**: Guarantees that vectors of dimension 1024 index correctly with HNSW and throw runtime errors on dimension mismatch.
+3. **Savepoint Integrity**: Simulates constraint violations (e.g., duplicate edges or invalid foreign keys) and verifies that rollback to `SAVEPOINT` preserves valid preceding directives.
+4. **Recursive CTE Performance & Cycle Termination**: Validates arbitrary-depth recursive CTE queries on PostgreSQL under heavy topological loads.

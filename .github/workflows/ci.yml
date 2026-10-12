@@ -101,6 +101,27 @@ jobs:
       - name: Run documentation tests
         run: cargo test --doc
 
+  persistence-testcontainers:
+    name: Mandatory Persistence Integration Tests (Testcontainers)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Verify Docker Daemon Availability for Testcontainers
+        run: |
+          docker version
+          docker info
+
+      - name: Run Mandatory Persistence Integration Tests via Testcontainers
+        run: cargo test --all-targets --all-features --verbose
+
   coverage:
     name: Code Coverage (cargo-llvm-cov)
     runs-on: ubuntu-latest

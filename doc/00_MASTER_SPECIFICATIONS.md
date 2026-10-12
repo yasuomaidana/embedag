@@ -28,6 +28,7 @@ Unlike naive vector search or rigid flat taxonomies, `embedag` models real-world
    - Compile-time typestate contracts (`MutationPlan<T, CycleValidated>`) and in-memory Tarjan Strongly Connected Components (SCC) validation.
    - Database-level cycle prevention in recursive SQL CTEs (`diesel-cte-ext`) with array path tracking.
 6. **Hexagonal Architecture (Ports & Adapters)**: Domain logic in `embedag-core` is strictly decoupled from storage implementations (`GraphRepository` trait) and inference runtimes (`LlmProvider` trait).
+7. **Mandatory Containerized Persistence Verification**: Relational persistence adapters and future database backends are mandatorily tested against real throwaway Docker containers managed via **[Testcontainers for Rust](https://rust.testcontainers.org)** (`testcontainers`). Testing against mocks or relying solely on SQLite is strictly prohibited for verifying PostgreSQL and vector search functionality.
 
 ---
 
@@ -53,7 +54,7 @@ flowchart TD
     end
 
     subgraph Persistence ["5. RELATIONAL PERSISTENCE & RECURSIVE CTES"]
-        Mut --> DB["Relational Persistence Engine<br/>- Atomic Multi-Row Upserts (diesel-async PostgreSQL / SQLite)<br/>- Recursive CTE Traversals (diesel-cte-ext)<br/>- SQL Visited Path Cycle Prevention"]
+        Mut --> DB["Relational Persistence Engine<br/>- Atomic Multi-Row Upserts (diesel-async PostgreSQL / SQLite)<br/>- Recursive CTE Traversals (diesel-cte-ext)<br/>- SQL Visited Path Cycle Prevention<br/>- Mandatory Testcontainers Harness (rust.testcontainers.org)"]
     end
 
     subgraph GraphRAG ["6. HYBRID TWO-STAGE GRAPHRAG ENGINE"]
@@ -71,8 +72,8 @@ To guarantee high cohesion, maintainability, and clean domain boundaries, the do
 | :--- | :--- | :--- | :--- |
 | `00` | [00_MASTER_SPECIFICATIONS.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/00_MASTER_SPECIFICATIONS.md) | Master Architecture | Master blueprint, system tenets, and specification index. |
 | `01` | [01_Development_Plan.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/01_Development_Plan.md) | Project Governance | Scrum milestones, epics, user stories, acceptance criteria, test specifications. |
-| `02` | [02_Workspace_Crate_Topology.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/02_Workspace_Crate_Topology.md) | Workspace Architecture | Crate boundaries, dependency graphs, and isolation layers. |
-| `03` | [03_Architectural_Design_Patterns.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/03_Architectural_Design_Patterns.md) | Design Patterns | Idiomatic Rust patterns, hexagonal ports, typestates, complexity limits. |
+| `02` | [02_Workspace_Crate_Topology.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/02_Workspace_Crate_Topology.md) | Workspace Architecture | Crate boundaries, dependency graphs, test dependencies, and isolation layers. |
+| `03` | [03_Architectural_Design_Patterns.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/03_Architectural_Design_Patterns.md) | Design Patterns | Idiomatic Rust patterns, hexagonal ports, typestates, Testcontainers pattern, complexity limits. |
 | `04` | [04_Core_Domain_and_Entity_Contracts.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/04_Core_Domain_and_Entity_Contracts.md) | Domain Contracts | Core traits: `AsGraphContext`, `NodePayload`, `GraphTarget`, `GraphClassifier`. |
 | `05` | [05_In_Memory_DAG_and_Arena_Topology.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/05_In_Memory_DAG_and_Arena_Topology.md) | Graph Topology | `MemoryDag<T>`, generational indices, `petgraph`, arena memory layout. |
 | `06` | [06_Procedural_Derive_Macros.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/06_Procedural_Derive_Macros.md) | Metaprogramming | `embedag-derive`, `#[derive(AsGraphContext)]`, syn/quote compile-time AST generation. |
@@ -84,7 +85,7 @@ To guarantee high cohesion, maintainability, and clean domain boundaries, the do
 | `12` | [12_Multi_Tiered_Waterfall_Resolution.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/12_Multi_Tiered_Waterfall_Resolution.md) | Entity Resolution | 4-tier waterfall: exact match, hybrid distance, LLM arbitration, human review. |
 | `13` | [13_Topological_Cycle_Detection_and_Guards.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/13_Topological_Cycle_Detection_and_Guards.md) | Topological Invariants | Cycle prevention algorithms: Tarjan SCC, `would_create_cycle`, typestate validation. |
 | `14` | [14_Dynamic_Graph_Mutations_and_Diffing.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/14_Dynamic_Graph_Mutations_and_Diffing.md) | Change Management | `GraphDiff`, Mutation Directives execution lifecycle, shadow DAG simulation, upserts. |
-| `15` | [15_Relational_Persistence_and_Schema_Engine.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/15_Relational_Persistence_and_Schema_Engine.md) | Persistence | `GraphRepository` port, Diesel schema, PostgreSQL `pgvector`, SQLite, batch transactions. |
+| `15` | [15_Relational_Persistence_and_Schema_Engine.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/15_Relational_Persistence_and_Schema_Engine.md) | Persistence | `GraphRepository` port, Diesel schema, PostgreSQL `pgvector`, SQLite, batch transactions, and mandatory Testcontainers harness. |
 | `16` | [16_Hierarchical_Recursive_CTE_Traversals.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/16_Hierarchical_Recursive_CTE_Traversals.md) | SQL Graph Queries | Recursive CTE queries via `diesel-cte-ext`, path tracking, depth limits, indices. |
 | `17` | [17_Hybrid_Vector_and_Lexical_Retrieval.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/17_Hybrid_Vector_and_Lexical_Retrieval.md) | Retrieval Fusion | Stage 1 search: Dense vector + BM25 sparse lexical tokens, Reciprocal Rank Fusion (RRF). |
 | `18` | [18_Topological_Subgraph_Expansion_and_GraphRAG.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/18_Topological_Subgraph_Expansion_and_GraphRAG.md) | GraphRAG Synthesis | Stage 2 subgraph expansion, distance decay, query planner DAG, grounded citations. |
@@ -99,8 +100,10 @@ To guarantee high cohesion, maintainability, and clean domain boundaries, the do
    - Compiles cleanly on `x86_64` and `aarch64` (Apple Silicon / Linux) with zero C dynamic libraries.
    - `cargo build --workspace` succeeds with zero warnings under `#![deny(missing_docs)]` and strict clippy settings.
 2. **Deterministic Encoding Latency**:
-   - Scalar normalization, cyclical trigonometry, and H3 cell derivation run in $< 5\,\mu	ext{s}$ per record.
+   - Scalar normalization, cyclical trigonometry, and H3 cell derivation run in $< 5\,\mu\text{s}$ per record.
 3. **In-Memory Graph Mutation Throughput**:
-   - Inserting nodes and validating DAG invariants on an active shadow graph runs in $< 50\,\mu	ext{s}$ for subgraphs up to $10,000$ nodes.
+   - Inserting nodes and validating DAG invariants on an active shadow graph runs in $< 50\,\mu\text{s}$ for subgraphs up to $10,000$ nodes.
 4. **End-to-End Query Latency**:
-   - Two-stage Hybrid GraphRAG queries (vector search + CTE expansion + prompt assembly) complete in $< 15\,	ext{ms}$ on PostgreSQL.
+   - Two-stage Hybrid GraphRAG queries (vector search + CTE expansion + prompt assembly) complete in $< 15\,\text{ms}$ on PostgreSQL.
+5. **Persistent Integration Test Fidelity**:
+   - 100% of relational persistence features (`embedag-diesel`) must pass on live containerized PostgreSQL instances with `pgvector` enabled via [Testcontainers for Rust](https://rust.testcontainers.org) in CI.

@@ -6,7 +6,7 @@ This document defines the agent ecosystem, roles, interfaces, governance princip
 The architecture adopts state-of-the-art AI development paradigms:
 - **Separation of Concerns**: Single Responsibility Principle for autonomous agents and skills.
 - **Specification-Driven Synthesis**: Explicit behavioral and technical constraints derived directly from requirements (`docs/` and project user stories).
-- **Feedback Loops & Verification Gates**: Autonomous validation through static analysis, code complexity verification, automated coverage validation, and alignment auditing.
+- **Feedback Loops & Verification Gates**: Autonomous validation through static analysis, code complexity verification, automated coverage validation, containerized integration testing, and alignment auditing.
 - **Context & Token Economy**: Minimalistic, targeted skill prompts loaded on-demand to prevent attention degradation and hallucinations.
 
 ---
@@ -30,7 +30,7 @@ flowchart TD
 
     subgraph "Core Engineering"
         Builder[Rust Implementation Specialist]
-        Tester[BDD & Property Test Engineer]
+        Tester[BDD & Property Test Engineer<br/>Testcontainers Mandate]
     end
 
     Orchestrator --> SM
@@ -80,7 +80,7 @@ flowchart TD
 - **Primary Tools**: Skill schema validator, markdown static analysis.
 
 ### 6. Agile Scrum Master & Goal Alignment Specialist (`scrum-master-alignment`)
-- **Role**: Acts as the automated Scrum Master. Ensures that every test suite (unit, integration, doc-test, property-test) directly traces back to project milestones, user stories, acceptance criteria, and technical specifications in `docs/`.
+- **Role**: Acts as the automated Scrum Master. Ensures that every test suite (unit, integration, doc-test, property-test) directly traces back to project milestones, user stories, acceptance criteria, and technical specifications in `docs/`. Mandates containerized testing via Testcontainers for persistent layer changes.
 - **Governing Skill**: [scrum-master-alignment](file:///Users/yasuomaidana/RustRoverProjects/docula/.agents/skills/scrum-master-alignment/SKILL.md)
 - **Primary Tools**: Test mapping tracers, specification parsers, coverage alignment metrics.
 
@@ -88,6 +88,11 @@ flowchart TD
 - **Role**: Converts repository content, source files, and supporting artifacts into a persistent knowledge graph to explain relationships, dependencies, architecture, and impact paths across the codebase.
 - **Governing Skill**: [graphify](file:///Users/yasuomaidana/RustRoverProjects/docula/.agents/skills/graphify/SKILL.md)
 - **Primary Tools**: graph query tools, repository traversal, relationship analysis, evidence mapping.
+
+### 8. Autonomous Ticket Lifecycle Developer (`ticket-lifecycle-developer`)
+- **Role**: Guides and executes the complete 8-step ticket development lifecycle for the next undone project ticket: requirement clarity check, ticket decomposition, TDD test definition, design pattern audit, feature implementation, test passing validation, complexity refactoring, and dev status updating.
+- **Governing Skill**: [ticket-lifecycle-developer](file:///Users/yasuomaidana/RustRoverProjects/docula/.agents/skills/ticket-lifecycle-developer/SKILL.md)
+- **Primary Tools**: `cargo test`, `cargo clippy`, `cargo fmt`, `DEV_STATUS.md` tracker.
 
 ---
 
@@ -108,3 +113,8 @@ flowchart TD
 4. **Reporting Integrity**:
    - Reports must clearly distinguish verified CLI outputs from assumptions.
    - Do not claim tests pass or coverage targets are met without executing and verifying the respective commands.
+
+5. **Mandatory Persistence Verification (Testcontainers)**:
+   - All code modifying the persistence layer (`embedag-diesel` or future database adapters) must include automated integration tests backed by **[Testcontainers for Rust](https://rust.testcontainers.org)** (`testcontainers`).
+   - Mocking or testing exclusively against SQLite is strictly insufficient for certifying PostgreSQL and vector search functionality.
+   - The CI gate `persistence-testcontainers` must pass before persistence tickets can be marked Done.
