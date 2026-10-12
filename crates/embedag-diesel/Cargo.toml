@@ -1,0 +1,36 @@
+[package]
+name = "embedag-diesel"
+description = "Relational persistence adapter with PostgreSQL pgvector, SQLite CTEs, dynamic graph mutations and Testcontainers harness for embedag."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = ["postgres-async", "sqlite", "test-harness"]
+postgres-async = ["diesel-async", "pgvector", "tokio-postgres", "diesel-cte-ext/postgres", "diesel-cte-ext/async"]
+sqlite = ["libsqlite3-sys", "diesel-cte-ext/sqlite"]
+test-harness = ["testcontainers"]
+
+[dependencies]
+embedag-core = { workspace = true }
+embedag-derive = { workspace = true }
+diesel = { workspace = true }
+diesel-async = { workspace = true, optional = true }
+diesel-cte-ext = { workspace = true }
+tokio-postgres = { workspace = true, optional = true }
+libsqlite3-sys = { workspace = true, optional = true }
+pgvector = { workspace = true, optional = true }
+testcontainers = { workspace = true, optional = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+testcontainers = { workspace = true }
+testcontainers-modules = { workspace = true }
+tokio-postgres = { workspace = true }
