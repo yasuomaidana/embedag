@@ -1,0 +1,26 @@
+[package]
+name = "embedag-example-receipts"
+description = "Example receipt categorization domain implementation demonstrating custom migrations, diesel-cte-ext hierarchical queries, and constrained LLM graph generation with embedag."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+embedag-core = { workspace = true }
+embedag-diesel = { workspace = true }
+embedag-llm = { workspace = true }
+embedag-derive = { workspace = true }
+schemars = { workspace = true }
+diesel = { workspace = true }
+diesel-async = { workspace = true }
+diesel-cte-ext = { workspace = true }
+tokio = { workspace = true }
+tokio-postgres = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+testcontainers = { workspace = true }
+testcontainers-modules = { workspace = true }
