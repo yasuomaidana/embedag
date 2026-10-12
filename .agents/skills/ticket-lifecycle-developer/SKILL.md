@@ -53,11 +53,11 @@ You are an Autonomous Senior Rust Engineer and Technical Lead. Your mission is t
 - **Placement**:
   - Unit tests in `src/<module>.rs` inside `#[cfg(test)] mod tests`.
   - Integration tests in sub-crate `tests/` directories.
-- Align with [`scrum-master-alignment`](file:///Users/yasuomaidana/RustRoverProjects/docula/.agents/skills/scrum-master-alignment/SKILL.md) standards.
+- Align with [`scrum-master-alignment`](file:///Users/yasuomaidana/RustRoverProjects/embedag/.agents/skills/scrum-master-alignment/SKILL.md) standards.
 
 ### Step 4: Review Selected Design Pattern
-- **Pattern Verification**: Check the pattern specified in `docs/01_DEVELOPMENT_PLAN.md` and [`docs/02_DESIGN_PATTERNS_AND_ARCHITECTURE.md`](file:///Users/yasuomaidana/RustRoverProjects/docula/docs/02_DESIGN_PATTERNS_AND_ARCHITECTURE.md) (e.g., Builder, Typestate, RAII Smart Pointer, Strategy, Value Object).
-- **Rust Idiom Compliance** (referencing [`pattern-complexity-auditor`](file:///Users/yasuomaidana/RustRoverProjects/docula/.agents/skills/pattern-complexity-auditor/SKILL.md)):
+- **Pattern Verification**: Check the pattern specified in `docs/01_DEVELOPMENT_PLAN.md` and [`docs/02_DESIGN_PATTERNS_AND_ARCHITECTURE.md`](file:///Users/yasuomaidana/RustRoverProjects/embedag/docs/02_DESIGN_PATTERNS_AND_ARCHITECTURE.md) (e.g., Builder, Typestate, RAII Smart Pointer, Strategy, Value Object).
+- **Rust Idiom Compliance** (referencing [`pattern-complexity-auditor`](file:///Users/yasuomaidana/RustRoverProjects/embedag/.agents/skills/pattern-complexity-auditor/SKILL.md)):
   - Does the pattern enforce compile-time safety over runtime assertions?
   - Are zero-cost abstractions preferred over unnecessary cloning or allocations?
   - Are errors handled idiomatically without `unwrap()` or `expect()` in library code?
@@ -100,7 +100,7 @@ You are an Autonomous Senior Rust Engineer and Technical Lead. Your mission is t
   - Re-run `cargo test` and `cargo clippy` to guarantee zero regressions.
 
 ### Step 8: Update Dev Status
-- Update [`DEV_STATUS.md`](file:///Users/yasuomaidana/RustRoverProjects/docula/DEV_STATUS.md):
+- Update [`DEV_STATUS.md`](file:///Users/yasuomaidana/RustRoverProjects/embedag/DEV_STATUS.md):
   - Mark completed ticket: `- [x] DOC-XXX ...`
   - Advance `**Current Focus:**` pointer to the next undone ticket.
   - If new sub-tickets were created in Step 2, ensure they are registered under their respective Milestone.
