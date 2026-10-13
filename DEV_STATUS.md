@@ -1,7 +1,7 @@
 # Project Status & Ticket Log
 
-**Progress:** 47/49 completed (96%) — **Milestones 1, 2, 3, 4, 5 & 6 COMPLETE; Milestone 7 in progress**  
-**Current Focus:** `Ticket 7.1.1` (SurrealDB Multi-Model Storage Implementation (`embedag-surrealdb`))
+**Progress:** 55/55 completed (100%) — **Milestones 1, 2, 3, 4, 5, 6, 7 & 8 COMPLETE**  
+**Current Focus:** All milestone development tickets completed (`Milestone 7` delivered: `embedag-surrealdb` & `embedag-neo4j`)
 
 ---
 
@@ -43,6 +43,7 @@
 - [x] Ticket 3.4.3: External Domain Ingestion & Diamond Deduplication Demo (`embedag-example-receipts`)
 - [x] Ticket 3.4.4: Dynamic On-the-Fly LLM Taxonomy Pipeline & Deduplication (`embedag-example-receipts`)
 - [x] Ticket 3.4.5: Finance Invoice Graph Pipeline with Dual-Mode Density Categorization, Time-Dependency, and Dynamic User Reclassification (Candle & OxiLLaMa) (`embedag-example-receipts`)
+- [x] Ticket 3.5.1: Turso / libSQL Distributed Persistence via Diesel & Diesel-Async (`embedag-diesel`)
 
 ### Milestone 4: Two-Stage Hybrid Graph-RAG Query Engine
 - [x] Ticket 4.1.1: Dense Vector & Sparse FTS Indexing with `oxirag` Echo Store (`embedag-rag`)
@@ -65,6 +66,13 @@
 - [x] Ticket 6.5.2: SPARQL 1.2 Semantic Query & Reasoning Interface via `oxirs` (`embedag-rag`)
 
 ### Milestone 7: Multi-Model & Native Graph Adapters (Future Horizon)
-- [ ] Ticket 7.1.1: SurrealDB Multi-Model Storage Implementation (`embedag-surrealdb`) *(IN PROGRESS)*
-- [ ] Ticket 7.2.1: OpenCypher Bolt Protocol Adapter (`embedag-neo4j`)
+- [x] Ticket 7.1.1: SurrealDB Multi-Model Storage Implementation (`embedag-surrealdb`)
+- [x] Ticket 7.2.1: OpenCypher Bolt Protocol Adapter (`embedag-neo4j`)
 - [x] Ticket 7.3.1: Native OxiRS TDB2 Persistent Storage Engine (`embedag-oxirs`)
+
+### Milestone 8: Heavy Graph Handling & Topological Pagination
+- [x] Ticket 8.1.1: Streaming Traversal Iterators & Early Termination (`embedag-core`)
+- [x] Ticket 8.1.2: Degree Pagination & Hub Neighbor Slicing (`embedag-core`)
+- [x] Ticket 8.1.3: Localized Differential Cycle Validation (`embedag-core`)
+- [x] Ticket 8.2.1: Hub-Bounded GraphRAG Subgraph Expansion (`embedag-rag`)
+- [x] Ticket 8.3.1: Windowed & Degree-Bounded Recursive CTE Traversals (`embedag-diesel`)

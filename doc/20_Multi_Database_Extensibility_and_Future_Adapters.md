@@ -26,9 +26,10 @@ flowchart TD
         Repo["GraphRepository (Trait Port)"]
     end
 
-    subgraph Relational ["Relational Adapters (v0.1 Foundation)"]
+    subgraph Relational ["Relational Adapters (v0.1 Foundation & Turso)"]
         Pg["embedag-diesel (PostgreSQL + diesel-async + pgvector)"]
         Sqlite["embedag-diesel (SQLite + leynos/diesel-cte-ext)"]
+        Turso["embedag-diesel (Turso / libSQL + diesel + diesel-async)"]
     end
 
     subgraph SovereignSemantic ["Sovereign Semantic Web (KitaSan Priority 1)"]
@@ -50,6 +51,7 @@ flowchart TD
 
     Repo <|.. Pg
     Repo <|.. Sqlite
+    Repo <|.. Turso
     Repo <|.. OxiRS
     Repo <|.. Surreal
     Repo <|.. Neo
@@ -170,3 +172,42 @@ flowchart TD
 - **Snapshot Accelerator**: `save_snapshot` and `build_snapshot` for baking frozen `snapshot.oxsnap` files.
 - **Reference Example**: [`examples/oxirs_persistent_dag.rs`](file:///Users/yasuomaidana/RustRoverProjects/embedag/crates/embedag-oxirs/examples/oxirs_persistent_dag.rs) demonstrating healthcare ontology persistence and SPARQL extraction.
 
+
+
+---
+
+## 6. Delivered Implementation: SurrealDB Multi-Model Storage Engine (`embedag-surrealdb`) (Ticket 7.1.1)
+
+### 6.1 Architectural Assessment & Technical Rationale
+The implementation of `embedag-surrealdb` delivers native multi-model document-graph persistence for `embedag`:
+1. **Unified Dual Execution Modes**: Supports transient in-process embedded memory (`surrealdb::engine::local::Mem`) for rapid zero-dependency execution as well as remote WebSocket/HTTP connectivity (`surrealdb::engine::any::Any`).
+2. **Native Graph Relations & Document Integration**: Graph relationships map to SurrealQL `RELATE` edge structures with confidence, provenance, and timestamp metadata.
+3. **GraphRepository Compliance**: Full implementation of [`ReadOnlyGraphRepository<T>`](file:///Users/yasuomaidana/RustRoverProjects/embedag/crates/embedag-core/src/traits.rs), [`TransactionalGraphRepository<T>`](file:///Users/yasuomaidana/RustRoverProjects/embedag/crates/embedag-core/src/traits.rs), and [`VectorSearchRepository<T>`](file:///Users/yasuomaidana/RustRoverProjects/embedag/crates/embedag-core/src/traits.rs).
+4. **MemoryDag Bidirectional Synchronization**: High-performance `export_dag` and `load_dag` allowing seamless round-trip transfer between in-memory arenas and SurrealDB.
+
+### 6.2 Implemented Components
+- **Core Engine**: [`SurrealDbEngine`](file:///Users/yasuomaidana/RustRoverProjects/embedag/crates/embedag-surrealdb/src/engine.rs)
+- **Configuration**: [`SurrealDbConfig`](file:///Users/yasuomaidana/RustRoverProjects/embedag/crates/embedag-surrealdb/src/config.rs)
+- **Mapping Contracts**: [`SurrealNodeRecord`](file:///Users/yasuomaidana/RustRoverProjects/embedag/crates/embedag-surrealdb/src/mapping.rs) and [`SurrealEdgeRecord`](file:///Users/yasuomaidana/RustRoverProjects/embedag/crates/embedag-surrealdb/src/mapping.rs)
+- **Repository Implementation**: [`crates/embedag-surrealdb/src/repository.rs`](file:///Users/yasuomaidana/RustRoverProjects/embedag/crates/embedag-surrealdb/src/repository.rs)
+- **Runnable Example**: [`examples/surrealdb_persistent_dag.rs`](file:///Users/yasuomaidana/RustRoverProjects/embedag/crates/embedag-surrealdb/examples/surrealdb_persistent_dag.rs)
+- **Test Suite**: [`tests/test_surrealdb_persistence.rs`](file:///Users/yasuomaidana/RustRoverProjects/embedag/crates/embedag-surrealdb/tests/test_surrealdb_persistence.rs)
+
+---
+
+## 7. Delivered Implementation: OpenCypher Bolt Protocol Adapter (`embedag-neo4j`) (Ticket 7.2.1)
+
+### 7.1 Architectural Assessment & Technical Rationale
+The implementation of `embedag-neo4j` delivers industry-standard property graph and OpenCypher support:
+1. **Bolt Protocol & Zero-Daemon Mock Execution**: Connects to enterprise Neo4j / Memgraph instances over Bolt protocol via `neo4rs`, with an included in-memory mock engine for deterministic zero-daemon CI test execution.
+2. **OpenCypher Mapping**: Employs parameterized Cypher statements (`MERGE (n:Label ...)` and `MATCH (p)-[r]->(c)`) preserving property graphs and relationships.
+3. **GraphRepository Compliance**: Implements all repository capability traits: `ReadOnlyGraphRepository<T>`, `TransactionalGraphRepository<T>`, `VectorSearchRepository<T>`, and blanket `GraphRepository<T>`.
+4. **MemoryDag Bidirectional Import/Export**: Enables complete state synchronization between in-memory DAGs and Neo4j labeled property graphs.
+
+### 7.2 Implemented Components
+- **Core Engine**: [`Neo4jEngine`](file:///Users/yasuomaidana/RustRoverProjects/embedag/crates/embedag-neo4j/src/engine.rs)
+- **Configuration**: [`Neo4jConfig`](file:///Users/yasuomaidana/RustRoverProjects/embedag/crates/embedag-neo4j/src/config.rs)
+- **Mapping Contracts**: [`Neo4jNodeRecord`](file:///Users/yasuomaidana/RustRoverProjects/embedag/crates/embedag-neo4j/src/mapping.rs) and [`Neo4jEdgeRecord`](file:///Users/yasuomaidana/RustRoverProjects/embedag/crates/embedag-neo4j/src/mapping.rs)
+- **Repository Implementation**: [`crates/embedag-neo4j/src/repository.rs`](file:///Users/yasuomaidana/RustRoverProjects/embedag/crates/embedag-neo4j/src/repository.rs)
+- **Runnable Example**: [`examples/neo4j_persistent_dag.rs`](file:///Users/yasuomaidana/RustRoverProjects/embedag/crates/embedag-neo4j/examples/neo4j_persistent_dag.rs)
+- **Test Suite**: [`tests/test_neo4j_persistence.rs`](file:///Users/yasuomaidana/RustRoverProjects/embedag/crates/embedag-neo4j/tests/test_neo4j_persistence.rs)

@@ -247,3 +247,87 @@ impl PostgresTestHarness {
 2. **Dimension Consistency**: Guarantees that vectors of dimension 1024 index correctly with HNSW and throw runtime errors on dimension mismatch.
 3. **Savepoint Integrity**: Simulates constraint violations (e.g., duplicate edges or invalid foreign keys) and verifies that rollback to `SAVEPOINT` preserves valid preceding directives.
 4. **Recursive CTE Performance & Cycle Termination**: Validates arbitrary-depth recursive CTE queries on PostgreSQL under heavy topological loads.
+
+
+---
+
+## 7. Turso & libSQL Distributed Persistence via Diesel & Diesel-Async
+
+### 7.1 Distributed Edge Architecture & Vision
+
+In addition to centralized PostgreSQL and local file-based SQLite, `embedag` persists DAGs on **Turso (powered by libSQL)** via `diesel` and `diesel-async`.
+
+Turso enables distributed edge replication, low-latency regional reads, and zero-infrastructure serverless graph persistence:
+
+```mermaid
+flowchart TD
+    subgraph Client ["embedag-diesel Persistence Layer"]
+        Conn["AsyncLibSqlConnection (diesel-async)"]
+        Harness["TursoHarness (In-Memory / Ephemeral File)"]
+    end
+
+    subgraph Topologies ["Turso Connection Topologies"]
+        Mem[":memory: Ephemeral Instance"]
+        LocalFile["Local SQLite File"]
+        Remote["Remote Primary (libsql://db.turso.io)"]
+        Replica["Embedded Sync Replica (Local File + Sync)"]
+    end
+
+    subgraph Operations ["Graph Persistence Operations"]
+        Batch["batch_upsert_nodes_turso / batch_upsert_edges_turso"]
+        Lifecycle["apply_mutation_lifecycle_turso"]
+        Savepoint["execute_with_savepoint_turso"]
+        CTE["fetch_ancestors_turso_async / fetch_descendants_turso_async"]
+    end
+
+    Conn --> Topologies
+    Topologies --> Operations
+```
+
+### 7.2 Connection Topologies & Modes
+
+`embedag-diesel` models connection topologies via `TursoConnectionMode`:
+
+```rust
+pub enum TursoConnectionMode {
+    InMemory,
+    LocalFile(PathBuf),
+    Remote { url: String, auth_token: String },
+    Replica { local_path: PathBuf, remote_url: String, auth_token: String },
+}
+```
+
+- **`establish_turso_sync(mode)`**: Instantiates a synchronous `diesel_libsql::LibSqlConnection`.
+- **`establish_turso_async(mode)`**: Instantiates an asynchronous `diesel_libsql::AsyncLibSqlConnection` implementing `diesel_async::AsyncConnection`.
+
+### 7.3 Recursive CTE Cycle Guardrails on Turso
+
+Unlike PostgreSQL which provides native `ARRAY` and `= ANY(visited)` expressions, Turso / libSQL implements cycle protection using deterministic string delimiter path concatenation:
+
+```sql
+WITH RECURSIVE ancestor_tree(node_id, depth, visited_path) AS (
+    SELECT
+        parent_id,
+        1 AS depth,
+        "," || "$target_id" || "," || parent_id || "," AS visited_path
+    FROM semantic_edges
+    WHERE child_id = "$target_id"
+
+    UNION ALL
+
+    SELECT
+        e.parent_id,
+        t.depth + 1,
+        t.visited_path || e.parent_id || ","
+    FROM semantic_edges e
+    JOIN ancestor_tree t ON e.child_id = t.node_id
+    WHERE t.depth < $max_depth
+      AND INSTR(t.visited_path, "," || e.parent_id || ",") = 0
+)
+SELECT t.node_id, t.depth, n.business_key, n.name, n.entity_level
+FROM ancestor_tree t
+JOIN semantic_nodes n ON n.id = t.node_id
+ORDER BY t.depth ASC;
+```
+
+This guarantees that cyclic graphs terminate in bounded time without recursion overflow or hanging transactions.
