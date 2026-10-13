@@ -76,7 +76,11 @@ async fn test_finance_invoice_categorization_oxillama_llm_decided_and_time_depen
         .expect("process invoice 1");
 
     assert!(!processed1.invoice_categories.is_empty());
-    assert!(processed1.invoice_categories.contains(&"Everyday Retail".to_string()));
+    assert!(
+        processed1
+            .invoice_categories
+            .contains(&"Everyday Retail".to_string())
+    );
 
     // Both Ferrero variants and Snickers categorized into Chocolate hierarchy
     let snickers_item_cat = processed1.item_categories.get("item_snickers").unwrap();
@@ -112,12 +116,20 @@ async fn test_finance_invoice_categorization_oxillama_llm_decided_and_time_depen
         .expect("process invoice 2");
 
     assert!(
-        processed2.invoice_categories.contains(&"Holiday".to_string()),
+        processed2
+            .invoice_categories
+            .contains(&"Holiday".to_string()),
         "LLM must infer Christmas Eve gifting invoice as Holiday"
     );
 
-    let holiday_purchase_cats = processed2.purchase_categories.get("item_ferrero_box24").unwrap();
-    let cat_names: Vec<&str> = holiday_purchase_cats.iter().map(|(_, name)| name.as_str()).collect();
+    let holiday_purchase_cats = processed2
+        .purchase_categories
+        .get("item_ferrero_box24")
+        .unwrap();
+    let cat_names: Vec<&str> = holiday_purchase_cats
+        .iter()
+        .map(|(_, name)| name.as_str())
+        .collect();
     assert!(cat_names.contains(&"Holiday"));
     assert!(cat_names.contains(&"Gift"));
 
@@ -146,12 +158,21 @@ async fn test_finance_invoice_categorization_oxillama_llm_decided_and_time_depen
         .await
         .expect("process invoice 3 birthday");
 
-    let bday_purchase_cats = processed3.purchase_categories.get("item_ferrero_bday").unwrap();
-    let bday_names: Vec<&str> = bday_purchase_cats.iter().map(|(_, name)| name.as_str()).collect();
+    let bday_purchase_cats = processed3
+        .purchase_categories
+        .get("item_ferrero_bday")
+        .unwrap();
+    let bday_names: Vec<&str> = bday_purchase_cats
+        .iter()
+        .map(|(_, name)| name.as_str())
+        .collect();
     assert!(bday_names.contains(&"Gift"));
     assert!(bday_names.contains(&"Birthday Gift"));
 
-    let bday_node = engine.purchase_dag.node(&"pcat_birthday_gift".to_string()).unwrap();
+    let bday_node = engine
+        .purchase_dag
+        .node(&"pcat_birthday_gift".to_string())
+        .unwrap();
     assert_eq!(bday_node.parent_id(), Some("pcat_gift".to_string()));
 }
 
@@ -237,7 +258,10 @@ async fn test_finance_invoice_categorization_oxillama_custom_density_and_user_ov
     };
 
     let processed = engine
-        .process_invoice(inv, &InvoiceCategorizationMode::CustomDensity(density_evaluator))
+        .process_invoice(
+            inv,
+            &InvoiceCategorizationMode::CustomDensity(density_evaluator),
+        )
         .await
         .expect("process invoice with custom density function");
 
@@ -260,11 +284,10 @@ async fn test_finance_invoice_categorization_oxillama_custom_density_and_user_ov
     // 4. Condition 3: User adds item category "Luxury Chocolate"
     // Ferrero Rocher is classified as luxury chocolate, while Snickers is standard chocolate.
     // All invoices and items must update!
-    let reclassified = engine.user_add_item_category_and_reclassify(
-        "Luxury Chocolate",
-        "Chocolate",
-        |item| item.item_name.contains("Ferrero"),
-    );
+    let reclassified =
+        engine.user_add_item_category_and_reclassify("Luxury Chocolate", "Chocolate", |item| {
+            item.item_name.contains("Ferrero")
+        });
 
     assert_eq!(reclassified, 1, "Exactly 1 Ferrero line item reclassified");
 
@@ -274,12 +297,20 @@ async fn test_finance_invoice_categorization_oxillama_custom_density_and_user_ov
         "Chocolate Bar"
     );
     assert_eq!(
-        updated_inv.item_categories.get("item_ferrero_box").unwrap().1,
+        updated_inv
+            .item_categories
+            .get("item_ferrero_box")
+            .unwrap()
+            .1,
         "Luxury Chocolate"
     );
 
     // Invoice category updated to reflect Luxury
-    assert!(updated_inv.invoice_categories.contains(&"Luxury".to_string()));
+    assert!(
+        updated_inv
+            .invoice_categories
+            .contains(&"Luxury".to_string())
+    );
 }
 
 #[tokio::test]
@@ -301,7 +332,12 @@ async fn test_finance_invoice_oxillama_walmart_vs_prada_tshirt_categorization() 
     let prada = FinanceMerchant {
         merchant_id: "m_prada".into(),
         name: "Prada Milano".into(),
-        tags: vec!["luxury".into(), "designer".into(), "haute_couture".into(), "high_fashion".into()],
+        tags: vec![
+            "luxury".into(),
+            "designer".into(),
+            "haute_couture".into(),
+            "high_fashion".into(),
+        ],
         category_id: "mcat_luxury_boutique".into(),
         category_name: "Luxury Fashion Boutique".into(),
     };
@@ -333,17 +369,30 @@ async fn test_finance_invoice_oxillama_walmart_vs_prada_tshirt_categorization() 
         .expect("process walmart invoice");
 
     // Item category at Walmart: intrinsic T-Shirt
-    let walmart_item_cat = processed_walmart.item_categories.get("item_tshirt_walmart").unwrap();
+    let walmart_item_cat = processed_walmart
+        .item_categories
+        .get("item_tshirt_walmart")
+        .unwrap();
     assert_eq!(walmart_item_cat.1, "T-Shirt");
 
     // Purchase categories for Walmart: Everyday Retail
-    let walmart_p_cats = processed_walmart.purchase_categories.get("item_tshirt_walmart").unwrap();
-    let walmart_p_names: Vec<&str> = walmart_p_cats.iter().map(|(_, name)| name.as_str()).collect();
+    let walmart_p_cats = processed_walmart
+        .purchase_categories
+        .get("item_tshirt_walmart")
+        .unwrap();
+    let walmart_p_names: Vec<&str> = walmart_p_cats
+        .iter()
+        .map(|(_, name)| name.as_str())
+        .collect();
     assert!(walmart_p_names.contains(&"Everyday Retail"));
     assert!(!walmart_p_names.contains(&"Luxury"));
 
     // Invoice category: Everyday Retail
-    assert!(processed_walmart.invoice_categories.contains(&"Everyday Retail".to_string()));
+    assert!(
+        processed_walmart
+            .invoice_categories
+            .contains(&"Everyday Retail".to_string())
+    );
 
     // 2. Ingest Prada Invoice with the SAME item name Cotton Crewneck T-Shirt ($650.00)
     let prada_invoice = FinanceInvoice {
@@ -371,20 +420,33 @@ async fn test_finance_invoice_oxillama_walmart_vs_prada_tshirt_categorization() 
         .expect("process prada invoice");
 
     // Item category at Prada is ALSO intrinsic T-Shirt!
-    let prada_item_cat = processed_prada.item_categories.get("item_tshirt_prada").unwrap();
+    let prada_item_cat = processed_prada
+        .item_categories
+        .get("item_tshirt_prada")
+        .unwrap();
     assert_eq!(prada_item_cat.1, "T-Shirt");
 
     // BUT context-dependent purchase categories for Prada: [Luxury, Designer Fashion]
-    let prada_p_cats = processed_prada.purchase_categories.get("item_tshirt_prada").unwrap();
+    let prada_p_cats = processed_prada
+        .purchase_categories
+        .get("item_tshirt_prada")
+        .unwrap();
     let prada_p_names: Vec<&str> = prada_p_cats.iter().map(|(_, name)| name.as_str()).collect();
     assert!(prada_p_names.contains(&"Luxury"));
     assert!(prada_p_names.contains(&"Designer Fashion"));
 
     // Invoice category: Luxury
-    assert!(processed_prada.invoice_categories.contains(&"Luxury".to_string()));
+    assert!(
+        processed_prada
+            .invoice_categories
+            .contains(&"Luxury".to_string())
+    );
 
     // Verify Designer Fashion is child of Luxury in purchase_dag
-    let des_node = engine.purchase_dag.node(&"pcat_designer_fashion".to_string()).unwrap();
+    let des_node = engine
+        .purchase_dag
+        .node(&"pcat_designer_fashion".to_string())
+        .unwrap();
     assert_eq!(des_node.parent_id(), Some("pcat_luxury".to_string()));
 }
 
@@ -407,7 +469,13 @@ async fn test_finance_invoice_oxillama_pure_llm_and_purchase_content_context() {
         "INV-SELF-BDAY-OXI",
         "m_boutique",
         parse_date("2026-08-20"),
-        vec![InvoiceItem::new("item_jacket", "Wool Tailored Jacket", 1200.0, 1, None)],
+        vec![InvoiceItem::new(
+            "item_jacket",
+            "Wool Tailored Jacket",
+            1200.0,
+            1,
+            None,
+        )],
         1200.0,
     )
     .with_purchase_content("celebrating my birthday with self purchase");
@@ -417,7 +485,10 @@ async fn test_finance_invoice_oxillama_pure_llm_and_purchase_content_context() {
         .await
         .expect("process self birthday oxillama");
 
-    let p_cats_self = processed_self.purchase_categories.get("item_jacket").unwrap();
+    let p_cats_self = processed_self
+        .purchase_categories
+        .get("item_jacket")
+        .unwrap();
     let names_self: Vec<&str> = p_cats_self.iter().map(|(_, n)| n.as_str()).collect();
     assert!(names_self.contains(&"Birthday Celebration"));
     assert!(!names_self.contains(&"Gift"));
@@ -427,7 +498,13 @@ async fn test_finance_invoice_oxillama_pure_llm_and_purchase_content_context() {
         "INV-FRIEND-BDAY-OXI",
         "m_boutique",
         parse_date("2026-08-21"),
-        vec![InvoiceItem::new("item_scarf", "Silk Printed Scarf", 350.0, 1, None)],
+        vec![InvoiceItem::new(
+            "item_scarf",
+            "Silk Printed Scarf",
+            350.0,
+            1,
+            None,
+        )],
         350.0,
     )
     .with_purchase_content("today is Alice's birthday");
@@ -437,7 +514,10 @@ async fn test_finance_invoice_oxillama_pure_llm_and_purchase_content_context() {
         .await
         .expect("process friend birthday gift oxillama");
 
-    let p_cats_gift = processed_gift.purchase_categories.get("item_scarf").unwrap();
+    let p_cats_gift = processed_gift
+        .purchase_categories
+        .get("item_scarf")
+        .unwrap();
     let names_gift: Vec<&str> = p_cats_gift.iter().map(|(_, n)| n.as_str()).collect();
     assert!(names_gift.contains(&"Gift"));
     assert!(names_gift.contains(&"Birthday Gift"));

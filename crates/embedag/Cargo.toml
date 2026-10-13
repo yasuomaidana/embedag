@@ -1,6 +1,6 @@
 [package]
 name = "embedag"
-description = "Deterministic hybrid Graph-RAG, in-memory DAGs, mixed-modality encoding and relational persistence."
+description = "Deterministic hybrid Graph-RAG, in-memory DAGs, mixed-modality encoding, relational persistence, and Turso / libSQL support."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,13 +8,17 @@ repository.workspace = true
 
 [features]
 default = ["full"]
-full = ["core", "derive", "llm", "diesel", "rag", "oxirs-tdb"]
+full = ["core", "derive", "llm", "diesel", "rag", "oxirs-tdb", "surrealdb", "neo4j", "turso", "turso-async"]
 core = ["dep:embedag-core"]
 derive = ["dep:embedag-derive"]
 llm = ["dep:embedag-llm"]
 diesel = ["dep:embedag-diesel"]
+turso = ["diesel", "embedag-diesel/turso"]
+turso-async = ["turso", "embedag-diesel/turso-async"]
 rag = ["dep:embedag-rag"]
 oxirs-tdb = ["dep:embedag-oxirs"]
+surrealdb = ["dep:embedag-surrealdb"]
+neo4j = ["dep:embedag-neo4j"]
 
 [dependencies]
 embedag-core = { workspace = true, optional = true }
@@ -23,6 +27,8 @@ embedag-llm = { workspace = true, optional = true }
 embedag-diesel = { workspace = true, optional = true }
 embedag-rag = { workspace = true, optional = true }
 embedag-oxirs = { workspace = true, optional = true }
+embedag-surrealdb = { workspace = true, optional = true }
+embedag-neo4j = { workspace = true, optional = true }
 
 [dev-dependencies]
 chrono = { workspace = true }

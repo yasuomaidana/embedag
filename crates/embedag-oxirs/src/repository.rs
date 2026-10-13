@@ -6,7 +6,7 @@ use embedag_core::mutation::MutationDirective;
 use embedag_core::traits::{
     NodePayload, ReadOnlyGraphRepository, TransactionalGraphRepository, VectorSearchRepository,
 };
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 use crate::engine::OxiRsTdbEngine;
 
@@ -38,7 +38,8 @@ where
         embedding: &[f32],
         limit: usize,
     ) -> Result<Vec<(T, f32)>, DagError> {
-        self.find_nearest_neighbors::<T>(embedding, limit).map_err(Into::into)
+        self.find_nearest_neighbors::<T>(embedding, limit)
+            .map_err(Into::into)
     }
 }
 

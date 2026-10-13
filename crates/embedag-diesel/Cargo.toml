@@ -1,6 +1,6 @@
 [package]
 name = "embedag-diesel"
-description = "Relational persistence adapter with PostgreSQL pgvector, SQLite CTEs, dynamic graph mutations and Testcontainers harness for embedag."
+description = "Relational persistence adapter with PostgreSQL pgvector, SQLite CTEs, Turso / libSQL distributed database support, dynamic graph mutations and Testcontainers harness for embedag."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,6 +10,8 @@ repository.workspace = true
 default = ["postgres-async", "sqlite", "test-harness"]
 postgres-async = ["diesel-async", "pgvector", "tokio-postgres", "diesel-cte-ext/postgres", "diesel-cte-ext/async"]
 sqlite = ["libsqlite3-sys", "diesel-cte-ext/sqlite"]
+turso = ["diesel-libsql", "libsql", "tempfile"]
+turso-async = ["turso", "diesel-async"]
 test-harness = ["testcontainers"]
 
 [dependencies]
@@ -21,6 +23,9 @@ diesel-cte-ext = { workspace = true }
 tokio-postgres = { workspace = true, optional = true }
 libsqlite3-sys = { workspace = true, optional = true }
 pgvector = { workspace = true, optional = true }
+diesel-libsql = { workspace = true, optional = true, features = ["async"] }
+libsql = { workspace = true, optional = true }
+tempfile = { workspace = true, optional = true }
 testcontainers = { workspace = true, optional = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }
@@ -31,6 +36,8 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+futures-util = "0.3"
+tempfile = { workspace = true }
 testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }
 tokio-postgres = { workspace = true }

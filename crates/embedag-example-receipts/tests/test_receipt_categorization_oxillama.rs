@@ -49,7 +49,8 @@ impl LlmProvider for TestReceiptOxillamaProvider {
         };
 
         let envelope = ExtractionEnvelope {
-            chain_of_thought: "Pure Rust oxillama token sampling completed (test simulated).".to_string(),
+            chain_of_thought: "Pure Rust oxillama token sampling completed (test simulated)."
+                .to_string(),
             directive,
         };
         Ok(serde_json::to_value(&envelope)?)
@@ -72,7 +73,13 @@ async fn test_oxillama_dynamic_graph_generation_and_deduplication() {
     assert_eq!(pipeline.dag.node_count(), 0);
 
     // Item 1: Horizon Organic Whole Milk -> Model creates category 'Dairy'
-    let item1 = InvoiceItem::new("item_1", "Horizon Organic Whole Milk 1 Gallon", 4.99, 1, None);
+    let item1 = InvoiceItem::new(
+        "item_1",
+        "Horizon Organic Whole Milk 1 Gallon",
+        4.99,
+        1,
+        None,
+    );
     let report1 = pipeline.process_item(&item1).await.expect("process item 1");
 
     assert_eq!(report1.stage1_active_candidates_count, 0);

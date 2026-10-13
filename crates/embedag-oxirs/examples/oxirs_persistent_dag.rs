@@ -5,12 +5,12 @@
 //! cargo run --example oxirs_persistent_dag -p embedag-oxirs
 //! ```
 
-use std::collections::HashMap;
 use embedag_core::dag::MemoryDag;
 use embedag_core::model::{EdgePayload, ProvenanceKind};
 use embedag_core::traits::NodePayload;
 use embedag_oxirs::{OxiRsTdbConfig, OxiRsTdbEngine, SyncPolicy};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use tempfile::tempdir;
 
 /// Developer-defined domain entity: Medical Concept hierarchy (SNOMED-like).
@@ -94,7 +94,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         EdgePayload::new("IS_A", 0.98, ProvenanceKind::DeterministicRule)?,
     )?;
 
-    println!("In-memory DAG constructed with {} nodes and {} edges.", dag.node_count(), dag.edge_count());
+    println!(
+        "In-memory DAG constructed with {} nodes and {} edges.",
+        dag.node_count(),
+        dag.edge_count()
+    );
 
     // 4. Export DAG directly into OxiRS TDB2
     let quad_count = engine.export_dag(&dag)?;
@@ -109,7 +113,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     "#;
 
     let results = engine.query_sparql(sparql_query)?;
-    println!("SPARQL query executed successfully! Found {} matching concepts.", results.len());
+    println!(
+        "SPARQL query executed successfully! Found {} matching concepts.",
+        results.len()
+    );
 
     // 6. Bake frozen memory-mapped snapshot for sub-second cold starts
     let snapshot_file = db_path.join("snapshot.oxsnap");
@@ -121,14 +128,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let reopened = OxiRsTdbEngine::open(config)?;
     let reloaded_dag: MemoryDag<MedicalConcept> = reopened.load_dag()?;
 
-    println!("Reconstituted DAG from disk: {} nodes, {} edges. Invariants valid: {}",
+    println!(
+        "Reconstituted DAG from disk: {} nodes, {} edges. Invariants valid: {}",
         reloaded_dag.node_count(),
         reloaded_dag.edge_count(),
         reloaded_dag.validate_acyclic().is_ok()
     );
 
     let children = reloaded_dag.children_of(&"DIS-001".to_string());
-    println!("Immediate children of DIS-001: {:?}", children.iter().map(|c| &c.title).collect::<Vec<_>>());
+    println!(
+        "Immediate children of DIS-001: {:?}",
+        children.iter().map(|c| &c.title).collect::<Vec<_>>()
+    );
 
     println!("=== Demonstration Complete ===");
     Ok(())

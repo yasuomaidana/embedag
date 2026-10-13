@@ -5,7 +5,7 @@ use std::fmt::Display;
 use embedag_core::model::{EdgePayload, ProvenanceKind};
 use embedag_core::traits::NodePayload;
 use oxirs_core::model::{GraphName, Literal, NamedNode, Object, Predicate, Quad, Subject};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 use crate::config::OxiRsTdbConfig;
 use crate::error::OxiRsStorageError;
@@ -91,7 +91,8 @@ pub fn sanitize_iri_token(token: &str) -> String {
 /// Creates a `NamedNode` IRI for a node business key.
 pub fn make_node_iri(base_iri: &str, key: &str) -> Result<NamedNode, OxiRsStorageError> {
     let clean_key = sanitize_iri_token(key);
-    let full_iri = if base_iri.ends_with('/') || base_iri.ends_with('#') || base_iri.ends_with(':') {
+    let full_iri = if base_iri.ends_with('/') || base_iri.ends_with('#') || base_iri.ends_with(':')
+    {
         format!("{base_iri}{clean_key}")
     } else {
         format!("{base_iri}/{clean_key}")
@@ -278,7 +279,10 @@ pub fn edge_to_quads<K: Display>(
 }
 
 /// Reconstructs a node `T` from a payload literal or raw RDF quad terms.
-pub fn reconstruct_node<T: DeserializeOwned>(quads: &[Quad], vocab: &SchemaVocab) -> Result<Option<T>, OxiRsStorageError> {
+pub fn reconstruct_node<T: DeserializeOwned>(
+    quads: &[Quad],
+    vocab: &SchemaVocab,
+) -> Result<Option<T>, OxiRsStorageError> {
     // Look for exact embedag:payload literal first
     for quad in quads {
         if let Predicate::NamedNode(pred) = quad.predicate()

@@ -387,7 +387,10 @@ mod tests {
         assert_eq!(extract_incoming_entity_text(prompt_name), "Central Station");
 
         let prompt_title = "### INCOMING RECORD\n{\"title\": \"Chief Architect\"}\n\n###";
-        assert_eq!(extract_incoming_entity_text(prompt_title), "Chief Architect");
+        assert_eq!(
+            extract_incoming_entity_text(prompt_title),
+            "Chief Architect"
+        );
 
         let prompt_label = "### INCOMING RECORD\n{\"label\": \"High Priority\"}\n\n###";
         assert_eq!(extract_incoming_entity_text(prompt_label), "High Priority");
@@ -397,13 +400,20 @@ mod tests {
     fn test_suffix_heuristics() {
         // Domain-specific keys like item_name, category_name, product_title match automatically without hardcoding
         let prompt_item = "### INCOMING RECORD\n{\"item_name\": \"Fairlife 2% Milk\"}\n\n###";
-        assert_eq!(extract_incoming_entity_text(prompt_item), "Fairlife 2% Milk");
+        assert_eq!(
+            extract_incoming_entity_text(prompt_item),
+            "Fairlife 2% Milk"
+        );
 
         let prompt_cat = "### INCOMING RECORD\n{\"category_name\": \"Dairy & Eggs\"}\n\n###";
         assert_eq!(extract_incoming_entity_text(prompt_cat), "Dairy & Eggs");
 
-        let prompt_product = "### INCOMING RECORD\n{\"product_title\": \"Mechanical Keyboard\"}\n\n###";
-        assert_eq!(extract_incoming_entity_text(prompt_product), "Mechanical Keyboard");
+        let prompt_product =
+            "### INCOMING RECORD\n{\"product_title\": \"Mechanical Keyboard\"}\n\n###";
+        assert_eq!(
+            extract_incoming_entity_text(prompt_product),
+            "Mechanical Keyboard"
+        );
 
         let prompt_id = "### INCOMING RECORD\n{\"device_id\": \"DEV-4091\"}\n\n###";
         assert_eq!(extract_incoming_entity_text(prompt_id), "DEV-4091");
@@ -411,7 +421,8 @@ mod tests {
 
     #[test]
     fn test_custom_priority_keys() {
-        let prompt = "### INCOMING RECORD\n{\"sku\": \"SKU-999\", \"title\": \"Generic Title\"}\n\n###";
+        let prompt =
+            "### INCOMING RECORD\n{\"sku\": \"SKU-999\", \"title\": \"Generic Title\"}\n\n###";
         // Default prioritizes title over unknown key sku
         assert_eq!(extract_incoming_entity_text(prompt), "Generic Title");
 
@@ -423,13 +434,22 @@ mod tests {
     #[test]
     fn test_fallback_to_any_string_and_slice() {
         let prompt_misc = "### INCOMING RECORD\n{\"arbitrary_key\": \"Something unique\"}\n\n###";
-        assert_eq!(extract_incoming_entity_text(prompt_misc), "Something unique");
+        assert_eq!(
+            extract_incoming_entity_text(prompt_misc),
+            "Something unique"
+        );
 
         let prompt_raw = "### INCOMING RECORD\nRaw Unformatted Entity\n\n###";
-        assert_eq!(extract_incoming_entity_text(prompt_raw), "Raw Unformatted Entity");
+        assert_eq!(
+            extract_incoming_entity_text(prompt_raw),
+            "Raw Unformatted Entity"
+        );
 
         let prompt_empty = "### INCOMING RECORD\n\n\n###";
-        assert_eq!(extract_incoming_entity_text(prompt_empty), "Unidentified Entity");
+        assert_eq!(
+            extract_incoming_entity_text(prompt_empty),
+            "Unidentified Entity"
+        );
     }
 
     #[test]

@@ -41,7 +41,13 @@ impl PromptFormatter {
         candidate_subgraphs: &[&str],
         schema: Option<&serde_json::Value>,
     ) -> String {
-        Self::build_prompt_full(system_role, entity_payload, candidate_subgraphs, schema, None)
+        Self::build_prompt_full(
+            system_role,
+            entity_payload,
+            candidate_subgraphs,
+            schema,
+            None,
+        )
     }
 
     /// Formats an extraction prompt including candidate subgraphs, field-level constraints, and relational table context.

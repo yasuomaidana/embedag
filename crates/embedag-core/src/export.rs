@@ -28,7 +28,12 @@ impl GraphExporter {
         for idx in inner.node_indices() {
             if let Some(payload) = inner.node_weight(idx) {
                 let m_id = format!("n{}", idx.index());
-                let raw_label = format!("{}: {} ({})", payload.key(), payload.name(), payload.entity_level());
+                let raw_label = format!(
+                    "{}: {} ({})",
+                    payload.key(),
+                    payload.name(),
+                    payload.entity_level()
+                );
                 let escaped_label = raw_label.replace('"', "#quot;");
                 out.push_str(&format!("    {}[\"{}\"]\n", m_id, escaped_label));
                 idx_to_mermaid_id.insert(idx.index(), m_id);
@@ -49,14 +54,20 @@ impl GraphExporter {
 
     /// Serializes the DAG into a valid Graphviz DOT language string (`digraph G`).
     pub fn to_dot<T: NodePayload>(dag: &MemoryDag<T>) -> String {
-        let mut out = String::from("digraph G {\n    rankdir=TB;\n    node [shape=box, style=rounded];\n");
+        let mut out =
+            String::from("digraph G {\n    rankdir=TB;\n    node [shape=box, style=rounded];\n");
         let inner = dag.inner();
 
         let mut idx_to_dot_id: HashMap<usize, String> = HashMap::new();
         for idx in inner.node_indices() {
             if let Some(payload) = inner.node_weight(idx) {
                 let d_id = format!("node_{}", idx.index());
-                let raw_label = format!("{}\\{}\\[{}]", payload.key(), payload.name(), payload.entity_level());
+                let raw_label = format!(
+                    "{}\\{}\\[{}]",
+                    payload.key(),
+                    payload.name(),
+                    payload.entity_level()
+                );
                 let escaped = raw_label.replace('"', "\\\"");
                 out.push_str(&format!("    {} [label=\"{}\"];\n", d_id, escaped));
                 idx_to_dot_id.insert(idx.index(), d_id);
@@ -193,7 +204,10 @@ impl GraphExporter {
         }
 
         for edge in inner.edge_references() {
-            if let (Some(src), Some(tgt)) = (inner.node_weight(edge.source()), inner.node_weight(edge.target())) {
+            if let (Some(src), Some(tgt)) = (
+                inner.node_weight(edge.source()),
+                inner.node_weight(edge.target()),
+            ) {
                 let weight = edge.weight();
                 out.push_str(&format!(
                     "<< node:{} embedag:{} node:{} >> embedag:confidence \"{:.4}\"^^xsd:float ;\n    embedag:provenance \"{:?}\" .\n",
@@ -262,7 +276,8 @@ mod tests {
         dag.upsert_node(child);
 
         let edge = EdgePayload::new("PARENT_OF", 1.0, ProvenanceKind::DeterministicRule).unwrap();
-        dag.add_edge_by_keys(&"CAT-1".into(), &"SKU-99".into(), edge).unwrap();
+        dag.add_edge_by_keys(&"CAT-1".into(), &"SKU-99".into(), edge)
+            .unwrap();
         dag
     }
 

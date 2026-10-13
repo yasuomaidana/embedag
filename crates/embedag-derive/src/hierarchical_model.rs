@@ -74,14 +74,14 @@ pub fn derive_hierarchical_model_impl(input: DeriveInput) -> Result<TokenStream>
                 return Err(Error::new_spanned(
                     struct_name,
                     "HierarchicalModel can only be derived on structs with named fields",
-                ))
+                ));
             }
         },
         _ => {
             return Err(Error::new_spanned(
                 struct_name,
                 "HierarchicalModel can only be derived on structs",
-            ))
+            ));
         }
     };
 
@@ -126,8 +126,7 @@ pub fn derive_hierarchical_model_impl(input: DeriveInput) -> Result<TokenStream>
         {
             detected_id = Some(field_name.clone());
         }
-        if detected_parent.is_none()
-            && (field_name == "parent_id" || field_name.contains("parent"))
+        if detected_parent.is_none() && (field_name == "parent_id" || field_name.contains("parent"))
         {
             detected_parent = Some(field_name.clone());
         }
@@ -197,17 +196,13 @@ pub fn derive_hierarchical_model_impl(input: DeriveInput) -> Result<TokenStream>
     // Build SQL CRUD statements
     let cols_joined = field_names.join(", ");
     let sqlite_placeholders = vec!["?"; field_names.len()].join(", ");
-    let sqlite_insert_sql = format!(
-        "INSERT INTO {table_name} ({cols_joined}) VALUES ({sqlite_placeholders});"
-    );
+    let sqlite_insert_sql =
+        format!("INSERT INTO {table_name} ({cols_joined}) VALUES ({sqlite_placeholders});");
 
-    let pg_placeholders: Vec<String> = (1..=field_names.len())
-        .map(|i| format!("${i}"))
-        .collect();
+    let pg_placeholders: Vec<String> = (1..=field_names.len()).map(|i| format!("${i}")).collect();
     let pg_placeholders_joined = pg_placeholders.join(", ");
-    let pg_insert_sql = format!(
-        "INSERT INTO {table_name} ({cols_joined}) VALUES ({pg_placeholders_joined});"
-    );
+    let pg_insert_sql =
+        format!("INSERT INTO {table_name} ({cols_joined}) VALUES ({pg_placeholders_joined});");
 
     let sqlite_delete_sql = format!("DELETE FROM {table_name} WHERE {final_id_col} = ?;");
     let pg_delete_sql = format!("DELETE FROM {table_name} WHERE {final_id_col} = $1;");
@@ -219,10 +214,7 @@ pub fn derive_hierarchical_model_impl(input: DeriveInput) -> Result<TokenStream>
         .map(|(i, _)| i)
         .collect();
 
-    let non_id_idents: Vec<&Ident> = non_id_indices
-        .iter()
-        .map(|&i| field_idents[i])
-        .collect();
+    let non_id_idents: Vec<&Ident> = non_id_indices.iter().map(|&i| field_idents[i]).collect();
     let non_id_sql_types: Vec<&TokenStream> = non_id_indices
         .iter()
         .map(|&i| &field_sql_types[i])
@@ -233,9 +225,8 @@ pub fn derive_hierarchical_model_impl(input: DeriveInput) -> Result<TokenStream>
         .map(|&i| format!("{} = ?", field_names[i]))
         .collect::<Vec<_>>()
         .join(", ");
-    let sqlite_update_sql = format!(
-        "UPDATE {table_name} SET {sqlite_update_sets} WHERE {final_id_col} = ?;"
-    );
+    let sqlite_update_sql =
+        format!("UPDATE {table_name} SET {sqlite_update_sets} WHERE {final_id_col} = ?;");
 
     let pg_update_sets = non_id_indices
         .iter()

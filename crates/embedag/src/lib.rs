@@ -11,6 +11,7 @@
 //! - **Constrained LLM Extraction**: Pushdown automata token masking, GBNF grammars, and waterfall resolution.
 //! - **Relational Persistence**: PostgreSQL with `pgvector` and SQLite with recursive CTE traversals.
 //! - **Two-Stage Hybrid Graph-RAG**: Reciprocal Rank Fusion (RRF), bounded topological subgraph expansion, and grounded citation synthesis.
+//! - **Native Graph & Multi-Model Backends**: Native OxiRS TDB2 engine (`embedag-oxirs`), SurrealDB multi-model storage (`embedag-surrealdb`), and Neo4j OpenCypher Bolt adapter (`embedag-neo4j`).
 //!
 //! ## Quick Start
 //!
@@ -53,6 +54,12 @@ pub use embedag_rag as rag;
 #[cfg(feature = "oxirs-tdb")]
 pub use embedag_oxirs as oxirs;
 
+#[cfg(feature = "surrealdb")]
+pub use embedag_surrealdb as surrealdb_backend;
+
+#[cfg(feature = "neo4j")]
+pub use embedag_neo4j as neo4j_backend;
+
 // Top-level re-exports from core
 #[cfg(feature = "core")]
 pub use embedag_core::{
@@ -73,11 +80,11 @@ pub use embedag_derive::{AsGraphContext, GraphTarget};
 // LLM re-exports
 #[cfg(feature = "llm")]
 pub use embedag_llm::{
-    define_entity_extractor, entity_properties, extract_entity_text, extract_entity_text_from_value,
-    extract_incoming_entity_text, extract_incoming_entity_text_with_config,
-    extract_incoming_entity_text_with_keys, EntityExtractor, EntityExtractorConfig,
-    EntityProperties, ExtractionDirective, ExtractionEnvelope, LlmError, LlmProvider,
-    ModelMetadata, OxibonsaiProvider, OxillamaProvider,
+    EntityExtractor, EntityExtractorConfig, EntityProperties, ExtractionDirective,
+    ExtractionEnvelope, LlmError, LlmProvider, ModelMetadata, OxibonsaiProvider, OxillamaProvider,
+    define_entity_extractor, entity_properties, extract_entity_text,
+    extract_entity_text_from_value, extract_incoming_entity_text,
+    extract_incoming_entity_text_with_config, extract_incoming_entity_text_with_keys,
 };
 
 // RAG re-exports
@@ -97,6 +104,20 @@ pub use embedag_oxirs::{
     StorageMode, SyncPolicy,
 };
 
+// SurrealDB multi-model storage re-exports
+#[cfg(feature = "surrealdb")]
+pub use embedag_surrealdb::{
+    StorageMode as SurrealDbStorageMode, SurrealDbConfig, SurrealDbEngine, SurrealDbStorageError,
+    SurrealEdgeRecord, SurrealNodeRecord,
+};
+
+// Neo4j OpenCypher Bolt storage re-exports
+#[cfg(feature = "neo4j")]
+pub use embedag_neo4j::{
+    Neo4jConfig, Neo4jEdgeRecord, Neo4jEngine, Neo4jNodeRecord, Neo4jStorageError,
+    StorageMode as Neo4jStorageMode,
+};
+
 /// Ergonomic prelude for common imports across embedag applications.
 pub mod prelude {
     #[cfg(feature = "core")]
@@ -113,9 +134,9 @@ pub mod prelude {
 
     #[cfg(feature = "llm")]
     pub use embedag_llm::{
-        define_entity_extractor, entity_properties, extract_entity_text, EntityExtractor,
-        EntityExtractorConfig, EntityProperties, ExtractionDirective, ExtractionEnvelope,
-        LlmError, LlmProvider, OxibonsaiProvider, OxillamaProvider,
+        EntityExtractor, EntityExtractorConfig, EntityProperties, ExtractionDirective,
+        ExtractionEnvelope, LlmError, LlmProvider, OxibonsaiProvider, OxillamaProvider,
+        define_entity_extractor, entity_properties, extract_entity_text,
     };
 
     #[cfg(feature = "rag")]
@@ -129,4 +150,10 @@ pub mod prelude {
 
     #[cfg(feature = "oxirs-tdb")]
     pub use embedag_oxirs::{OxiRsTdbConfig, OxiRsTdbEngine, StorageMode, SyncPolicy};
+
+    #[cfg(feature = "surrealdb")]
+    pub use embedag_surrealdb::{SurrealDbConfig, SurrealDbEngine};
+
+    #[cfg(feature = "neo4j")]
+    pub use embedag_neo4j::{Neo4jConfig, Neo4jEngine};
 }

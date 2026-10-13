@@ -2,8 +2,8 @@ mod common;
 
 use embedag_diesel::harness::PostgresHarness;
 use embedag_diesel::ops::{
-    apply_mutation_lifecycle, batch_upsert_edges, batch_upsert_nodes, execute_with_savepoint,
-    EdgeUpsertRecord, MutationDirectiveRecord, NodeUpsertRecord,
+    EdgeUpsertRecord, MutationDirectiveRecord, NodeUpsertRecord, apply_mutation_lifecycle,
+    batch_upsert_edges, batch_upsert_nodes, execute_with_savepoint,
 };
 use uuid::Uuid;
 

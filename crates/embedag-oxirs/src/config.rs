@@ -1,7 +1,7 @@
 //! Configuration options for OxiRS TDB2 storage engine.
 
-use std::path::{Path, PathBuf};
 pub use oxirs_core::rdf_store::SyncPolicy;
+use std::path::{Path, PathBuf};
 
 /// Storage mode for OxiRS TDB2 engine.
 #[derive(Debug, Clone, PartialEq, Eq)]

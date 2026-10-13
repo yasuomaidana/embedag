@@ -379,10 +379,7 @@ mod tests {
     fn test_semantic_delta_prompt_synthesis() {
         let candidate = CandidateEntity::new("Sample Unit Product")
             .with_key("SKU-100")
-            .with_hierarchy(vec![
-                "Category".into(),
-                "Subcategory".into(),
-            ])
+            .with_hierarchy(vec!["Category".into(), "Subcategory".into()])
             .with_attribute("unit_measure", 50.0)
             .with_attribute("packaging", "Single Unit")
             .with_h3_cell(0x8928308280fffff);

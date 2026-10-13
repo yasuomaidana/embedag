@@ -151,12 +151,9 @@ impl<P: LlmProvider> ReceiptGraphPipeline<P> {
                     category_name: item.item_name.clone(),
                     entity_level: "item".into(),
                 });
-                let edge = EdgePayload::new(
-                    "CHILD_OF",
-                    1.0,
-                    ProvenanceKind::LlmConstrainedInference,
-                )
-                .map_err(|e| LlmError::ConstrainedSamplingError(e.to_string()))?;
+                let edge =
+                    EdgePayload::new("CHILD_OF", 1.0, ProvenanceKind::LlmConstrainedInference)
+                        .map_err(|e| LlmError::ConstrainedSamplingError(e.to_string()))?;
                 let _ = self.dag.add_edge_by_keys(&cat_key, &item_key, edge);
             }
 
@@ -176,12 +173,9 @@ impl<P: LlmProvider> ReceiptGraphPipeline<P> {
                     entity_level: "item".into(),
                 });
 
-                let edge = EdgePayload::new(
-                    "CHILD_OF",
-                    1.0,
-                    ProvenanceKind::LlmConstrainedInference,
-                )
-                .map_err(|e| LlmError::ConstrainedSamplingError(e.to_string()))?;
+                let edge =
+                    EdgePayload::new("CHILD_OF", 1.0, ProvenanceKind::LlmConstrainedInference)
+                        .map_err(|e| LlmError::ConstrainedSamplingError(e.to_string()))?;
                 let _ = self.dag.add_edge_by_keys(parent_key, &item_key, edge);
             }
 
@@ -309,17 +303,44 @@ pub fn sanitize_id(raw: &str) -> String {
         .to_string()
 }
 
-fn classify_item_heuristics(name: &str) -> (&'static str, &'static str, &'static str, &'static str) {
+fn classify_item_heuristics(
+    name: &str,
+) -> (&'static str, &'static str, &'static str, &'static str) {
     let lower = name.to_lowercase();
     if lower.contains("milk") || lower.contains("cheese") || lower.contains("yogurt") {
-        ("dept_dairy", "Dairy & Plant Alternatives", "cat_milk_products", "Milk & Dairy")
+        (
+            "dept_dairy",
+            "Dairy & Plant Alternatives",
+            "cat_milk_products",
+            "Milk & Dairy",
+        )
     } else if lower.contains("bread") || lower.contains("croissant") || lower.contains("bagel") {
-        ("dept_bakery", "Fresh Bakery", "cat_artisan_breads", "Breads & Bagels")
+        (
+            "dept_bakery",
+            "Fresh Bakery",
+            "cat_artisan_breads",
+            "Breads & Bagels",
+        )
     } else if lower.contains("paper") || lower.contains("towel") || lower.contains("soap") {
-        ("dept_household", "Household & Cleaning", "cat_paper_goods", "Paper & Cleaning")
+        (
+            "dept_household",
+            "Household & Cleaning",
+            "cat_paper_goods",
+            "Paper & Cleaning",
+        )
     } else if lower.contains("apple") || lower.contains("banana") || lower.contains("salad") {
-        ("dept_produce", "Fresh Produce", "cat_fruits_veg", "Fruits & Vegetables")
+        (
+            "dept_produce",
+            "Fresh Produce",
+            "cat_fruits_veg",
+            "Fruits & Vegetables",
+        )
     } else {
-        ("dept_general", "General Groceries", "cat_packaged", "Packaged Goods")
+        (
+            "dept_general",
+            "General Groceries",
+            "cat_packaged",
+            "Packaged Goods",
+        )
     }
 }

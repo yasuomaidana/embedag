@@ -18,6 +18,7 @@
 //!    - User adds an item category like "Luxury Chocolate" (Ferrero Rocher is luxury chocolate, Snickers is standard chocolate),
 //!      automatically propagating across all affected items, invoices, and graphs.
 
+use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, Utc};
 use embedag_core::dag::MemoryDag;
 use embedag_core::model::{EdgePayload, ProvenanceKind};
 use embedag_diesel::cte::HierarchicalModel;
@@ -25,7 +26,6 @@ use embedag_llm::diff::ChangesetDiffEngine;
 use embedag_llm::prompt::PromptFormatter;
 use embedag_llm::provider::{LlmError, LlmProvider};
 use embedag_llm::schema::ExtractionDirective;
-use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -274,7 +274,8 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
             entity_level: "merchant_type".into(),
         };
         self.merchant_dag.upsert_node(cat_node);
-        self.merchants.insert(merchant.merchant_id.clone(), merchant);
+        self.merchants
+            .insert(merchant.merchant_id.clone(), merchant);
     }
 
     /// Processes an incoming pure `FinanceInvoice` DTO through multi-DAG categorization.
@@ -286,9 +287,18 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
         // --- 1. Evaluate Insightful Context Dynamically ---
         let temporal = evaluate_temporal_context(&invoice.date);
         let merchant = self.merchants.get(&invoice.merchant_id).cloned();
-        let merchant_name = merchant.as_ref().map(|m| m.name.clone()).unwrap_or_default();
-        let merchant_category = merchant.as_ref().map(|m| m.category_name.clone()).unwrap_or_default();
-        let merchant_tags: Vec<String> = merchant.as_ref().map(|m| m.tags.clone()).unwrap_or_default();
+        let merchant_name = merchant
+            .as_ref()
+            .map(|m| m.name.clone())
+            .unwrap_or_default();
+        let merchant_category = merchant
+            .as_ref()
+            .map(|m| m.category_name.clone())
+            .unwrap_or_default();
+        let merchant_tags: Vec<String> = merchant
+            .as_ref()
+            .map(|m| m.tags.clone())
+            .unwrap_or_default();
 
         // Check user-configured categorization in merchant_categories DAG
         let is_luxury_store = if let Some(m) = &merchant {
@@ -296,7 +306,9 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
             cat_lower.contains("luxury")
                 || cat_lower.contains("designer")
                 || cat_lower.contains("boutique")
-                || m.tags.iter().any(|t| t == "luxury" || t == "designer" || t == "haute_couture")
+                || m.tags
+                    .iter()
+                    .any(|t| t == "luxury" || t == "designer" || t == "haute_couture")
                 || self.merchant_dag.node(&m.category_id).is_some_and(|n| {
                     n.category_name.to_lowercase().contains("luxury")
                         || n.category_name.to_lowercase().contains("designer")
@@ -312,10 +324,11 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
         // --- 2. Process each item: Intrinsic Item Taxonomy + Contextual Purchase Taxonomy ---
         for item in &invoice.items {
             // A. INTRINSIC ITEM CATEGORY (Single value, product-intrinsic)
-            let (item_cat_key, item_cat_name) = self
-                .infer_item_intrinsic_category(item)
-                .await?;
-            item_categories.insert(item.item_id.clone(), (item_cat_key.clone(), item_cat_name.clone()));
+            let (item_cat_key, item_cat_name) = self.infer_item_intrinsic_category(item).await?;
+            item_categories.insert(
+                item.item_id.clone(),
+                (item_cat_key.clone(), item_cat_name.clone()),
+            );
             *category_spends.entry(item_cat_name.clone()).or_insert(0.0) += item.total_price;
 
             // B. CONTEXTUAL PURCHASE CATEGORIES (One or more, context-dependent)
@@ -330,7 +343,8 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
             let purchase_lower = purchase_text.to_lowercase();
 
             if is_luxury_store || item.unit_price >= 100.0 {
-                let lux_cat = self.upsert_purchase_category("pcat_luxury", "Luxury", None, "category");
+                let lux_cat =
+                    self.upsert_purchase_category("pcat_luxury", "Luxury", None, "category");
                 item_p_cats.push(lux_cat);
                 let des_cat = self.upsert_purchase_category(
                     "pcat_designer_fashion",
@@ -350,7 +364,8 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
             }
 
             if temporal.is_holiday_season {
-                let hol_cat = self.upsert_purchase_category("pcat_holiday", "Holiday", None, "category");
+                let hol_cat =
+                    self.upsert_purchase_category("pcat_holiday", "Holiday", None, "category");
                 item_p_cats.push(hol_cat);
                 let gift_cat = self.upsert_purchase_category("pcat_gift", "Gift", None, "category");
                 item_p_cats.push(gift_cat);
@@ -358,7 +373,8 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
 
             // Differentiate "today is X birthday" (Gift + Birthday Gift) vs "my birthday" (Birthday only)
             if purchase_lower.contains("birthday") {
-                let is_self_birthday = purchase_lower.contains("my birthday") || purchase_lower.contains("myself");
+                let is_self_birthday =
+                    purchase_lower.contains("my birthday") || purchase_lower.contains("myself");
                 if is_self_birthday {
                     // Only assign Birthday / Birthday Celebration, NOT gift
                     let bday_cat = self.upsert_purchase_category(
@@ -370,7 +386,8 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
                     item_p_cats.push(bday_cat);
                 } else {
                     // Gift for another person: Gift parent, Birthday Gift child
-                    let gift_parent = self.upsert_purchase_category("pcat_gift", "Gift", None, "category");
+                    let gift_parent =
+                        self.upsert_purchase_category("pcat_gift", "Gift", None, "category");
                     if !item_p_cats.iter().any(|c| c.0 == gift_parent.0) {
                         item_p_cats.push(gift_parent);
                     }
@@ -405,7 +422,12 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
                 let item_summary: Vec<String> = invoice
                     .items
                     .iter()
-                    .map(|i| format!("{} (Qty: {}, Unit: ${:.2})", i.item_name, i.quantity, i.unit_price))
+                    .map(|i| {
+                        format!(
+                            "{} (Qty: {}, Unit: ${:.2})",
+                            i.item_name, i.quantity, i.unit_price
+                        )
+                    })
                     .collect();
 
                 let prompt_payload = serde_json::json!({
@@ -506,15 +528,24 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
                 entity_level: "sub_category".into(),
             });
 
-            if let Ok(edge) = EdgePayload::new("SUB_CATEGORY_OF", 1.0, ProvenanceKind::HumanVerified) {
-                let _ = self.item_dag.add_edge_by_keys(&root_cat.to_string(), &child_key.to_string(), edge);
+            if let Ok(edge) =
+                EdgePayload::new("SUB_CATEGORY_OF", 1.0, ProvenanceKind::HumanVerified)
+            {
+                let _ = self.item_dag.add_edge_by_keys(
+                    &root_cat.to_string(),
+                    &child_key.to_string(),
+                    edge,
+                );
             }
 
             return Ok((child_key.into(), child_name.into()));
         }
 
         // 2. Check if it's apparel / shirt
-        if name_lower.contains("shirt") || name_lower.contains("apparel") || name_lower.contains("clothing") {
+        if name_lower.contains("shirt")
+            || name_lower.contains("apparel")
+            || name_lower.contains("clothing")
+        {
             let root_cat = "cat_apparel";
             self.item_dag.upsert_node(ItemCategoryNode {
                 category_id: root_cat.into(),
@@ -533,8 +564,14 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
                 entity_level: "sub_category".into(),
             });
 
-            if let Ok(edge) = EdgePayload::new("SUB_CATEGORY_OF", 1.0, ProvenanceKind::HumanVerified) {
-                let _ = self.item_dag.add_edge_by_keys(&root_cat.to_string(), &child_key.to_string(), edge);
+            if let Ok(edge) =
+                EdgePayload::new("SUB_CATEGORY_OF", 1.0, ProvenanceKind::HumanVerified)
+            {
+                let _ = self.item_dag.add_edge_by_keys(
+                    &root_cat.to_string(),
+                    &child_key.to_string(),
+                    edge,
+                );
             }
 
             return Ok((child_key.into(), child_name.into()));
@@ -561,7 +598,11 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
                 });
                 Ok((key, entity_name))
             }
-            ExtractionDirective::InsertNode { parent_key, entity_name, .. } => {
+            ExtractionDirective::InsertNode {
+                parent_key,
+                entity_name,
+                ..
+            } => {
                 let key = format!("cat_{}", sanitize_slug(&entity_name));
                 self.item_dag.upsert_node(ItemCategoryNode {
                     category_id: key.clone(),
@@ -569,7 +610,11 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
                     category_name: entity_name.clone(),
                     entity_level: "sub_category".into(),
                 });
-                if let Ok(edge) = EdgePayload::new("SUB_CATEGORY_OF", 1.0, ProvenanceKind::LlmConstrainedInference) {
+                if let Ok(edge) = EdgePayload::new(
+                    "SUB_CATEGORY_OF",
+                    1.0,
+                    ProvenanceKind::LlmConstrainedInference,
+                ) {
                     let _ = self.item_dag.add_edge_by_keys(&parent_key, &key, edge);
                 }
                 Ok((key, entity_name))
@@ -594,9 +639,12 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
         });
 
         if let Some(parent) = parent_key
-            && let Ok(edge) = EdgePayload::new("SUB_CATEGORY_OF", 1.0, ProvenanceKind::HumanVerified)
+            && let Ok(edge) =
+                EdgePayload::new("SUB_CATEGORY_OF", 1.0, ProvenanceKind::HumanVerified)
         {
-            let _ = self.purchase_dag.add_edge_by_keys(&parent.to_string(), &key.to_string(), edge);
+            let _ = self
+                .purchase_dag
+                .add_edge_by_keys(&parent.to_string(), &key.to_string(), edge);
         }
 
         (key.into(), name.into())
@@ -622,16 +670,11 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
             });
 
             // Add edge in DAG connecting old category to new category
-            if let Ok(edge) = EdgePayload::new(
-                "SPECIALIZED_AS",
-                1.0,
-                ProvenanceKind::HumanVerified,
-            ) {
-                let _ = self.merchant_dag.add_edge_by_keys(
-                    &merchant.category_id,
-                    &new_cat_id,
-                    edge,
-                );
+            if let Ok(edge) = EdgePayload::new("SPECIALIZED_AS", 1.0, ProvenanceKind::HumanVerified)
+            {
+                let _ =
+                    self.merchant_dag
+                        .add_edge_by_keys(&merchant.category_id, &new_cat_id, edge);
             }
 
             merchant.category_id = new_cat_id;
@@ -682,9 +725,10 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
             for item in &categorized_inv.invoice.items {
                 if item_filter(item) {
                     // Update intrinsic item category
-                    categorized_inv
-                        .item_categories
-                        .insert(item.item_id.clone(), (new_item_cat_key.clone(), new_category_name.to_string()));
+                    categorized_inv.item_categories.insert(
+                        item.item_id.clone(),
+                        (new_item_cat_key.clone(), new_category_name.to_string()),
+                    );
 
                     // Add Luxury to its purchase categories if not already there
                     let p_cats = categorized_inv
@@ -702,7 +746,10 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
 
             // 3. Update invoice categories to reflect Luxury
             if invoice_has_new_specialization
-                && !categorized_inv.invoice_categories.iter().any(|c| c == "Luxury")
+                && !categorized_inv
+                    .invoice_categories
+                    .iter()
+                    .any(|c| c == "Luxury")
             {
                 categorized_inv.invoice_categories.push("Luxury".into());
             }

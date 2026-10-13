@@ -12,13 +12,12 @@ use oxirs_core::model::{Object, Predicate, Quad, Subject};
 use oxirs_core::rdf_store::{OxirsQueryResults, RdfStore, Store};
 use parking_lot::RwLock;
 use petgraph::visit::EdgeRef;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 use crate::config::{OxiRsTdbConfig, StorageMode};
 use crate::error::OxiRsStorageError;
 use crate::mapping::{
-    edge_to_quads, make_graph_name, make_node_iri, node_to_quads, reconstruct_node,
-    SchemaVocab,
+    SchemaVocab, edge_to_quads, make_graph_name, make_node_iri, node_to_quads, reconstruct_node,
 };
 
 /// High-performance native OxiRS TDB2 engine.
@@ -143,7 +142,10 @@ impl OxiRsTdbEngine {
     }
 
     /// Inserts or updates a domain node `T: NodePayload + Serialize`.
-    pub fn insert_node<T: NodePayload + Serialize>(&self, node: &T) -> Result<(), OxiRsStorageError> {
+    pub fn insert_node<T: NodePayload + Serialize>(
+        &self,
+        node: &T,
+    ) -> Result<(), OxiRsStorageError> {
         // Remove existing statements for this node first if present
         self.remove_node_by_key(&node.key().to_string())?;
 
@@ -339,7 +341,11 @@ impl OxiRsTdbEngine {
             if vec.len() != query.len() {
                 continue;
             }
-            let dot = query.iter().zip(vec.iter()).map(|(a, b)| a * b).sum::<f32>();
+            let dot = query
+                .iter()
+                .zip(vec.iter())
+                .map(|(a, b)| a * b)
+                .sum::<f32>();
             let v_norm = vec.iter().map(|v| v * v).sum::<f32>().sqrt();
             let score = if v_norm > 0.0 {
                 dot / (q_norm * v_norm)
@@ -396,7 +402,9 @@ impl OxiRsTdbEngine {
     }
 
     /// Reconstructs and validates an entire [`MemoryDag<T>`] from the persistent OxiRS store.
-    pub fn load_dag<T: NodePayload + DeserializeOwned>(&self) -> Result<MemoryDag<T>, OxiRsStorageError> {
+    pub fn load_dag<T: NodePayload + DeserializeOwned>(
+        &self,
+    ) -> Result<MemoryDag<T>, OxiRsStorageError> {
         let mut dag = MemoryDag::new();
 
         // 1. Query all nodes having embedag:payload
@@ -409,12 +417,13 @@ impl OxiRsTdbEngine {
         let mut node_keys = HashMap::new();
         for q in node_quads {
             if let Subject::NamedNode(_subj) = q.subject()
-                && let Object::Literal(lit) = q.object() {
-                    let node: T = serde_json::from_str(lit.value())?;
-                    let key_str = node.key().to_string();
-                    let idx = dag.upsert_node(node);
-                    node_keys.insert(key_str, idx);
-                }
+                && let Object::Literal(lit) = q.object()
+            {
+                let node: T = serde_json::from_str(lit.value())?;
+                let key_str = node.key().to_string();
+                let idx = dag.upsert_node(node);
+                node_keys.insert(key_str, idx);
+            }
         }
 
         // 2. Query all reified edges (type embedag:Edge)
@@ -454,28 +463,25 @@ impl OxiRsTdbEngine {
                 child_quads.first(),
                 rel_quads.first(),
                 conf_quads.first(),
-            )
-                && let (Object::NamedNode(p_node), Object::NamedNode(c_node)) =
-                    (pq.object(), cq.object())
-                {
-                    let p_key = extract_key_from_iri(p_node.as_str());
-                    let c_key = extract_key_from_iri(c_node.as_str());
-                    let rel = rq.object().to_string().replace('"', "");
-                    let conf: f32 = cfq
-                        .object()
-                        .to_string()
-                        .replace('"', "")
-                        .parse()
-                        .unwrap_or(1.0);
+            ) && let (Object::NamedNode(p_node), Object::NamedNode(c_node)) =
+                (pq.object(), cq.object())
+            {
+                let p_key = extract_key_from_iri(p_node.as_str());
+                let c_key = extract_key_from_iri(c_node.as_str());
+                let rel = rq.object().to_string().replace('"', "");
+                let conf: f32 = cfq
+                    .object()
+                    .to_string()
+                    .replace('"', "")
+                    .parse()
+                    .unwrap_or(1.0);
 
-                    if let (Some(&p_idx), Some(&c_idx)) =
-                        (node_keys.get(&p_key), node_keys.get(&c_key))
-                    {
-                        let payload =
-                            EdgePayload::new(rel, conf, ProvenanceKind::DeterministicRule)?;
-                        dag.add_edge(p_idx, c_idx, payload);
-                    }
+                if let (Some(&p_idx), Some(&c_idx)) = (node_keys.get(&p_key), node_keys.get(&c_key))
+                {
+                    let payload = EdgePayload::new(rel, conf, ProvenanceKind::DeterministicRule)?;
+                    dag.add_edge(p_idx, c_idx, payload);
                 }
+            }
         }
 
         // Validate acyclic invariants

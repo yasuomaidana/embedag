@@ -1,9 +1,13 @@
+use std::path::PathBuf;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum MigrationError {
     #[error("Diesel database error: {0}")]
     Diesel(#[from] diesel::result::Error),
+
+    #[error("Diesel connection error: {0}")]
+    Connection(#[from] diesel::ConnectionError),
 
     #[cfg(feature = "postgres-async")]
     #[error("PostgreSQL driver error: {0}")]
@@ -21,6 +25,46 @@ pub const POSTGRES_SETUP: &str = "CREATE EXTENSION IF NOT EXISTS vector;";
 
 /// Baseline SQLite configuration.
 pub const SQLITE_SETUP: &str = "PRAGMA foreign_keys = ON;";
+
+/// Baseline Turso / libSQL configuration.
+pub const TURSO_SETUP: &str = "PRAGMA foreign_keys = ON;";
+
+/// Connection mode descriptor for Turso / libSQL distributed database.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TursoConnectionMode {
+    /// In-memory ephemeral libSQL instance (`:memory:`).
+    InMemory,
+    /// Local SQLite-compatible file path.
+    LocalFile(PathBuf),
+    /// Remote Turso database (URL, e.g. `libsql://<db>.turso.io`, and auth token).
+    Remote { url: String, auth_token: String },
+    /// Embedded replica synchronizing a local file with a remote Turso primary.
+    Replica {
+        local_path: PathBuf,
+        remote_url: String,
+        auth_token: String,
+    },
+}
+
+impl TursoConnectionMode {
+    /// Formats the connection mode into a connection URL or specifier string.
+    pub fn to_connection_string(&self) -> String {
+        match self {
+            Self::InMemory => ":memory:".to_string(),
+            Self::LocalFile(path) => path.to_string_lossy().to_string(),
+            Self::Remote { url, auth_token } => {
+                if url.contains("authToken=") {
+                    url.clone()
+                } else if url.contains('?') {
+                    format!("{url}&authToken={auth_token}")
+                } else {
+                    format!("{url}?authToken={auth_token}")
+                }
+            }
+            Self::Replica { local_path, .. } => local_path.to_string_lossy().to_string(),
+        }
+    }
+}
 
 /// Initializes SQLite database prerequisites.
 #[cfg(feature = "sqlite")]
@@ -60,13 +104,130 @@ pub async fn run_postgres_migration(
     Ok(())
 }
 
+/// Establishes a synchronous connection to Turso / libSQL using the specified mode.
+#[cfg(feature = "turso")]
+pub fn establish_turso_sync(
+    mode: &TursoConnectionMode,
+) -> Result<diesel_libsql::LibSqlConnection, MigrationError> {
+    use diesel::Connection;
+    let conn = match mode {
+        TursoConnectionMode::InMemory => diesel_libsql::LibSqlConnection::establish(":memory:")?,
+        TursoConnectionMode::LocalFile(p) => {
+            diesel_libsql::LibSqlConnection::establish(&p.to_string_lossy())?
+        }
+        TursoConnectionMode::Remote { url, auth_token } => {
+            let conn_url = if url.contains("authToken=") {
+                url.clone()
+            } else if url.contains('?') {
+                format!("{url}&authToken={auth_token}")
+            } else {
+                format!("{url}?authToken={auth_token}")
+            };
+            diesel_libsql::LibSqlConnection::establish(&conn_url)?
+        }
+        TursoConnectionMode::Replica {
+            local_path,
+            remote_url,
+            auth_token,
+        } => diesel_libsql::LibSqlConnection::establish_replica(
+            &local_path.to_string_lossy(),
+            remote_url,
+            auth_token,
+        )?,
+    };
+    Ok(conn)
+}
+
+/// Initializes Turso / libSQL database prerequisites synchronously.
+#[cfg(feature = "turso")]
+pub fn setup_turso_sync(conn: &mut diesel_libsql::LibSqlConnection) -> Result<(), MigrationError> {
+    use diesel::connection::SimpleConnection;
+    conn.batch_execute(TURSO_SETUP)?;
+    Ok(())
+}
+
+/// Executes a user-defined SQL migration on Turso / libSQL synchronously.
+#[cfg(feature = "turso")]
+pub fn run_turso_migration_sync(
+    conn: &mut diesel_libsql::LibSqlConnection,
+    migration_sql: &str,
+) -> Result<(), MigrationError> {
+    use diesel::connection::SimpleConnection;
+    setup_turso_sync(conn)?;
+    conn.batch_execute(migration_sql)?;
+    Ok(())
+}
+
+/// Establishes an asynchronous connection to Turso / libSQL using `diesel-async`.
+#[cfg(feature = "turso-async")]
+pub async fn establish_turso_async(
+    mode: &TursoConnectionMode,
+) -> Result<diesel_libsql::AsyncLibSqlConnection, MigrationError> {
+    use diesel_async::AsyncConnection;
+    let conn = match mode {
+        TursoConnectionMode::InMemory => {
+            diesel_libsql::AsyncLibSqlConnection::establish(":memory:").await?
+        }
+        TursoConnectionMode::LocalFile(p) => {
+            diesel_libsql::AsyncLibSqlConnection::establish(&p.to_string_lossy()).await?
+        }
+        TursoConnectionMode::Remote { url, auth_token } => {
+            let conn_url = if url.contains("authToken=") {
+                url.clone()
+            } else if url.contains('?') {
+                format!("{url}&authToken={auth_token}")
+            } else {
+                format!("{url}?authToken={auth_token}")
+            };
+            diesel_libsql::AsyncLibSqlConnection::establish(&conn_url).await?
+        }
+        TursoConnectionMode::Replica {
+            local_path,
+            remote_url,
+            auth_token,
+        } => {
+            use diesel_libsql::AsyncLibSqlConnectionExt;
+            diesel_libsql::AsyncLibSqlConnection::establish_replica(
+                &local_path.to_string_lossy(),
+                remote_url,
+                auth_token,
+            )
+            .await?
+        }
+    };
+    Ok(conn)
+}
+
+/// Initializes Turso / libSQL database prerequisites asynchronously.
+#[cfg(feature = "turso-async")]
+pub async fn setup_turso_async(
+    conn: &mut diesel_libsql::AsyncLibSqlConnection,
+) -> Result<(), MigrationError> {
+    use diesel_async::SimpleAsyncConnection;
+    conn.batch_execute(TURSO_SETUP).await?;
+    Ok(())
+}
+
+/// Executes a user-defined SQL migration on Turso / libSQL asynchronously.
+#[cfg(feature = "turso-async")]
+pub async fn run_turso_migration_async(
+    conn: &mut diesel_libsql::AsyncLibSqlConnection,
+    migration_sql: &str,
+) -> Result<(), MigrationError> {
+    use diesel_async::SimpleAsyncConnection;
+    setup_turso_async(conn).await?;
+    conn.batch_execute(migration_sql).await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use diesel::Connection;
 
+    #[cfg(feature = "sqlite")]
     #[test]
     fn test_sqlite_setup_lifecycle() {
+        use diesel::Connection;
         let mut conn = diesel::SqliteConnection::establish(":memory:").expect("in-memory sqlite");
 
         // Run baseline setup
@@ -78,9 +239,29 @@ mod tests {
 
         // Verify user table exists
         use diesel::connection::SimpleConnection;
-        let insert_res = conn.batch_execute(
-            "INSERT INTO user_items (id, title) VALUES ('item_1', 'Item 1');",
+        let insert_res =
+            conn.batch_execute("INSERT INTO user_items (id, title) VALUES ('item_1', 'Item 1');");
+        assert!(
+            insert_res.is_ok(),
+            "Insert into user migrated table must succeed"
         );
-        assert!(insert_res.is_ok(), "Insert into user migrated table must succeed");
+    }
+
+    #[test]
+    fn test_turso_connection_mode_formatting() {
+        let mem = TursoConnectionMode::InMemory;
+        assert_eq!(mem.to_connection_string(), ":memory:");
+
+        let local = TursoConnectionMode::LocalFile(PathBuf::from("/tmp/test.db"));
+        assert_eq!(local.to_connection_string(), "/tmp/test.db");
+
+        let remote = TursoConnectionMode::Remote {
+            url: "libsql://my-db.turso.io".into(),
+            auth_token: "secret_tok".into(),
+        };
+        assert_eq!(
+            remote.to_connection_string(),
+            "libsql://my-db.turso.io?authToken=secret_tok"
+        );
     }
 }

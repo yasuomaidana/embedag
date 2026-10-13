@@ -2,7 +2,7 @@ mod common;
 
 use embedag_diesel::harness::PostgresHarness;
 use embedag_diesel::ops::{
-    batch_upsert_edges, batch_upsert_nodes, EdgeUpsertRecord, NodeUpsertRecord,
+    EdgeUpsertRecord, NodeUpsertRecord, batch_upsert_edges, batch_upsert_nodes,
 };
 use embedag_diesel::traversal::RecursiveTraversalBuilder;
 use uuid::Uuid;

@@ -1,9 +1,14 @@
+#[cfg(feature = "postgres-async")]
 use crate::migrations::setup_postgres;
+#[cfg(feature = "test-harness")]
 use testcontainers::core::WaitFor;
+#[cfg(feature = "test-harness")]
 use testcontainers::runners::AsyncRunner;
+#[cfg(feature = "test-harness")]
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
 
 /// Reusable Testcontainers PostgreSQL + pgvector testing harness.
+#[cfg(all(feature = "postgres-async", feature = "test-harness"))]
 pub struct PostgresHarness {
     _container: ContainerAsync<GenericImage>,
     pub conn_str: String,
@@ -11,6 +16,7 @@ pub struct PostgresHarness {
     pub port: u16,
 }
 
+#[cfg(all(feature = "postgres-async", feature = "test-harness"))]
 impl PostgresHarness {
     /// Launches an ephemeral PostgreSQL container with pgvector enabled and runs baseline setup.
     pub async fn start() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
@@ -66,5 +72,51 @@ impl PostgresHarness {
             }
         });
         Ok(client)
+    }
+}
+
+/// Reusable ephemeral Turso / libSQL test harness.
+///
+/// Supports in-memory (`:memory:`) or isolated temp-file databases, providing
+/// both synchronous and native asynchronous connections.
+#[cfg(feature = "turso")]
+pub struct TursoHarness {
+    pub mode: crate::migrations::TursoConnectionMode,
+    _temp_dir: Option<tempfile::TempDir>,
+}
+
+#[cfg(feature = "turso")]
+impl TursoHarness {
+    /// Creates an in-memory Turso test harness.
+    pub fn in_memory() -> Self {
+        Self {
+            mode: crate::migrations::TursoConnectionMode::InMemory,
+            _temp_dir: None,
+        }
+    }
+
+    /// Creates an ephemeral file-backed Turso test harness in an isolated temporary directory.
+    pub fn ephemeral_file() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let temp_dir = tempfile::tempdir()?;
+        let db_path = temp_dir.path().join("turso_test.db");
+        Ok(Self {
+            mode: crate::migrations::TursoConnectionMode::LocalFile(db_path),
+            _temp_dir: Some(temp_dir),
+        })
+    }
+
+    /// Connects a synchronous `LibSqlConnection` to the harness.
+    pub fn connect_sync(
+        &self,
+    ) -> Result<diesel_libsql::LibSqlConnection, crate::migrations::MigrationError> {
+        crate::migrations::establish_turso_sync(&self.mode)
+    }
+
+    /// Connects an asynchronous `AsyncLibSqlConnection` to the harness via `diesel-async`.
+    #[cfg(feature = "turso-async")]
+    pub async fn connect_async(
+        &self,
+    ) -> Result<diesel_libsql::AsyncLibSqlConnection, crate::migrations::MigrationError> {
+        crate::migrations::establish_turso_async(&self.mode).await
     }
 }

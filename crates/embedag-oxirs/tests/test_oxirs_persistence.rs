@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use embedag_core::dag::MemoryDag;
 use embedag_core::model::{EdgePayload, ProvenanceKind};
 use embedag_core::mutation::MutationDirective;
@@ -7,6 +6,7 @@ use embedag_core::traits::{
 };
 use embedag_oxirs::{OxiRsTdbConfig, OxiRsTdbEngine, SyncPolicy};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use tempfile::tempdir;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -104,8 +104,12 @@ async fn test_persistent_disk_roundtrip_across_reopen() {
         let edge1 = EdgePayload::new("CONTAINS", 1.0, ProvenanceKind::DeterministicRule).unwrap();
         let edge2 = EdgePayload::new("CONTAINS", 0.9, ProvenanceKind::DeterministicRule).unwrap();
 
-        engine.insert_edge(&cat_root.id, &cat_sub.id, &edge1).unwrap();
-        engine.insert_edge(&cat_sub.id, &cat_item.id, &edge2).unwrap();
+        engine
+            .insert_edge(&cat_root.id, &cat_sub.id, &edge1)
+            .unwrap();
+        engine
+            .insert_edge(&cat_sub.id, &cat_item.id, &edge2)
+            .unwrap();
 
         engine.flush().expect("flush to disk");
         assert!(engine.len().unwrap() >= 15);
@@ -123,13 +127,11 @@ async fn test_persistent_disk_roundtrip_across_reopen() {
         let item: Option<TestCategory> = reopened.get_node(&"SKU-99".to_string()).unwrap();
         assert_eq!(item, Some(cat_item));
 
-        let sub_children: Vec<TestCategory> =
-            reopened.get_children(&"SUB-10".to_string()).unwrap();
+        let sub_children: Vec<TestCategory> = reopened.get_children(&"SUB-10".to_string()).unwrap();
         assert_eq!(sub_children.len(), 1);
         assert_eq!(sub_children[0].id, "SKU-99");
 
-        let sub_parents: Vec<TestCategory> =
-            reopened.get_parents(&"SUB-10".to_string()).unwrap();
+        let sub_parents: Vec<TestCategory> = reopened.get_parents(&"SUB-10".to_string()).unwrap();
         assert_eq!(sub_parents.len(), 1);
         assert_eq!(sub_parents[0].id, "ROOT-1");
     }
@@ -238,10 +240,9 @@ async fn test_repository_capability_traits() {
         .unwrap();
     assert_eq!(fetched, Some(node_a));
 
-    let children =
-        ReadOnlyGraphRepository::<TestCategory>::get_children(&engine, &"A".to_string())
-            .await
-            .unwrap();
+    let children = ReadOnlyGraphRepository::<TestCategory>::get_children(&engine, &"A".to_string())
+        .await
+        .unwrap();
     assert_eq!(children.len(), 1);
     assert_eq!(children[0].id, "B");
 
@@ -280,7 +281,10 @@ async fn test_mmap_snapshot_cold_start() {
 
         let snap_file = db_path.join("snapshot.oxsnap");
         engine.save_snapshot(&snap_file).expect("save snapshot");
-        assert!(snap_file.exists(), "snapshot.oxsnap must be written to disk");
+        assert!(
+            snap_file.exists(),
+            "snapshot.oxsnap must be written to disk"
+        );
     }
 
     // Phase 2: reopen store with snapshot present
@@ -294,4 +298,3 @@ async fn test_mmap_snapshot_cold_start() {
         assert_eq!(children[0].id, "C2");
     }
 }
-

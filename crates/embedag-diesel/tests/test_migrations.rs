@@ -19,8 +19,10 @@ fn test_sqlite_user_migrations() {
     .expect("run up");
 
     use diesel::connection::SimpleConnection;
-    conn.batch_execute("INSERT INTO custom_taxonomies (id, parent_id, name) VALUES ('t1', NULL, 'Taxonomy 1');")
-        .expect("insert row");
+    conn.batch_execute(
+        "INSERT INTO custom_taxonomies (id, parent_id, name) VALUES ('t1', NULL, 'Taxonomy 1');",
+    )
+    .expect("insert row");
 
     // Run user custom migration down
     run_sqlite_migration(&mut conn, "DROP TABLE custom_taxonomies;").expect("run down");
@@ -66,7 +68,9 @@ async fn test_postgres_pgvector_container_migration() {
     let client = client_opt.expect("must connect to postgres container");
 
     // 1. Run baseline pgvector extension setup
-    setup_postgres(&client).await.expect("setup postgres vector");
+    setup_postgres(&client)
+        .await
+        .expect("setup postgres vector");
 
     // 2. Run user-defined migration
     run_postgres_migration(

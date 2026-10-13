@@ -15,6 +15,9 @@ use crate::error::DagError;
 use crate::model::EdgePayload;
 use crate::traits::NodePayload;
 
+pub use crate::dag_iter::{AncestorsIter, DescendantsIter, TraversalIter};
+pub use crate::pagination::{NeighborPage, NeighborPageRequest};
+
 /// In-memory DAG arena with secondary O(1) hash index for fast key-based lookups.
 ///
 /// Wraps a [`petgraph::graph::DiGraph`] where edges point from parent to child
@@ -416,6 +419,96 @@ impl<T: NodePayload> MemoryDag<T> {
         descendants
     }
 
+    /// Returns a pull-based streaming iterator over transitive ancestors in BFS order.
+    #[must_use]
+    pub fn ancestors_iter<'a>(&'a self, start_key: &T::Key) -> AncestorsIter<'a, T> {
+        let idx = self.key_to_index.get(start_key).copied();
+        AncestorsIter::new(&self.graph, idx, Direction::Incoming, None)
+    }
+
+    /// Returns a pull-based streaming iterator over transitive ancestors bounded by `max_depth`.
+    #[must_use]
+    pub fn ancestors_iter_bounded<'a>(
+        &'a self,
+        start_key: &T::Key,
+        max_depth: usize,
+    ) -> AncestorsIter<'a, T> {
+        let idx = self.key_to_index.get(start_key).copied();
+        AncestorsIter::new(&self.graph, idx, Direction::Incoming, Some(max_depth))
+    }
+
+    /// Returns a pull-based streaming iterator over transitive descendants in BFS order.
+    #[must_use]
+    pub fn descendants_iter<'a>(&'a self, start_key: &T::Key) -> DescendantsIter<'a, T> {
+        let idx = self.key_to_index.get(start_key).copied();
+        DescendantsIter::new(&self.graph, idx, Direction::Outgoing, None)
+    }
+
+    /// Returns a pull-based streaming iterator over transitive descendants bounded by `max_depth`.
+    #[must_use]
+    pub fn descendants_iter_bounded<'a>(
+        &'a self,
+        start_key: &T::Key,
+        max_depth: usize,
+    ) -> DescendantsIter<'a, T> {
+        let idx = self.key_to_index.get(start_key).copied();
+        DescendantsIter::new(&self.graph, idx, Direction::Outgoing, Some(max_depth))
+    }
+
+    /// Returns a paginated slice of adjacent neighbors for a node.
+    #[must_use]
+    pub fn paginate_neighbors<'a>(
+        &'a self,
+        req: &NeighborPageRequest<'_, T::Key>,
+    ) -> NeighborPage<'a, T> {
+        let Some(&idx) = self.key_to_index.get(req.key) else {
+            return NeighborPage {
+                items: Vec::new(),
+                total_count: 0,
+                next_offset: None,
+                has_more: false,
+            };
+        };
+
+        let mut matches = Vec::new();
+        for edge_ref in self.graph.edges_directed(idx, req.direction) {
+            let edge = edge_ref.weight();
+            if let Some(rel) = req.relationship
+                && edge.relationship != rel
+            {
+                continue;
+            }
+            let target_idx = match req.direction {
+                Direction::Incoming => edge_ref.source(),
+                Direction::Outgoing => edge_ref.target(),
+            };
+            if let Some(payload) = self.graph.node_weight(target_idx) {
+                matches.push((payload, edge));
+            }
+        }
+
+        let total_count = matches.len();
+        let page_items: Vec<(&'a T, &'a EdgePayload)> = matches
+            .into_iter()
+            .skip(req.offset)
+            .take(req.limit)
+            .collect();
+
+        let has_more = req.offset + page_items.len() < total_count;
+        let next_offset = if has_more {
+            Some(req.offset + page_items.len())
+        } else {
+            None
+        };
+
+        NeighborPage {
+            items: page_items,
+            total_count,
+            next_offset,
+            has_more,
+        }
+    }
+
     /// Returns all root nodes in the DAG (nodes with in-degree 0).
     #[must_use]
     pub fn roots(&self) -> Vec<&T> {
@@ -633,6 +726,83 @@ mod tests {
             err_missing_parent,
             Err(DagError::NodeNotFound { key }) if key == "MISSING"
         ));
+    }
+
+    #[test]
+    fn test_streaming_traversal_iterators_and_early_termination() {
+        let mut dag = MemoryDag::new();
+        let a = MockNode::new("A", "Root", "L0");
+        let b = MockNode::new("B", "Left", "L1");
+        let c = MockNode::new("C", "Right", "L1");
+        let d = MockNode::new("D", "Bottom", "L2");
+
+        dag.upsert_node(a);
+        dag.upsert_node(b);
+        dag.upsert_node(c);
+        dag.upsert_node(d);
+
+        dag.add_edge_by_keys(&"A".to_string(), &"B".to_string(), test_edge("sub"))
+            .unwrap();
+        dag.add_edge_by_keys(&"A".to_string(), &"C".to_string(), test_edge("sub"))
+            .unwrap();
+        dag.add_edge_by_keys(&"B".to_string(), &"D".to_string(), test_edge("sub"))
+            .unwrap();
+        dag.add_edge_by_keys(&"C".to_string(), &"D".to_string(), test_edge("sub"))
+            .unwrap();
+
+        let ancestors: Vec<_> = dag.ancestors_iter(&"D".to_string()).collect();
+        assert_eq!(ancestors.len(), 3);
+
+        let first_only: Vec<_> = dag.ancestors_iter(&"D".to_string()).take(1).collect();
+        assert_eq!(first_only.len(), 1);
+
+        let descendants: Vec<_> = dag.descendants_iter(&"A".to_string()).collect();
+        assert_eq!(descendants.len(), 3);
+
+        let depth_one_desc: Vec<_> = dag.descendants_iter_bounded(&"A".to_string(), 1).collect();
+        assert_eq!(depth_one_desc.len(), 2);
+    }
+
+    #[test]
+    fn test_paginate_neighbors() {
+        let mut dag = MemoryDag::new();
+        let root = MockNode::new("ROOT", "Root Category", "L0");
+        dag.upsert_node(root);
+
+        for i in 1..=10 {
+            let id = format!("CHILD-{}", i);
+            let child = MockNode::new(&id, &id, "L1");
+            dag.upsert_node(child);
+            let rel = if i % 2 == 0 { "even" } else { "odd" };
+            dag.add_edge_by_keys(&"ROOT".to_string(), &id, test_edge(rel))
+                .unwrap();
+        }
+
+        let root_key = "ROOT".to_string();
+
+        let req1 = NeighborPageRequest::children(&root_key, 0, 4);
+        let page1 = dag.paginate_neighbors(&req1);
+        assert_eq!(page1.total_count, 10);
+        assert_eq!(page1.items.len(), 4);
+        assert!(page1.has_more);
+        assert_eq!(page1.next_offset, Some(4));
+
+        let req2 = NeighborPageRequest::children(&root_key, 4, 4);
+        let page2 = dag.paginate_neighbors(&req2);
+        assert_eq!(page2.items.len(), 4);
+        assert!(page2.has_more);
+        assert_eq!(page2.next_offset, Some(8));
+
+        let req3 = NeighborPageRequest::children(&root_key, 8, 4);
+        let page3 = dag.paginate_neighbors(&req3);
+        assert_eq!(page3.items.len(), 2);
+        assert!(!page3.has_more);
+        assert_eq!(page3.next_offset, None);
+
+        let req_odd = NeighborPageRequest::children(&root_key, 0, 10).with_relationship("odd");
+        let page_odd = dag.paginate_neighbors(&req_odd);
+        assert_eq!(page_odd.total_count, 5);
+        assert_eq!(page_odd.items.len(), 5);
     }
 
     #[test]

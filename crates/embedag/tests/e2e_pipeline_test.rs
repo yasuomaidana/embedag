@@ -36,7 +36,9 @@ async fn test_end_to_end_pipeline() {
         .await
         .expect("start testcontainers postgres");
     let client = harness.connect().await.expect("connect to container");
-    client.batch_execute(r#"
+    client
+        .batch_execute(
+            r#"
         CREATE TABLE IF NOT EXISTS semantic_nodes (
             id UUID PRIMARY KEY,
             business_key VARCHAR(255) NOT NULL UNIQUE,
@@ -54,7 +56,10 @@ async fn test_end_to_end_pipeline() {
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             PRIMARY KEY (parent_id, child_id, relationship_type)
         );
-    "#).await.expect("create test tables");
+    "#,
+        )
+        .await
+        .expect("create test tables");
 
     // 2. Build In-Memory DAG arena with cycle guardrails
     let mut dag = MemoryDag::new();

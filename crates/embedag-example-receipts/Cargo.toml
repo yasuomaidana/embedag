@@ -6,6 +6,10 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[lib]
+name = "embedag_example_receipts"
+path = "src/lib.rs"
+
 [dependencies]
 embedag-core = { workspace = true }
 embedag-diesel = { workspace = true }

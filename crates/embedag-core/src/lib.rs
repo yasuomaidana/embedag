@@ -6,6 +6,8 @@
 //!
 //! # Modules
 //! - [`dag`]: In-memory directed acyclic graph arena backed by `petgraph`.
+//! - [`dag_iter`]: Pull-based streaming traversal iterators.
+//! - [`pagination`]: Topological degree pagination contracts and types for high-degree hubs.
 //! - [`encoder`]: Deterministic mathematical feature encoders for numbers, time, geography, and hybrid distances.
 //! - [`error`]: Typed domain and cycle errors.
 //! - [`export`]: Visual graph exporters (Mermaid, Graphviz DOT) and interchange formats (GraphML, JSON-LD).
@@ -17,16 +19,19 @@
 #![warn(missing_docs)]
 
 pub mod dag;
+pub mod dag_iter;
 pub mod encoder;
 pub mod error;
 pub mod export;
 pub mod migration;
 pub mod model;
 pub mod mutation;
+pub mod pagination;
 pub mod traits;
 
 // Re-exports for clean prelude access
 pub use dag::MemoryDag;
+pub use dag_iter::{AncestorsIter, DescendantsIter, TraversalIter};
 pub use encoder::{
     CyclicalTimeEncoder, GeospatialEncoder, ModalityWeights, ScalarScaling,
     categorical_tag_distance, composite_distance, cosine_distance, encode_cyclical_time,
@@ -40,6 +45,7 @@ pub use export::GraphExporter;
 pub use migration::{GraphMigration, MigrationStep};
 pub use model::{EdgePayload, FeatureMap, GraphTarget, MultimodalBlob, ProvenanceKind, TagMap};
 pub use mutation::{Committed, CycleValidated, MutationDirective, MutationPlan, Unverified};
+pub use pagination::{NeighborPage, NeighborPageRequest};
 pub use traits::{
     AsGraphContext, DynNodePayload, GraphRepository, NodePayload, ReadOnlyGraphRepository,
     TransactionalGraphRepository, VectorSearchRepository,

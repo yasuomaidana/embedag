@@ -156,20 +156,14 @@ async fn test_inference_and_multitype_e2e_pipeline() {
 
     // Verify AsGraphContext procedural derive methods across multiple types
     assert_eq!(root_asset.context_key(), "FACILITY-GLOBAL-ALPHA");
-    assert_eq!(
-        root_asset.text_repr(),
-        "Clean Energy Microgrid Facility"
-    );
+    assert_eq!(root_asset.text_repr(), "Clean Energy Microgrid Facility");
     let scalars = root_asset.scalar_features();
     assert_eq!(scalars.get("capacity_mw"), Some(&150.0));
     let tags = root_asset.categorical_tags();
     assert_eq!(tags.get("region"), Some(&"US-WEST".to_string()));
     assert_eq!(root_asset.timestamp_utc(), Some(test_timestamp));
     assert_eq!(root_asset.multimodal_blobs().len(), 1);
-    assert_eq!(
-        root_asset.multimodal_blobs()[0].mime_type,
-        "image/webp"
-    );
+    assert_eq!(root_asset.multimodal_blobs()[0].mime_type, "image/webp");
 
     // Verify Serde JSON serialization & deserialization roundtrip
     let json_serialized = serde_json::to_string(&root_asset).expect("serialize struct to json");
@@ -220,10 +214,8 @@ async fn test_inference_and_multitype_e2e_pipeline() {
         relationship: "CONTAINS_STORAGE".into(),
         confidence: 0.99,
     };
-    let oxillama_engine = OxillamaProvider::with_simulated_output(
-        "oxillama-q4km-3b",
-        llama_directive.clone(),
-    );
+    let oxillama_engine =
+        OxillamaProvider::with_simulated_output("oxillama-q4km-3b", llama_directive.clone());
 
     let llama_meta = oxillama_engine.model_info();
     assert_eq!(llama_meta.provider_name, "oxillama");
@@ -305,12 +297,9 @@ async fn test_inference_and_multitype_e2e_pipeline() {
     // Build Diamond Multi-Parent DAG:
     // Root -> Solar, Root -> Battery
     // Solar -> Inverter, Battery -> Inverter (multi-parent diamond convergence)
-    let edge_root_to_solar = EdgePayload::new(
-        "CONTAINS_GENERATOR",
-        1.0,
-        ProvenanceKind::DeterministicRule,
-    )
-    .expect("valid edge");
+    let edge_root_to_solar =
+        EdgePayload::new("CONTAINS_GENERATOR", 1.0, ProvenanceKind::DeterministicRule)
+            .expect("valid edge");
     let edge_root_to_battery =
         EdgePayload::new("CONTAINS_STORAGE", 1.0, ProvenanceKind::DeterministicRule)
             .expect("valid edge");
@@ -431,7 +420,11 @@ async fn test_inference_and_multitype_e2e_pipeline() {
         &subcat_battery.asset_code,
         &subcat_battery.asset_name,
     );
-    sparse_idx.insert(root_asset.id, &root_asset.asset_code, &root_asset.asset_name);
+    sparse_idx.insert(
+        root_asset.id,
+        &root_asset.asset_code,
+        &root_asset.asset_name,
+    );
 
     // Query both modalities for hybrid matching
     let query_vector = [0.90, 0.82, 0.15, 0.08];
@@ -484,7 +477,10 @@ async fn test_inference_and_multitype_e2e_pipeline() {
 
     let synthetic_llm_response = format!(
         "The smart inverter [Node: {}] is fed by [Node: {}] and backed up by [Node: {}] within facility [Node: {}].",
-        leaf_inverter.asset_code, subcat_solar.asset_code, subcat_battery.asset_code, root_asset.asset_code
+        leaf_inverter.asset_code,
+        subcat_solar.asset_code,
+        subcat_battery.asset_code,
+        root_asset.asset_code
     );
     let extracted_citations = packager.extract_citations(&synthetic_llm_response);
     assert_eq!(extracted_citations.len(), 4);
@@ -515,7 +511,9 @@ async fn test_inference_and_multitype_e2e_pipeline() {
         ('{id_inverter}', '{key_inverter}', 'PowerElectronicsDevice', 'Hybrid Grid-Forming Smart Inverter', '{attrs_inverter}');",
         id_root = root_asset.id,
         key_root = root_asset.asset_code,
-        attrs_root = serde_json::to_string(&serde_json::json!({ "capacity_mw": 150.0, "zone": "US-WEST" })).unwrap(),
+        attrs_root =
+            serde_json::to_string(&serde_json::json!({ "capacity_mw": 150.0, "zone": "US-WEST" }))
+                .unwrap(),
         id_solar = subcat_solar.id,
         key_solar = subcat_solar.asset_code,
         attrs_solar = serde_json::to_string(&serde_json::json!({ "capacity_mw": 90.0 })).unwrap(),
@@ -558,7 +556,8 @@ async fn test_inference_and_multitype_e2e_pipeline() {
     );
 
     // Verify SQLite Migration DOWN (clean schema rollback)
-    run_sqlite_migration(&mut sqlite_conn, SQLITE_E2E_MIGRATION_DOWN).expect("sqlite migrations down");
+    run_sqlite_migration(&mut sqlite_conn, SQLITE_E2E_MIGRATION_DOWN)
+        .expect("sqlite migrations down");
 
     // -------------------------------------------------------------------------
     // 5B. PostgreSQL Persistence Validation with pgvector & Recursive CTEs
@@ -665,10 +664,9 @@ async fn test_inference_and_multitype_e2e_pipeline() {
         .expect("batch upsert edges in pg");
 
     // Verify Recursive CTE Traversal on PostgreSQL: multi-hop ancestor discovery
-    let pg_ancestors =
-        RecursiveTraversalBuilder::fetch_ancestors(&pg_client, leaf_inverter.id, 10)
-            .await
-            .expect("fetch ancestors via recursive CTE in pg");
+    let pg_ancestors = RecursiveTraversalBuilder::fetch_ancestors(&pg_client, leaf_inverter.id, 10)
+        .await
+        .expect("fetch ancestors via recursive CTE in pg");
 
     // In a diamond DAG (Root -> Solar, Root -> Battery; Solar -> Leaf, Battery -> Leaf),
     // the recursive CTE traversal from leaf encounters depth 1 (Solar, Battery) and depth 2 (Root).

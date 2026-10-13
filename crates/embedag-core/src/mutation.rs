@@ -204,6 +204,128 @@ impl<T: NodePayload> MutationPlan<T, Unverified> {
             _state: PhantomData,
         })
     }
+
+    /// Performs localized differential reachability cycle validation without cloning the entire DAG arena.
+    ///
+    /// Ideal for heavy graphs ($10^5+$ nodes) where cloning the global arena incurs high latency and memory churn.
+    ///
+    /// # Errors
+    /// - [`DagError::CycleDetected`]: If proposed mutations would create a directed loop.
+    /// - [`DagError::NodeNotFound`]: If an edge references a nonexistent node not introduced in this batch.
+    pub fn validate_cycles_differential(
+        self,
+        dag: &MemoryDag<T>,
+    ) -> Result<MutationPlan<T, CycleValidated>, DagError> {
+        let current_rev = dag.revision();
+
+        // 1. Collect all keys introduced via UpsertNode in this batch
+        let mut introduced_keys = std::collections::HashSet::new();
+        for dir in &self.directives {
+            if let MutationDirective::UpsertNode(node) = dir {
+                introduced_keys.insert(node.key().clone());
+            }
+        }
+
+        // 2. Track removed edges in this batch
+        let mut removed_edges = std::collections::HashSet::new();
+        for dir in &self.directives {
+            if let MutationDirective::RemoveEdge { parent, child, .. } = dir {
+                removed_edges.insert((parent.clone(), child.clone()));
+            }
+        }
+
+        // 3. Track newly added edges in this batch
+        let mut overlay_out: std::collections::HashMap<T::Key, Vec<T::Key>> =
+            std::collections::HashMap::new();
+
+        for directive in &self.directives {
+            if let MutationDirective::AddEdge { parent, child, .. } = directive {
+                let parent_exists = dag.contains_key(parent) || introduced_keys.contains(parent);
+                if !parent_exists {
+                    return Err(DagError::NodeNotFound {
+                        key: parent.to_string(),
+                    });
+                }
+                let child_exists = dag.contains_key(child) || introduced_keys.contains(child);
+                if !child_exists {
+                    return Err(DagError::NodeNotFound {
+                        key: child.to_string(),
+                    });
+                }
+
+                if parent == child {
+                    return Err(DagError::CycleDetected {
+                        node_indices: vec![],
+                    });
+                }
+
+                if has_path_differential(dag, child, parent, &overlay_out, &removed_edges) {
+                    return Err(DagError::CycleDetected {
+                        node_indices: vec![],
+                    });
+                }
+
+                overlay_out
+                    .entry(parent.clone())
+                    .or_default()
+                    .push(child.clone());
+            }
+        }
+
+        Ok(MutationPlan {
+            directives: self.directives,
+            validated_revision: Some(current_rev),
+            _state: PhantomData,
+        })
+    }
+}
+
+fn has_path_differential<T: NodePayload>(
+    dag: &MemoryDag<T>,
+    from: &T::Key,
+    to: &T::Key,
+    overlay_out: &std::collections::HashMap<T::Key, Vec<T::Key>>,
+    removed_edges: &std::collections::HashSet<(T::Key, T::Key)>,
+) -> bool {
+    let mut queue = std::collections::VecDeque::new();
+    let mut visited = std::collections::HashSet::new();
+
+    queue.push_back(from.clone());
+    visited.insert(from.clone());
+
+    while let Some(curr) = queue.pop_front() {
+        if &curr == to {
+            return true;
+        }
+
+        if let Some(_node) = dag.node(&curr) {
+            for child_node in dag.children_of(&curr) {
+                let child_key = child_node.key().clone();
+                if removed_edges.contains(&(curr.clone(), child_key.clone())) {
+                    continue;
+                }
+                if &child_key == to {
+                    return true;
+                }
+                if visited.insert(child_key.clone()) {
+                    queue.push_back(child_key);
+                }
+            }
+        }
+
+        if let Some(overlay_children) = overlay_out.get(&curr) {
+            for child_key in overlay_children {
+                if child_key == to {
+                    return true;
+                }
+                if visited.insert(child_key.clone()) {
+                    queue.push_back(child_key.clone());
+                }
+            }
+        }
+    }
+
+    false
 }
 
 impl<T: NodePayload> MutationPlan<T, CycleValidated> {
@@ -314,6 +436,55 @@ mod tests {
 
     fn test_edge(rel: &str) -> EdgePayload {
         EdgePayload::new(rel, 1.0, ProvenanceKind::DeterministicRule).unwrap()
+    }
+
+    #[test]
+    fn test_differential_cycle_validation_success_and_failure() {
+        let mut dag = MemoryDag::new();
+        dag.upsert_node(MockItem::new("A", "Node A"));
+        dag.upsert_node(MockItem::new("B", "Node B"));
+        dag.add_edge_by_keys(&"A".to_string(), &"B".to_string(), test_edge("rel"))
+            .unwrap();
+
+        // Valid plan: Add C, connect B -> C
+        let plan_valid = MutationPlan::new()
+            .upsert_node(MockItem::new("C", "Node C"))
+            .add_edge("B".to_string(), "C".to_string(), test_edge("rel"));
+
+        let validated = plan_valid
+            .validate_cycles_differential(&dag)
+            .expect("acyclic extension must pass");
+        assert_eq!(validated.len(), 2);
+
+        // Direct cyclic plan: Connect B -> A (closes A -> B -> A)
+        let plan_cyclic =
+            MutationPlan::new().add_edge("B".to_string(), "A".to_string(), test_edge("rev"));
+        let err = plan_cyclic.validate_cycles_differential(&dag).unwrap_err();
+        assert!(matches!(err, DagError::CycleDetected { .. }));
+
+        // Indirect multi-edge cycle in batch: B -> C -> D -> B
+        let plan_batch_cycle = MutationPlan::new()
+            .upsert_node(MockItem::new("C", "Node C"))
+            .upsert_node(MockItem::new("D", "Node D"))
+            .add_edge("B".to_string(), "C".to_string(), test_edge("rel"))
+            .add_edge("C".to_string(), "D".to_string(), test_edge("rel"))
+            .add_edge("D".to_string(), "B".to_string(), test_edge("rev"));
+        let err_batch = plan_batch_cycle
+            .validate_cycles_differential(&dag)
+            .unwrap_err();
+        assert!(matches!(err_batch, DagError::CycleDetected { .. }));
+
+        // Diamond acyclic plan (valid convergence)
+        let plan_diamond = MutationPlan::new()
+            .upsert_node(MockItem::new("C", "Node C"))
+            .upsert_node(MockItem::new("D", "Node D"))
+            .add_edge("A".to_string(), "C".to_string(), test_edge("rel"))
+            .add_edge("B".to_string(), "D".to_string(), test_edge("rel"))
+            .add_edge("C".to_string(), "D".to_string(), test_edge("rel"));
+        let val_diamond = plan_diamond
+            .validate_cycles_differential(&dag)
+            .expect("diamond is acyclic");
+        assert_eq!(val_diamond.len(), 5);
     }
 
     #[test]

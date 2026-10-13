@@ -1,8 +1,8 @@
 use diesel::prelude::*;
 use embedag_diesel::cte::{CteHierarchyBuilder, HierarchicalNode, HierarchyItem};
 use embedag_example_receipts::{
-    categorize_ticket_invoice, run_receipt_categories_postgres_migration,
-    run_receipt_categories_sqlite_migration, FinanceInvoice, InvoiceItem, ReceiptCategoryRecord,
+    FinanceInvoice, InvoiceItem, ReceiptCategoryRecord, categorize_ticket_invoice,
+    run_receipt_categories_postgres_migration, run_receipt_categories_sqlite_migration,
 };
 
 #[test]
@@ -54,7 +54,8 @@ fn test_macro_generated_crud_operations_on_receipt_categories() {
             entity_level: "category".into(),
         },
     ];
-    let batch_count = ReceiptCategoryRecord::insert_batch_sqlite(&batch, &mut conn).expect("batch insert");
+    let batch_count =
+        ReceiptCategoryRecord::insert_batch_sqlite(&batch, &mut conn).expect("batch insert");
     assert_eq!(batch_count, 2);
 
     // 3. Update via macro-generated method
@@ -68,7 +69,8 @@ fn test_macro_generated_crud_operations_on_receipt_categories() {
     assert_eq!(updated, 1);
 
     // 4. Delete via macro-generated method
-    let deleted = ReceiptCategoryRecord::delete_by_id_sqlite(&mut conn, "cat_apples").expect("delete");
+    let deleted =
+        ReceiptCategoryRecord::delete_by_id_sqlite(&mut conn, "cat_apples").expect("delete");
     assert_eq!(deleted, 1);
 }
 
@@ -206,12 +208,14 @@ fn test_diamond_dag_deduplication_with_recursive_not_all() {
         },
     ];
 
-    ReceiptCategoryRecord::insert_batch_sqlite(&diamond_rows, &mut conn).expect("insert diamond rows");
+    ReceiptCategoryRecord::insert_batch_sqlite(&diamond_rows, &mut conn)
+        .expect("insert diamond rows");
 
     // Traversal using macro-generated table_config directly from model
     let config = ReceiptCategoryRecord::table_config();
-    let ancestors = CteHierarchyBuilder::fetch_ancestors_dedup_sqlite(&mut conn, &config, "leaf", 5)
-        .expect("ancestors dedup");
+    let ancestors =
+        CteHierarchyBuilder::fetch_ancestors_dedup_sqlite(&mut conn, &config, "leaf", 5)
+            .expect("ancestors dedup");
 
     assert!(!ancestors.is_empty());
     assert_eq!(ancestors[0].name, "Specialty Food");
@@ -223,7 +227,9 @@ async fn test_developer_custom_migration_and_invoice_categorization_cte_postgres
     use diesel_async::{AsyncConnection, AsyncPgConnection};
     use embedag_diesel::harness::PostgresHarness;
 
-    let harness = PostgresHarness::start().await.expect("start postgres harness");
+    let harness = PostgresHarness::start()
+        .await
+        .expect("start postgres harness");
     let client = harness.connect().await.expect("connect client");
 
     // 1. Run developer's custom PostgreSQL migration
@@ -284,4 +290,42 @@ async fn test_developer_custom_migration_and_invoice_categorization_cte_postgres
     assert_eq!(ancestors[1].name, "Dairy & Plant Alternatives");
     assert_eq!(ancestors[2].depth, 3);
     assert_eq!(ancestors[2].name, "WholeOrganics");
+}
+
+#[test]
+fn test_degree_bounded_descendant_cte_sqlite() {
+    let mut conn = diesel::SqliteConnection::establish(":memory:").expect("in-memory sqlite");
+    run_receipt_categories_sqlite_migration(&mut conn).expect("custom receipt migration");
+
+    let mut rows = vec![ReceiptCategoryRecord {
+        category_id: "root_dept".into(),
+        parent_category_id: None,
+        category_name: "SuperMarket".into(),
+        entity_level: "root".into(),
+    }];
+
+    for i in 1..=10 {
+        rows.push(ReceiptCategoryRecord {
+            category_id: format!("sub_{i}"),
+            parent_category_id: Some("root_dept".into()),
+            category_name: format!("Category {i:02}"),
+            entity_level: "sub".into(),
+        });
+    }
+
+    ReceiptCategoryRecord::insert_batch_sqlite(&rows, &mut conn).expect("batch insert");
+
+    // Unbounded traversal: returns all 10 children
+    let config_unbounded = ReceiptCategoryRecord::table_config();
+    let unb_desc =
+        CteHierarchyBuilder::fetch_descendants_sqlite(&mut conn, &config_unbounded, "root_dept", 5)
+            .expect("unbounded descendants");
+    assert_eq!(unb_desc.len(), 10);
+
+    // Degree-bounded traversal: limits to 3 children per level
+    let config_bounded = ReceiptCategoryRecord::table_config().with_max_breadth_per_node(3);
+    let bounded_desc =
+        CteHierarchyBuilder::fetch_descendants_sqlite(&mut conn, &config_bounded, "root_dept", 5)
+            .expect("bounded descendants");
+    assert_eq!(bounded_desc.len(), 3);
 }

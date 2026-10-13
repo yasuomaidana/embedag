@@ -1,7 +1,7 @@
 //! Procedural derive macros for `embedag`.\n//!\n//! Provides `#[derive(AsGraphContext)]`, `#[derive(GraphTarget)]`, and `#[derive(HierarchicalModel)]`.
 
 use proc_macro::TokenStream;
-use syn::{parse_macro_input, DeriveInput};
+use syn::{DeriveInput, parse_macro_input};
 
 mod as_graph_context;
 mod graph_target;

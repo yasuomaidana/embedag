@@ -1,0 +1,27 @@
+[package]
+name = "embedag-surrealdb"
+description = "SurrealDB multi-model document-graph persistence, embedded and remote storage, native RELATE edge traversals, and vector similarity integration for embedag."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+
+[dependencies]
+embedag-core = { workspace = true }
+surrealdb = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+parking_lot = { workspace = true }
+petgraph = { workspace = true }
+uuid = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+testcontainers = { workspace = true }
+testcontainers-modules = { workspace = true }

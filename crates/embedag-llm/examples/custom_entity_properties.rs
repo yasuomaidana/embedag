@@ -34,7 +34,10 @@ fn main() {
 
     let patient_extractor = PatientRecord;
     let patient_label = patient_extractor.extract_from_prompt(ehr_prompt);
-    println!("Extracted Healthcare Patient Identity: \"{}\"", patient_label);
+    println!(
+        "Extracted Healthcare Patient Identity: \"{}\"",
+        patient_label
+    );
     assert_eq!(patient_label, "MRN-2026-90412");
 
     // IoT Telemetry extraction test

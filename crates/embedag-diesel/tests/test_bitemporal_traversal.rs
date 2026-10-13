@@ -2,7 +2,7 @@ mod common;
 
 use chrono::{Duration, Utc};
 use embedag_diesel::harness::PostgresHarness;
-use embedag_diesel::ops::{batch_upsert_nodes, NodeUpsertRecord};
+use embedag_diesel::ops::{NodeUpsertRecord, batch_upsert_nodes};
 use embedag_diesel::traversal::RecursiveTraversalBuilder;
 use uuid::Uuid;
 

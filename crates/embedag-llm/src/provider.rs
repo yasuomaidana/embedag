@@ -1,9 +1,7 @@
-use crate::extractor::{
-    extract_incoming_entity_text, extract_incoming_entity_text_with_keys,
-};
+use crate::extractor::{extract_incoming_entity_text, extract_incoming_entity_text_with_keys};
 use crate::gbnf::PushdownAutomaton;
 use crate::prompt::{PromptFormatter, ProvenanceNotes};
-use crate::schema::{generate_extraction_schema, ExtractionDirective, ExtractionEnvelope};
+use crate::schema::{ExtractionDirective, ExtractionEnvelope, generate_extraction_schema};
 pub use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -196,7 +194,12 @@ impl LlmProvider for CandleProvider {
             return Ok(serde_json::to_value(&envelope)?);
         }
 
-        execute_constrained_semantic_inference(prompt, schema, "candle", self.entity_keys.as_deref())
+        execute_constrained_semantic_inference(
+            prompt,
+            schema,
+            "candle",
+            self.entity_keys.as_deref(),
+        )
     }
 
     fn model_info(&self) -> ModelMetadata {
@@ -530,11 +533,8 @@ mod tests {
     #[tokio::test]
     async fn test_oxillama_inference_deduplication() {
         let provider = OxillamaProvider::new("llama-3-8b-instruct", "q4_k_m");
-        let prompt_empty = PromptFormatter::build_prompt(
-            "Taxonomy builder",
-            "{\"name\": \"Root Facility\"}",
-            &[],
-        );
+        let prompt_empty =
+            PromptFormatter::build_prompt("Taxonomy builder", "{\"name\": \"Root Facility\"}", &[]);
 
         let (directive1, notes1) = provider
             .extract_directive(&prompt_empty)
@@ -570,10 +570,12 @@ mod tests {
             }
             other => panic!("Expected InsertNode under cat_facility, got {other:?}"),
         }
-        assert!(notes2
-            .chain_of_thought
-            .to_lowercase()
-            .contains("reusing existing node"));
+        assert!(
+            notes2
+                .chain_of_thought
+                .to_lowercase()
+                .contains("reusing existing node")
+        );
     }
 
     #[tokio::test]

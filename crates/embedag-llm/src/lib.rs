@@ -16,17 +16,17 @@ pub use delta_synthesizer::{
 };
 pub use diff::{ChangesetDiffEngine, GraphDiff};
 pub use extractor::{
-    extract_entity_text_from_value, extract_incoming_entity_text,
-    extract_incoming_entity_text_with_config, extract_incoming_entity_text_with_keys,
-    is_heuristic_entity_key, EntityExtractor, EntityExtractorConfig, EntityProperties,
+    EntityExtractor, EntityExtractorConfig, EntityProperties, extract_entity_text_from_value,
+    extract_incoming_entity_text, extract_incoming_entity_text_with_config,
+    extract_incoming_entity_text_with_keys, is_heuristic_entity_key,
 };
-pub use gbnf::{compile_schema_to_gbnf, dereference_schema, GbnfError, PushdownAutomaton};
+pub use gbnf::{GbnfError, PushdownAutomaton, compile_schema_to_gbnf, dereference_schema};
 pub use prompt::{PromptError, PromptFormatter, ProvenanceNotes};
 pub use provider::{
     CandleProvider, CloudProvider, LlmError, LlmProvider, ModelMetadata, OxibonsaiProvider,
     OxillamaProvider,
 };
 pub use schema::{
-    generate_extraction_schema, generate_schema_for, ExtractionDirective, ExtractionEnvelope,
+    ExtractionDirective, ExtractionEnvelope, generate_extraction_schema, generate_schema_for,
 };
 pub use waterfall::{AliasStore, CandidateMatch, ResolutionOutcome, WaterfallPipeline};

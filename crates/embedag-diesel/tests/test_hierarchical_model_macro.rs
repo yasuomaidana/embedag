@@ -102,7 +102,8 @@ fn test_macro_generated_crud_operations() {
             name: "Electronics".into(),
         },
     ];
-    let batch_count = StandardCategory::insert_batch_sqlite(&batch, &mut conn).expect("batch insert");
+    let batch_count =
+        StandardCategory::insert_batch_sqlite(&batch, &mut conn).expect("batch insert");
     assert_eq!(batch_count, 2);
 
     // 3. Update
@@ -115,7 +116,8 @@ fn test_macro_generated_crud_operations() {
     assert_eq!(updated, 1);
 
     // 4. Delete
-    let deleted = StandardCategory::delete_by_id_sqlite(&mut conn, "dept_electronics").expect("delete");
+    let deleted =
+        StandardCategory::delete_by_id_sqlite(&mut conn, "dept_electronics").expect("delete");
     assert_eq!(deleted, 1);
 }
 

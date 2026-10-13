@@ -14,5 +14,5 @@ pub mod repository;
 pub use config::{OxiRsTdbConfig, StorageMode, SyncPolicy};
 pub use engine::OxiRsTdbEngine;
 pub use error::OxiRsStorageError;
-pub use mapping::{make_graph_name, make_node_iri, SchemaVocab};
+pub use mapping::{SchemaVocab, make_graph_name, make_node_iri};
 pub use oxirs_core::rdf_store::{OxirsQueryResults, QueryResults};

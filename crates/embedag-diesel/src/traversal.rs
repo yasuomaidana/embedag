@@ -151,6 +151,32 @@ impl RecursiveTraversalBuilder {
         crate::cte::CteHierarchyBuilder::fetch_descendants_sqlite(conn, &config, root_id, max_depth)
     }
 
+    /// Executes multi-hop descendant traversal on an SQLite connection with breadth limits per level.
+    #[cfg(feature = "sqlite")]
+    pub fn fetch_descendants_bounded_sqlite(
+        conn: &mut diesel::SqliteConnection,
+        root_id: &str,
+        max_depth: i32,
+        max_breadth: i32,
+    ) -> Result<Vec<crate::cte::HierarchyItem>, diesel::result::Error> {
+        let config = crate::cte::HierarchicalTableConfig::default_semantic()
+            .with_max_breadth_per_node(max_breadth);
+        crate::cte::CteHierarchyBuilder::fetch_descendants_sqlite(conn, &config, root_id, max_depth)
+    }
+
+    /// Executes multi-hop ancestor traversal on an SQLite connection with breadth limits per level.
+    #[cfg(feature = "sqlite")]
+    pub fn fetch_ancestors_bounded_sqlite(
+        conn: &mut diesel::SqliteConnection,
+        target_id: &str,
+        max_depth: i32,
+        max_breadth: i32,
+    ) -> Result<Vec<crate::cte::HierarchyItem>, diesel::result::Error> {
+        let config = crate::cte::HierarchicalTableConfig::default_semantic()
+            .with_max_breadth_per_node(max_breadth);
+        crate::cte::CteHierarchyBuilder::fetch_ancestors_sqlite(conn, &config, target_id, max_depth)
+    }
+
     /// Executes multi-hop ancestor traversal asynchronously on PostgreSQL using `diesel-cte-ext`.
     #[cfg(all(feature = "postgres-async", feature = "diesel-async"))]
     pub async fn fetch_ancestors_async(
@@ -159,7 +185,10 @@ impl RecursiveTraversalBuilder {
         max_depth: i32,
     ) -> Result<Vec<crate::cte::HierarchyItem>, diesel::result::Error> {
         let config = crate::cte::HierarchicalTableConfig::default_semantic();
-        crate::cte::CteHierarchyBuilder::fetch_ancestors_pg_async(conn, &config, target_id, max_depth).await
+        crate::cte::CteHierarchyBuilder::fetch_ancestors_pg_async(
+            conn, &config, target_id, max_depth,
+        )
+        .await
     }
 
     /// Executes multi-hop descendant traversal asynchronously on PostgreSQL using `diesel-cte-ext`.
@@ -170,6 +199,137 @@ impl RecursiveTraversalBuilder {
         max_depth: i32,
     ) -> Result<Vec<crate::cte::HierarchyItem>, diesel::result::Error> {
         let config = crate::cte::HierarchicalTableConfig::default_semantic();
-        crate::cte::CteHierarchyBuilder::fetch_descendants_pg_async(conn, &config, root_id, max_depth).await
+        crate::cte::CteHierarchyBuilder::fetch_descendants_pg_async(
+            conn, &config, root_id, max_depth,
+        )
+        .await
     }
+
+    /// Constructs Turso / libSQL recursive CTE SQL query for multi-hop ancestors with cycle guard.
+    pub fn turso_ancestor_query(target_id: Uuid, max_depth: i32) -> String {
+        format!(
+            "WITH RECURSIVE ancestor_tree(node_id, depth, visited_path) AS (
+                SELECT
+                    parent_id,
+                    1 AS depth,
+                    ',' || '{target_id}' || ',' || parent_id || ',' AS visited_path
+                FROM semantic_edges
+                WHERE child_id = '{target_id}'
+                UNION ALL
+                SELECT
+                    e.parent_id,
+                    t.depth + 1,
+                    t.visited_path || e.parent_id || ','
+                FROM semantic_edges e
+                JOIN ancestor_tree t ON e.child_id = t.node_id
+                WHERE t.depth < {max_depth}
+                  AND INSTR(t.visited_path, ',' || e.parent_id || ',') = 0
+            )
+            SELECT
+                t.node_id,
+                t.depth,
+                n.business_key,
+                n.name,
+                n.entity_level
+            FROM ancestor_tree t
+            JOIN semantic_nodes n ON n.id = t.node_id
+            ORDER BY t.depth ASC;"
+        )
+    }
+
+    /// Constructs Turso / libSQL recursive CTE SQL query for multi-hop descendants with cycle guard.
+    pub fn turso_descendant_query(root_id: Uuid, max_depth: i32) -> String {
+        format!(
+            "WITH RECURSIVE descendant_tree(node_id, depth, visited_path) AS (
+                SELECT
+                    child_id,
+                    1 AS depth,
+                    ',' || '{root_id}' || ',' || child_id || ',' AS visited_path
+                FROM semantic_edges
+                WHERE parent_id = '{root_id}'
+                UNION ALL
+                SELECT
+                    e.child_id,
+                    t.depth + 1,
+                    t.visited_path || e.child_id || ','
+                FROM semantic_edges e
+                JOIN descendant_tree t ON e.parent_id = t.node_id
+                WHERE t.depth < {max_depth}
+                  AND INSTR(t.visited_path, ',' || e.child_id || ',') = 0
+            )
+            SELECT
+                t.node_id,
+                t.depth,
+                n.business_key,
+                n.name,
+                n.entity_level
+            FROM descendant_tree t
+            JOIN semantic_nodes n ON n.id = t.node_id
+            ORDER BY t.depth ASC;"
+        )
+    }
+
+    /// Executes multi-hop ancestor traversal asynchronously on Turso / libSQL using .
+    #[cfg(feature = "turso-async")]
+    pub async fn fetch_ancestors_turso_async(
+        conn: &mut diesel_libsql::AsyncLibSqlConnection,
+        target_id: Uuid,
+        max_depth: i32,
+    ) -> Result<Vec<AncestorRow>, PersistenceError> {
+        let sql = Self::turso_ancestor_query(target_id, max_depth);
+        let rows: Vec<TursoTraversalRow> = diesel_async::RunQueryDsl::load(diesel::sql_query(sql), conn)
+            .await
+            .map_err(PersistenceError::Diesel)?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| AncestorRow {
+                node_id: Uuid::parse_str(&r.node_id).unwrap_or_default(),
+                depth: r.depth,
+                business_key: r.business_key,
+                name: r.name,
+                entity_level: r.entity_level,
+            })
+            .collect())
+    }
+
+    /// Executes multi-hop descendant traversal asynchronously on Turso / libSQL using .
+    #[cfg(feature = "turso-async")]
+    pub async fn fetch_descendants_turso_async(
+        conn: &mut diesel_libsql::AsyncLibSqlConnection,
+        root_id: Uuid,
+        max_depth: i32,
+    ) -> Result<Vec<DescendantRow>, PersistenceError> {
+        let sql = Self::turso_descendant_query(root_id, max_depth);
+        let rows: Vec<TursoTraversalRow> = diesel_async::RunQueryDsl::load(diesel::sql_query(sql), conn)
+            .await
+            .map_err(PersistenceError::Diesel)?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| DescendantRow {
+                node_id: Uuid::parse_str(&r.node_id).unwrap_or_default(),
+                depth: r.depth,
+                business_key: r.business_key,
+                name: r.name,
+                entity_level: r.entity_level,
+            })
+            .collect())
+    }
+}
+
+/// Raw query row mapping for Turso traversal queries.
+#[cfg(feature = "turso-async")]
+#[derive(Debug, Clone, diesel::QueryableByName)]
+pub struct TursoTraversalRow {
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    pub node_id: String,
+    #[diesel(sql_type = diesel::sql_types::Integer)]
+    pub depth: i32,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    pub business_key: String,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    pub name: String,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    pub entity_level: String,
 }

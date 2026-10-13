@@ -72,7 +72,8 @@ fn test_upsert_processor_custom_function_hook() {
     };
 
     let result = UpsertProcessor::execute_with_custom(&mut conn, &item, |c, it| {
-        c.logged_calls.push(format!("UPSERT {}:{}", it.code, it.value));
+        c.logged_calls
+            .push(format!("UPSERT {}:{}", it.code, it.value));
         1u64
     });
 
