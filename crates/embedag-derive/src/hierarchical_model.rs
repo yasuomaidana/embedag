@@ -88,22 +88,32 @@ pub fn derive_hierarchical_model_impl(input: DeriveInput) -> Result<TokenStream>
     let mut detected_id = None;
     let mut detected_parent = None;
     let mut detected_name = None;
+    let mut has_entity_level = false;
+
+    let mut field_names = Vec::new();
+    let mut field_idents = Vec::new();
+    let mut field_sql_types = Vec::new();
 
     for field in fields {
         let field_ident = match &field.ident {
-            Some(i) => i.to_string(),
+            Some(i) => i,
             None => continue,
         };
+        let field_name = field_ident.to_string();
+
+        if field_name == "entity_level" {
+            has_entity_level = true;
+        }
 
         for attr in &field.attrs {
             if attr.path().is_ident("hierarchical") {
                 let _ = attr.parse_nested_meta(|meta| {
                     if meta.path.is_ident("id") {
-                        detected_id = Some(field_ident.clone());
+                        detected_id = Some(field_name.clone());
                     } else if meta.path.is_ident("parent") {
-                        detected_parent = Some(field_ident.clone());
+                        detected_parent = Some(field_name.clone());
                     } else if meta.path.is_ident("name") {
-                        detected_name = Some(field_ident.clone());
+                        detected_name = Some(field_name.clone());
                     }
                     Ok(())
                 });
@@ -111,24 +121,29 @@ pub fn derive_hierarchical_model_impl(input: DeriveInput) -> Result<TokenStream>
         }
 
         if detected_id.is_none()
-            && (field_ident == "id"
-                || (field_ident.ends_with("_id") && !field_ident.contains("parent")))
+            && (field_name == "id"
+                || (field_name.ends_with("_id") && !field_name.contains("parent")))
         {
-            detected_id = Some(field_ident.clone());
+            detected_id = Some(field_name.clone());
         }
         if detected_parent.is_none()
-            && (field_ident == "parent_id" || field_ident.contains("parent"))
+            && (field_name == "parent_id" || field_name.contains("parent"))
         {
-            detected_parent = Some(field_ident.clone());
+            detected_parent = Some(field_name.clone());
         }
         if detected_name.is_none()
-            && (field_ident == "name"
-                || field_ident == "title"
-                || field_ident == "label"
-                || field_ident.ends_with("_name"))
+            && (field_name == "name"
+                || field_name == "title"
+                || field_name == "label"
+                || field_name.ends_with("_name"))
         {
-            detected_name = Some(field_ident.clone());
+            detected_name = Some(field_name.clone());
         }
+
+        let sql_type = map_syn_type_to_diesel_sql_type(&field.ty);
+        field_names.push(field_name);
+        field_idents.push(field_ident);
+        field_sql_types.push(sql_type);
     }
 
     let final_id_col = id_col.or(detected_id).unwrap_or_else(|| "id".to_string());
@@ -139,10 +154,99 @@ pub fn derive_hierarchical_model_impl(input: DeriveInput) -> Result<TokenStream>
         .or(detected_name)
         .unwrap_or_else(|| "name".to_string());
 
+    let id_ident = Ident::new(&final_id_col, proc_macro2::Span::call_site());
+    let parent_ident = Ident::new(&final_parent_col, proc_macro2::Span::call_site());
+    let name_ident = Ident::new(&final_name_col, proc_macro2::Span::call_site());
+
+    let is_parent_option = fields
+        .iter()
+        .find(|f| {
+            f.ident
+                .as_ref()
+                .map(|i| i == &parent_ident)
+                .unwrap_or(false)
+        })
+        .map(|f| match &f.ty {
+            syn::Type::Path(p) => p
+                .path
+                .segments
+                .last()
+                .map(|s| s.ident == "Option")
+                .unwrap_or(false),
+            _ => false,
+        })
+        .unwrap_or(true);
+
+    let parent_extract = if is_parent_option {
+        quote! { self.#parent_ident.clone() }
+    } else {
+        quote! { Some(self.#parent_ident.to_string()) }
+    };
+
+    let entity_level_extract = if has_entity_level {
+        quote! { &self.entity_level }
+    } else {
+        quote! { Self::table_name() }
+    };
+
     let table_desc_tokens = match &table_description {
         Some(desc) => quote! { Some(#desc) },
         None => quote! { None },
     };
+
+    // Build SQL CRUD statements
+    let cols_joined = field_names.join(", ");
+    let sqlite_placeholders = vec!["?"; field_names.len()].join(", ");
+    let sqlite_insert_sql = format!(
+        "INSERT INTO {table_name} ({cols_joined}) VALUES ({sqlite_placeholders});"
+    );
+
+    let pg_placeholders: Vec<String> = (1..=field_names.len())
+        .map(|i| format!("${i}"))
+        .collect();
+    let pg_placeholders_joined = pg_placeholders.join(", ");
+    let pg_insert_sql = format!(
+        "INSERT INTO {table_name} ({cols_joined}) VALUES ({pg_placeholders_joined});"
+    );
+
+    let sqlite_delete_sql = format!("DELETE FROM {table_name} WHERE {final_id_col} = ?;");
+    let pg_delete_sql = format!("DELETE FROM {table_name} WHERE {final_id_col} = $1;");
+
+    let non_id_indices: Vec<usize> = field_names
+        .iter()
+        .enumerate()
+        .filter(|(_, name)| *name != &final_id_col)
+        .map(|(i, _)| i)
+        .collect();
+
+    let non_id_idents: Vec<&Ident> = non_id_indices
+        .iter()
+        .map(|&i| field_idents[i])
+        .collect();
+    let non_id_sql_types: Vec<&TokenStream> = non_id_indices
+        .iter()
+        .map(|&i| &field_sql_types[i])
+        .collect();
+
+    let sqlite_update_sets = non_id_indices
+        .iter()
+        .map(|&i| format!("{} = ?", field_names[i]))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sqlite_update_sql = format!(
+        "UPDATE {table_name} SET {sqlite_update_sets} WHERE {final_id_col} = ?;"
+    );
+
+    let pg_update_sets = non_id_indices
+        .iter()
+        .enumerate()
+        .map(|(seq, &i)| format!("{} = ${}", field_names[i], seq + 1))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let pg_update_sql = format!(
+        "UPDATE {table_name} SET {pg_update_sets} WHERE {final_id_col} = ${};",
+        non_id_indices.len() + 1
+    );
 
     let expanded = quote! {
         impl embedag_diesel::cte::HierarchicalModel for #struct_name {
@@ -167,6 +271,38 @@ pub fn derive_hierarchical_model_impl(input: DeriveInput) -> Result<TokenStream>
             }
         }
 
+        impl embedag_diesel::cte::HierarchicalNode for #struct_name {
+            type Id = String;
+
+            fn node_id(&self) -> Self::Id {
+                self.#id_ident.clone()
+            }
+
+            fn parent_id(&self) -> Option<Self::Id> {
+                #parent_extract
+            }
+
+            fn node_name(&self) -> &str {
+                &self.#name_ident
+            }
+        }
+
+        impl embedag_core::traits::NodePayload for #struct_name {
+            type Key = String;
+
+            fn key(&self) -> &Self::Key {
+                &self.#id_ident
+            }
+
+            fn name(&self) -> &str {
+                &self.#name_ident
+            }
+
+            fn entity_level(&self) -> &str {
+                #entity_level_extract
+            }
+        }
+
         impl #struct_name {
             /// Returns the [`embedag_diesel::cte::HierarchicalTableConfig`] auto-derived by macro.
             pub fn table_config() -> embedag_diesel::cte::HierarchicalTableConfig {
@@ -177,10 +313,137 @@ pub fn derive_hierarchical_model_impl(input: DeriveInput) -> Result<TokenStream>
             pub fn table_context() -> String {
                 <Self as embedag_diesel::cte::HierarchicalModel>::table_context()
             }
+
+            /// Type-safe Diesel parameterized insert for SQLite.
+            pub fn insert_sqlite(&self, conn: &mut diesel::SqliteConnection) -> diesel::QueryResult<usize> {
+                let query = diesel::sql_query(#sqlite_insert_sql)
+                    #( .bind::<#field_sql_types, _>(&self.#field_idents) )*;
+                diesel::RunQueryDsl::execute(query, conn)
+            }
+
+            /// Type-safe Diesel batch insert for SQLite within a transaction.
+            pub fn insert_batch_sqlite(records: &[Self], conn: &mut diesel::SqliteConnection) -> diesel::QueryResult<usize> {
+                use diesel::Connection;
+                conn.transaction(|conn| {
+                    let mut count = 0;
+                    for rec in records {
+                        count += rec.insert_sqlite(conn)?;
+                    }
+                    Ok(count)
+                })
+            }
+
+            /// Type-safe Diesel parameterized delete by ID for SQLite.
+            pub fn delete_by_id_sqlite(conn: &mut diesel::SqliteConnection, id: &str) -> diesel::QueryResult<usize> {
+                let query = diesel::sql_query(#sqlite_delete_sql)
+                    .bind::<diesel::sql_types::Text, _>(id);
+                diesel::RunQueryDsl::execute(query, conn)
+            }
+
+            /// Type-safe Diesel parameterized update by ID for SQLite.
+            pub fn update_sqlite(&self, conn: &mut diesel::SqliteConnection) -> diesel::QueryResult<usize> {
+                let query = diesel::sql_query(#sqlite_update_sql)
+                    #( .bind::<#non_id_sql_types, _>(&self.#non_id_idents) )*
+                    .bind::<diesel::sql_types::Text, _>(&self.#id_ident);
+                diesel::RunQueryDsl::execute(query, conn)
+            }
+
+            /// Type-safe Diesel parameterized insert for PostgreSQL.
+            pub fn insert_pg(&self, conn: &mut diesel::pg::PgConnection) -> diesel::QueryResult<usize> {
+                let query = diesel::sql_query(#pg_insert_sql)
+                    #( .bind::<#field_sql_types, _>(&self.#field_idents) )*;
+                diesel::RunQueryDsl::execute(query, conn)
+            }
+
+            /// Type-safe Diesel batch insert for PostgreSQL within a transaction.
+            pub fn insert_batch_pg(records: &[Self], conn: &mut diesel::pg::PgConnection) -> diesel::QueryResult<usize> {
+                use diesel::Connection;
+                conn.transaction(|conn| {
+                    let mut count = 0;
+                    for rec in records {
+                        count += rec.insert_pg(conn)?;
+                    }
+                    Ok(count)
+                })
+            }
+
+            /// Type-safe Diesel parameterized delete by ID for PostgreSQL.
+            pub fn delete_by_id_pg(conn: &mut diesel::pg::PgConnection, id: &str) -> diesel::QueryResult<usize> {
+                let query = diesel::sql_query(#pg_delete_sql)
+                    .bind::<diesel::sql_types::Text, _>(id);
+                diesel::RunQueryDsl::execute(query, conn)
+            }
+
+            /// Type-safe Diesel parameterized update by ID for PostgreSQL.
+            pub fn update_pg(&self, conn: &mut diesel::pg::PgConnection) -> diesel::QueryResult<usize> {
+                let query = diesel::sql_query(#pg_update_sql)
+                    #( .bind::<#non_id_sql_types, _>(&self.#non_id_idents) )*
+                    .bind::<diesel::sql_types::Text, _>(&self.#id_ident);
+                diesel::RunQueryDsl::execute(query, conn)
+            }
+
+            /// Type-safe Diesel async parameterized insert for PostgreSQL via `diesel-async`.
+            pub async fn insert_pg_async(&self, conn: &mut diesel_async::AsyncPgConnection) -> diesel::QueryResult<usize> {
+                let query = diesel::sql_query(#pg_insert_sql)
+                    #( .bind::<#field_sql_types, _>(&self.#field_idents) )*;
+                diesel_async::RunQueryDsl::execute(query, conn).await
+            }
+
+            /// Type-safe Diesel async batch insert for PostgreSQL via `diesel-async`.
+            pub async fn insert_batch_pg_async(records: &[Self], conn: &mut diesel_async::AsyncPgConnection) -> diesel::QueryResult<usize> {
+                let mut count = 0;
+                for rec in records {
+                    count += rec.insert_pg_async(&mut *conn).await?;
+                }
+                Ok(count)
+            }
+
+            /// Type-safe Diesel async parameterized delete by ID for PostgreSQL via `diesel-async`.
+            pub async fn delete_by_id_pg_async(conn: &mut diesel_async::AsyncPgConnection, id: &str) -> diesel::QueryResult<usize> {
+                let query = diesel::sql_query(#pg_delete_sql)
+                    .bind::<diesel::sql_types::Text, _>(id);
+                diesel_async::RunQueryDsl::execute(query, conn).await
+            }
+
+            /// Type-safe Diesel async parameterized update by ID for PostgreSQL via `diesel-async`.
+            pub async fn update_pg_async(&self, conn: &mut diesel_async::AsyncPgConnection) -> diesel::QueryResult<usize> {
+                let query = diesel::sql_query(#pg_update_sql)
+                    #( .bind::<#non_id_sql_types, _>(&self.#non_id_idents) )*
+                    .bind::<diesel::sql_types::Text, _>(&self.#id_ident);
+                diesel_async::RunQueryDsl::execute(query, conn).await
+            }
         }
     };
 
     Ok(expanded)
+}
+
+// TODO: Review and ensure all types are mapped correctly.
+fn map_syn_type_to_diesel_sql_type(ty: &syn::Type) -> TokenStream {
+    let type_str = quote!(#ty).to_string().replace(' ', "");
+    if type_str == "String" || type_str == "&str" {
+        quote!(diesel::sql_types::Text)
+    } else if type_str.starts_with("Option<String>") || type_str.starts_with("Option<&str>") {
+        quote!(diesel::sql_types::Nullable<diesel::sql_types::Text>)
+    } else if type_str == "i32" {
+        quote!(diesel::sql_types::Integer)
+    } else if type_str.starts_with("Option<i32>") {
+        quote!(diesel::sql_types::Nullable<diesel::sql_types::Integer>)
+    } else if type_str == "i64" {
+        quote!(diesel::sql_types::BigInt)
+    } else if type_str.starts_with("Option<i64>") {
+        quote!(diesel::sql_types::Nullable<diesel::sql_types::BigInt>)
+    } else if type_str == "f64" {
+        quote!(diesel::sql_types::Double)
+    } else if type_str.starts_with("Option<f64>") {
+        quote!(diesel::sql_types::Nullable<diesel::sql_types::Double>)
+    } else if type_str == "bool" {
+        quote!(diesel::sql_types::Bool)
+    } else if type_str.starts_with("Option<bool>") {
+        quote!(diesel::sql_types::Nullable<diesel::sql_types::Bool>)
+    } else {
+        quote!(diesel::sql_types::Text)
+    }
 }
 
 fn to_snake_case(s: &str) -> String {
