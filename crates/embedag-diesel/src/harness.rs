@@ -116,7 +116,7 @@ impl TursoHarness {
     #[cfg(feature = "turso-async")]
     pub async fn connect_async(
         &self,
-    ) -> Result<diesel_libsql::AsyncLibSqlConnection, crate::migrations::MigrationError> {
+    ) -> Result<crate::migrations::AsyncLibSqlConnection, crate::migrations::MigrationError> {
         crate::migrations::establish_turso_async(&self.mode).await
     }
 }

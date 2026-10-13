@@ -621,7 +621,7 @@ impl CteHierarchyBuilder {
     /// Traverses ancestors of `target_id` up to `max_depth` asynchronously on Turso / libSQL via `diesel-async`.
     #[cfg(feature = "turso-async")]
     pub async fn fetch_ancestors_turso_async(
-        conn: &mut diesel_libsql::AsyncLibSqlConnection,
+        conn: &mut crate::migrations::AsyncLibSqlConnection,
         config: &HierarchicalTableConfig,
         target_id: &str,
         max_depth: i32,
@@ -659,7 +659,7 @@ impl CteHierarchyBuilder {
     /// Traverses descendants of `root_id` down to `max_depth` asynchronously on Turso / libSQL via `diesel-async`.
     #[cfg(feature = "turso-async")]
     pub async fn fetch_descendants_turso_async(
-        conn: &mut diesel_libsql::AsyncLibSqlConnection,
+        conn: &mut crate::migrations::AsyncLibSqlConnection,
         config: &HierarchicalTableConfig,
         root_id: &str,
         max_depth: i32,
@@ -717,7 +717,7 @@ impl CteHierarchyBuilder {
     /// Type-safe model ancestor traversal for Turso / libSQL async.
     #[cfg(feature = "turso-async")]
     pub async fn fetch_model_ancestors_turso_async<M: HierarchicalModel>(
-        conn: &mut diesel_libsql::AsyncLibSqlConnection,
+        conn: &mut crate::migrations::AsyncLibSqlConnection,
         target_id: &str,
         max_depth: i32,
     ) -> diesel::QueryResult<Vec<HierarchyItem>> {
@@ -727,7 +727,7 @@ impl CteHierarchyBuilder {
     /// Type-safe model descendant traversal for Turso / libSQL async.
     #[cfg(feature = "turso-async")]
     pub async fn fetch_model_descendants_turso_async<M: HierarchicalModel>(
-        conn: &mut diesel_libsql::AsyncLibSqlConnection,
+        conn: &mut crate::migrations::AsyncLibSqlConnection,
         root_id: &str,
         max_depth: i32,
     ) -> diesel::QueryResult<Vec<HierarchyItem>> {

@@ -158,50 +158,24 @@ pub fn run_turso_migration_sync(
     Ok(())
 }
 
+/// Async connection wrapper for Turso / libSQL using `diesel-async`'s `SyncConnectionWrapper`.
+#[cfg(feature = "turso-async")]
+pub type AsyncLibSqlConnection =
+    diesel_async::sync_connection_wrapper::SyncConnectionWrapper<diesel_libsql::LibSqlConnection>;
+
 /// Establishes an asynchronous connection to Turso / libSQL using `diesel-async`.
 #[cfg(feature = "turso-async")]
 pub async fn establish_turso_async(
     mode: &TursoConnectionMode,
-) -> Result<diesel_libsql::AsyncLibSqlConnection, MigrationError> {
-    use diesel_async::AsyncConnection;
-    let conn = match mode {
-        TursoConnectionMode::InMemory => {
-            diesel_libsql::AsyncLibSqlConnection::establish(":memory:").await?
-        }
-        TursoConnectionMode::LocalFile(p) => {
-            diesel_libsql::AsyncLibSqlConnection::establish(&p.to_string_lossy()).await?
-        }
-        TursoConnectionMode::Remote { url, auth_token } => {
-            let conn_url = if url.contains("authToken=") {
-                url.clone()
-            } else if url.contains('?') {
-                format!("{url}&authToken={auth_token}")
-            } else {
-                format!("{url}?authToken={auth_token}")
-            };
-            diesel_libsql::AsyncLibSqlConnection::establish(&conn_url).await?
-        }
-        TursoConnectionMode::Replica {
-            local_path,
-            remote_url,
-            auth_token,
-        } => {
-            use diesel_libsql::AsyncLibSqlConnectionExt;
-            diesel_libsql::AsyncLibSqlConnection::establish_replica(
-                &local_path.to_string_lossy(),
-                remote_url,
-                auth_token,
-            )
-            .await?
-        }
-    };
-    Ok(conn)
+) -> Result<AsyncLibSqlConnection, MigrationError> {
+    let sync_conn = establish_turso_sync(mode)?;
+    Ok(diesel_async::sync_connection_wrapper::SyncConnectionWrapper::new(sync_conn))
 }
 
 /// Initializes Turso / libSQL database prerequisites asynchronously.
 #[cfg(feature = "turso-async")]
 pub async fn setup_turso_async(
-    conn: &mut diesel_libsql::AsyncLibSqlConnection,
+    conn: &mut AsyncLibSqlConnection,
 ) -> Result<(), MigrationError> {
     use diesel_async::SimpleAsyncConnection;
     conn.batch_execute(TURSO_SETUP).await?;
@@ -211,7 +185,7 @@ pub async fn setup_turso_async(
 /// Executes a user-defined SQL migration on Turso / libSQL asynchronously.
 #[cfg(feature = "turso-async")]
 pub async fn run_turso_migration_async(
-    conn: &mut diesel_libsql::AsyncLibSqlConnection,
+    conn: &mut AsyncLibSqlConnection,
     migration_sql: &str,
 ) -> Result<(), MigrationError> {
     use diesel_async::SimpleAsyncConnection;

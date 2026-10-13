@@ -52,7 +52,7 @@ fn test_turso_in_memory_sync_migration() {
     assert!(insert_res.is_ok(), "Sync insert must succeed on Turso in-memory instance");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_turso_in_memory_async_migration() {
     let harness = TursoHarness::in_memory();
     let mut conn = harness.connect_async().await.expect("connect async");
@@ -68,7 +68,7 @@ async fn test_turso_in_memory_async_migration() {
     assert!(insert_res.is_ok(), "Async insert must succeed on Turso in-memory instance");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_turso_ephemeral_file_persistence() {
     let harness = TursoHarness::ephemeral_file().expect("create ephemeral file harness");
     let mut conn = harness.connect_async().await.expect("connect async to file");
@@ -112,7 +112,7 @@ fn test_turso_remote_connection_mode_handling() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_turso_batch_upserts_and_conflict_handling() {
     let harness = TursoHarness::in_memory();
     let mut conn = harness.connect_async().await.expect("connect async");
@@ -180,7 +180,7 @@ async fn test_turso_batch_upserts_and_conflict_handling() {
     assert_eq!(edge_updated, 1, "Must resolve edge conflict by updating confidence");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_turso_mutation_lifecycle() {
     let harness = TursoHarness::in_memory();
     let mut conn = harness.connect_async().await.expect("connect async");
@@ -254,7 +254,7 @@ async fn test_turso_mutation_lifecycle() {
         .expect("retarget edge");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_turso_savepoint_isolation_and_rollback() {
     let harness = TursoHarness::in_memory();
     let mut conn = harness.connect_async().await.expect("connect async");
@@ -306,7 +306,7 @@ async fn test_turso_savepoint_isolation_and_rollback() {
     assert!(ping_res.is_ok(), "Connection must remain functional after savepoint rollback");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_turso_recursive_cte_traversals() {
     let harness = TursoHarness::in_memory();
     let mut conn = harness.connect_async().await.expect("connect async");
@@ -406,7 +406,7 @@ async fn test_turso_recursive_cte_traversals() {
     assert_eq!(descendants[2].business_key, "USER-ENG");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_turso_recursive_cte_cycle_guardrail() {
     let harness = TursoHarness::in_memory();
     let mut conn = harness.connect_async().await.expect("connect async");
@@ -482,7 +482,7 @@ async fn test_turso_recursive_cte_cycle_guardrail() {
     assert_eq!(ancestors[1].business_key, "CYC-C");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_turso_custom_adjacency_table_cte_traversal() {
     let harness = TursoHarness::in_memory();
     let mut conn = harness.connect_async().await.expect("connect async");

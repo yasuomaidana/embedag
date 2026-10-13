@@ -6,6 +6,8 @@ members = [
     "crates/embedag-diesel",
     "crates/embedag-rag",
     "crates/embedag-oxirs",
+    "crates/embedag-surrealdb",
+    "crates/embedag-neo4j",
     "crates/embedag",
     "crates/embedag-example-receipts",
 ]
@@ -26,6 +28,9 @@ embedag-llm = { path = "crates/embedag-llm", version = "0.1.0" }
 embedag-diesel = { path = "crates/embedag-diesel", version = "0.1.0" }
 embedag-rag = { path = "crates/embedag-rag", version = "0.1.0" }
 embedag-oxirs = { path = "crates/embedag-oxirs", version = "0.1.0" }
+embedag-surrealdb = { path = "crates/embedag-surrealdb", version = "0.1.0" }
+embedag-neo4j = { path = "crates/embedag-neo4j", version = "0.1.0" }
+diesel-libsql = { version = "0.1.4", default-features = false }
 
 # Core domain
 petgraph = { version = "0.8", default-features = false, features = ["std", "graphmap", "stable_graph"] }
@@ -46,13 +51,18 @@ oxillama = { version = "0.1.4", default-features = false }
 oxirag = "0.1.1"
 oxirs-core = "0.4.1"
 
+# Native Graph & Multi-Model Backends
+surrealdb = { version = "3.3", default-features = false, features = ["kv-mem", "protocol-ws", "rustls"] }
+neo4rs = { version = "0.8.0" }
+
 # Relational Persistence
 diesel = { version = "2.3", features = ["postgres_backend", "sqlite", "returning_clauses_for_sqlite_3_35", "chrono", "uuid", "serde_json"] }
-diesel-async = { version = "0.9", features = ["postgres", "tokio-postgres", "deadpool"] }
+diesel-async = { version = "0.9", features = ["postgres", "tokio-postgres", "deadpool", "sync-connection-wrapper"] }
 diesel-cte-ext = { version = "0.3.0", default-features = false }
 tokio-postgres = { version = "0.7", features = ["with-uuid-1", "with-serde_json-1", "with-chrono-0_4"] }
 libsqlite3-sys = { version = "0.30", features = ["bundled"] }
 pgvector = { version = "0.4", features = ["diesel", "postgres"] }
+libsql = { version = "0.9" }
 
 # Procedural macros
 syn = { version = "2", features = ["full", "extra-traits"] }
@@ -67,4 +77,4 @@ proptest = "1"
 jsonschema = "0.58"
 tempfile = "3"
 testcontainers = "0.27"
-testcontainers-modules = { version = "0.15", features = ["postgres"] }
+testcontainers-modules = { version = "0.15", features = ["postgres", "surrealdb", "neo4j"] }

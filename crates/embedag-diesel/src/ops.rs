@@ -436,13 +436,13 @@ pub async fn apply_mutation_lifecycle(
 /// Automatically rolls back to the savepoint on error without aborting the enclosing outer transaction.
 #[cfg(feature = "turso-async")]
 pub async fn execute_with_savepoint_turso<F, T>(
-    conn: &mut diesel_libsql::AsyncLibSqlConnection,
+    conn: &mut crate::migrations::AsyncLibSqlConnection,
     savepoint_name: &str,
     operation: F,
 ) -> Result<T, PersistenceError>
 where
     F: for<'a> FnOnce(
-            &'a mut diesel_libsql::AsyncLibSqlConnection,
+            &'a mut crate::migrations::AsyncLibSqlConnection,
         ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<T, PersistenceError>> + Send + 'a>>
         + Send,
     T: Send,
@@ -471,7 +471,7 @@ where
 /// Performs a batch upsert of node records to Turso / libSQL via `diesel-async`.
 #[cfg(feature = "turso-async")]
 pub async fn batch_upsert_nodes_turso(
-    conn: &mut diesel_libsql::AsyncLibSqlConnection,
+    conn: &mut crate::migrations::AsyncLibSqlConnection,
     nodes: &[NodeUpsertRecord],
 ) -> Result<u64, PersistenceError> {
     use diesel_async::SimpleAsyncConnection;
@@ -506,7 +506,7 @@ pub async fn batch_upsert_nodes_turso(
 /// Performs a batch upsert of edge records to Turso / libSQL via `diesel-async`.
 #[cfg(feature = "turso-async")]
 pub async fn batch_upsert_edges_turso(
-    conn: &mut diesel_libsql::AsyncLibSqlConnection,
+    conn: &mut crate::migrations::AsyncLibSqlConnection,
     edges: &[EdgeUpsertRecord],
 ) -> Result<u64, PersistenceError> {
     use diesel_async::SimpleAsyncConnection;
@@ -541,7 +541,7 @@ pub async fn batch_upsert_edges_turso(
 /// Executes a dynamic graph mutation lifecycle batch atomically on Turso / libSQL via `diesel-async`.
 #[cfg(feature = "turso-async")]
 pub async fn apply_mutation_lifecycle_turso(
-    conn: &mut diesel_libsql::AsyncLibSqlConnection,
+    conn: &mut crate::migrations::AsyncLibSqlConnection,
     mutations: &[MutationDirectiveRecord],
 ) -> Result<(), PersistenceError> {
     use diesel_async::SimpleAsyncConnection;

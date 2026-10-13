@@ -20,7 +20,7 @@ pub use migrations::{
     MigrationError, POSTGRES_SETUP, SQLITE_SETUP, TURSO_SETUP, TursoConnectionMode,
 };
 #[cfg(feature = "turso-async")]
-pub use migrations::{establish_turso_async, run_turso_migration_async, setup_turso_async};
+pub use migrations::{establish_turso_async, run_turso_migration_async, setup_turso_async, AsyncLibSqlConnection};
 #[cfg(feature = "turso")]
 pub use migrations::{establish_turso_sync, run_turso_migration_sync, setup_turso_sync};
 #[cfg(feature = "postgres-async")]

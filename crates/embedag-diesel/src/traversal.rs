@@ -272,7 +272,7 @@ impl RecursiveTraversalBuilder {
     /// Executes multi-hop ancestor traversal asynchronously on Turso / libSQL using .
     #[cfg(feature = "turso-async")]
     pub async fn fetch_ancestors_turso_async(
-        conn: &mut diesel_libsql::AsyncLibSqlConnection,
+        conn: &mut crate::migrations::AsyncLibSqlConnection,
         target_id: Uuid,
         max_depth: i32,
     ) -> Result<Vec<AncestorRow>, PersistenceError> {
@@ -296,7 +296,7 @@ impl RecursiveTraversalBuilder {
     /// Executes multi-hop descendant traversal asynchronously on Turso / libSQL using .
     #[cfg(feature = "turso-async")]
     pub async fn fetch_descendants_turso_async(
-        conn: &mut diesel_libsql::AsyncLibSqlConnection,
+        conn: &mut crate::migrations::AsyncLibSqlConnection,
         root_id: Uuid,
         max_depth: i32,
     ) -> Result<Vec<DescendantRow>, PersistenceError> {

@@ -11,7 +11,7 @@ default = ["postgres-async", "sqlite", "test-harness"]
 postgres-async = ["diesel-async", "pgvector", "tokio-postgres", "diesel-cte-ext/postgres", "diesel-cte-ext/async"]
 sqlite = ["libsqlite3-sys", "diesel-cte-ext/sqlite"]
 turso = ["diesel-libsql", "libsql", "tempfile"]
-turso-async = ["turso", "diesel-async"]
+turso-async = ["turso", "diesel-async", "diesel-libsql/async"]
 test-harness = ["testcontainers"]
 
 [dependencies]
@@ -23,7 +23,7 @@ diesel-cte-ext = { workspace = true }
 tokio-postgres = { workspace = true, optional = true }
 libsqlite3-sys = { workspace = true, optional = true }
 pgvector = { workspace = true, optional = true }
-diesel-libsql = { workspace = true, optional = true, features = ["async"] }
+diesel-libsql = { workspace = true, optional = true }
 libsql = { workspace = true, optional = true }
 tempfile = { workspace = true, optional = true }
 testcontainers = { workspace = true, optional = true }
