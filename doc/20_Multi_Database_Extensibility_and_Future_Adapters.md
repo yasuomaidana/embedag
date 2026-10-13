@@ -107,3 +107,66 @@ This guarantees zero architectural drift and unified quality assurance across al
 2. **Topological Community Detection**: Louvain and Leiden community detection algorithms for clustering related subgraphs.
 3. **Bitemporal Auditing**: Track `system_time` vs `valid_time` on all node and edge mutations.
 4. **Declarative Schema Migrations**: Automated migration utilities for upgrading entity levels and property schemas.
+
+---
+
+## 5. Delivered Implementation: Native OxiRS TDB2 Persistent Storage Engine (`embedag-oxirs`) (Ticket 7.3.1)
+
+### 5.1 Architectural Assessment & Technical Rationale
+The implementation of `embedag-oxirs` delivers native, pure-Rust Semantic Web and RDF-Star persistence directly inside the `embedag` workspace. It fulfills Ticket 7.3.1 and provides immediate advantages over relational-only storage:
+
+1. **Zero External Daemons / Zero Docker Dependency:**
+   - Persistence occurs directly on local filesystem paths via line-atomic N-Quads append logging (`data.nq`) with explicit fsync durability policies (`SyncPolicy::EveryN` vs `SyncPolicy::OnFlush`).
+2. **Direct Graph Knowledge Model:**
+   - Completely eliminates SQL join tables and impedance mismatches. Entities, hierarchical edges, confidence scores, and metadata map natively to W3C RDF subjects, predicates, objects, and quads.
+3. **Sub-Second Cold Starts via Memory-Mapped Snapshots:**
+   - High-performance frozen snapshots (`snapshot.oxsnap`) allow knowledge graphs to be loaded via `mmap` in sub-milliseconds without parsing N-Quads line-by-line or rebuilding BTree indexes on every startup.
+4. **SPARQL 1.1/1.2 Query & Graph-RAG Grounding:**
+   - Persisted graphs can be traversed via SPARQL queries (`query_sparql`) or pattern queries (`find_quads`), directly empowering `oxirag` Layer 4 retrieval in both `embedag` and `docula`.
+
+```mermaid
+flowchart TD
+    subgraph Core ["embedag-core"]
+        MemDag["MemoryDag<T>"]
+        RepoPort["GraphRepository<T> (Port Trait)"]
+    end
+
+    subgraph OxiRSCrate ["embedag-oxirs (Native Storage Engine)"]
+        Config["OxiRsTdbConfig<br/>(base_iri, schema_ns, SyncPolicy)"]
+        Engine["OxiRsTdbEngine<br/>(Arc<RdfStore>)"]
+        Vocab["SchemaVocab & Mapping<br/>(node_to_quads, edge_to_quads)"]
+        RepoImpl["GraphRepository Impl<br/>(ReadOnly, Transactional, VectorSearch)"]
+    end
+
+    subgraph DurableStorage ["Persistent On-Disk Assets"]
+        AppendLog["data.nq<br/>(Crash-Safe Line-Atomic Append Log)"]
+        Snapshot["snapshot.oxsnap<br/>(Frozen Mmap Instant Cold Start)"]
+        SparqlExec["SPARQL 1.1/1.2 Query Executor"]
+    end
+
+    subgraph CrossWorkspaceConsumer ["Cross-Workspace Consumer: docula"]
+        DoculaRAG["docula-rag (EmbedagGraphRetriever)"]
+        DocPipeline["DoculaPipeline (detectable RAG context)"]
+    end
+
+    MemDag -->|export_dag| Engine
+    Engine -->|load_dag| MemDag
+    Engine --> Config
+    Engine --> Vocab
+    Engine --> RepoImpl
+    RepoPort <|.. RepoImpl
+
+    Engine --> AppendLog
+    Engine --> Snapshot
+    Engine --> SparqlExec
+
+    DoculaRAG --> Engine
+    DoculaRAG --> DocPipeline
+```
+
+### 5.2 Implemented Public APIs & Capabilities
+- **Engine Core**: [`OxiRsTdbEngine`](file:///Users/yasuomaidana/RustRoverProjects/embedag/crates/embedag-oxirs/src/engine.rs) wrapping `Arc<RdfStore>`, supporting `open`, `open_persistent`, and `in_memory`.
+- **Repository Compliance**: Full implementation of [`ReadOnlyGraphRepository<T>`](file:///Users/yasuomaidana/RustRoverProjects/embedag/crates/embedag-core/src/traits.rs#L121), [`TransactionalGraphRepository<T>`](file:///Users/yasuomaidana/RustRoverProjects/embedag/crates/embedag-core/src/traits.rs#L145), and [`VectorSearchRepository<T>`](file:///Users/yasuomaidana/RustRoverProjects/embedag/crates/embedag-core/src/traits.rs#L134).
+- **Snapshot Accelerator**: `save_snapshot` and `build_snapshot` for baking frozen `snapshot.oxsnap` files.
+- **Reference Example**: [`examples/oxirs_persistent_dag.rs`](file:///Users/yasuomaidana/RustRoverProjects/embedag/crates/embedag-oxirs/examples/oxirs_persistent_dag.rs) demonstrating healthcare ontology persistence and SPARQL extraction.
+

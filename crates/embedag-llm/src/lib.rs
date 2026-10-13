@@ -15,11 +15,12 @@ pub use delta_synthesizer::{
     IncomingItem, ScalarRatioRule, SemanticDeltaSummary, SemanticDeltaSynthesizer,
 };
 pub use diff::{ChangesetDiffEngine, GraphDiff};
+#[allow(deprecated)]
 pub use extractor::{
-    DEFAULT_ENTITY_KEYS, EntityExtractor, EntityExtractorConfig,
     extract_entity_text_from_value, extract_incoming_entity_text,
     extract_incoming_entity_text_with_config, extract_incoming_entity_text_with_keys,
-    is_heuristic_entity_key,
+    is_heuristic_entity_key, EntityExtractor, EntityExtractorConfig, EntityProperties,
+    DEFAULT_ENTITY_KEYS,
 };
 pub use gbnf::{compile_schema_to_gbnf, dereference_schema, GbnfError, PushdownAutomaton};
 pub use prompt::{PromptError, PromptFormatter, ProvenanceNotes};

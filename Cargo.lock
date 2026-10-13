@@ -1567,6 +1567,7 @@ dependencies = [
  "embedag-derive",
  "embedag-diesel",
  "embedag-llm",
+ "embedag-oxirs",
  "embedag-rag",
  "h3o",
  "serde",
@@ -1664,6 +1665,24 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
+]
+
+[[package]]
+name = "embedag-oxirs"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "embedag-core",
+ "oxirs-core",
+ "parking_lot",
+ "petgraph",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

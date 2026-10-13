@@ -8,12 +8,13 @@ repository.workspace = true
 
 [features]
 default = ["full"]
-full = ["core", "derive", "llm", "diesel", "rag"]
+full = ["core", "derive", "llm", "diesel", "rag", "oxirs-tdb"]
 core = ["dep:embedag-core"]
 derive = ["dep:embedag-derive"]
 llm = ["dep:embedag-llm"]
 diesel = ["dep:embedag-diesel"]
 rag = ["dep:embedag-rag"]
+oxirs-tdb = ["dep:embedag-oxirs"]
 
 [dependencies]
 embedag-core = { workspace = true, optional = true }
@@ -21,6 +22,7 @@ embedag-derive = { workspace = true, optional = true }
 embedag-llm = { workspace = true, optional = true }
 embedag-diesel = { workspace = true, optional = true }
 embedag-rag = { workspace = true, optional = true }
+embedag-oxirs = { workspace = true, optional = true }
 chrono = { workspace = true }
 
 [dev-dependencies]

@@ -5,6 +5,7 @@ members = [
     "crates/embedag-llm",
     "crates/embedag-diesel",
     "crates/embedag-rag",
+    "crates/embedag-oxirs",
     "crates/embedag",
     "crates/embedag-example-receipts",
 ]
@@ -24,6 +25,7 @@ embedag-derive = { path = "crates/embedag-derive", version = "0.1.0" }
 embedag-llm = { path = "crates/embedag-llm", version = "0.1.0" }
 embedag-diesel = { path = "crates/embedag-diesel", version = "0.1.0" }
 embedag-rag = { path = "crates/embedag-rag", version = "0.1.0" }
+embedag-oxirs = { path = "crates/embedag-oxirs", version = "0.1.0" }
 
 # Core domain
 petgraph = { version = "0.8", default-features = false, features = ["std", "graphmap", "stable_graph"] }

@@ -1,6 +1,6 @@
 # Project Status & Ticket Log
 
-**Progress:** 46/49 completed (94%) — **Milestones 1, 2, 3, 4, 5 & 6 COMPLETE**  
+**Progress:** 47/49 completed (96%) — **Milestones 1, 2, 3, 4, 5 & 6 COMPLETE; Milestone 7 in progress**  
 **Current Focus:** `Ticket 7.1.1` (SurrealDB Multi-Model Storage Implementation (`embedag-surrealdb`))
 
 ---
@@ -22,8 +22,9 @@
 - [x] Ticket 2.1.2: GBNF Grammar Generation & Pushdown Automata (`embedag-llm`)
 - [x] Ticket 2.1.3: Draft-Then-Decode Envelope & Prompt Formatting with Field Context (`embedag-llm`)
 - [x] Ticket 2.1.4: Evaluation of `oxibonsai` vs sovereign `oxillama` & `candle` (`embedag-llm`)
-- [x] Ticket 2.1.5: Structure-Agnostic Semantic Delta Synthesizer (`embedag-llm`)
+- [x] Ticket 2.1.5: Structure-Agnostic Semantic Delta Synthesizer (`ScalarRatioRule`, `DeltaSynthesizerConfig`) (`embedag-llm`)
 - [x] Ticket 2.1.6: Sovereign `oxillama` GGUF & `candle-core` Inference Providers (`embedag-llm`)
+- [x] Ticket 2.1.7: Developer-Defined Entity Properties & Schema Macro (`entity_properties!`, `EntityProperties`) (`embedag-llm`)
 - [x] Ticket 2.2.1: Tier 1 Deterministic Alias Store & Inverted Index (`embedag-llm`)
 - [x] Ticket 2.2.2: Tier 2 Hybrid Similarity Matching & Pure Rust Embeddings (`embedag-llm`)
 - [x] Ticket 2.2.3: In-Memory Changeset Diffing Engine (`embedag-llm`)
@@ -66,4 +67,4 @@
 ### Milestone 7: Multi-Model & Native Graph Adapters (Future Horizon)
 - [ ] Ticket 7.1.1: SurrealDB Multi-Model Storage Implementation (`embedag-surrealdb`) *(IN PROGRESS)*
 - [ ] Ticket 7.2.1: OpenCypher Bolt Protocol Adapter (`embedag-neo4j`)
-- [ ] Ticket 7.3.1: Native OxiRS TDB2 Persistent Storage Engine (`embedag-oxirs`)
+- [x] Ticket 7.3.1: Native OxiRS TDB2 Persistent Storage Engine (`embedag-oxirs`)

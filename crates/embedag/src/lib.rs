@@ -50,6 +50,9 @@ pub use embedag_diesel as persistence;
 #[cfg(feature = "rag")]
 pub use embedag_rag as rag;
 
+#[cfg(feature = "oxirs-tdb")]
+pub use embedag_oxirs as oxirs;
+
 // Top-level re-exports from core
 #[cfg(feature = "core")]
 pub use embedag_core::{
@@ -69,12 +72,13 @@ pub use embedag_derive::{AsGraphContext, GraphTarget};
 
 // LLM re-exports
 #[cfg(feature = "llm")]
+#[allow(deprecated)]
 pub use embedag_llm::{
-    define_entity_extractor, extract_entity_text, extract_entity_text_from_value,
+    define_entity_extractor, entity_properties, extract_entity_text, extract_entity_text_from_value,
     extract_incoming_entity_text, extract_incoming_entity_text_with_config,
     extract_incoming_entity_text_with_keys, EntityExtractor, EntityExtractorConfig,
-    ExtractionDirective, ExtractionEnvelope, LlmError, LlmProvider, ModelMetadata,
-    OxibonsaiProvider, OxillamaProvider, DEFAULT_ENTITY_KEYS,
+    EntityProperties, ExtractionDirective, ExtractionEnvelope, LlmError, LlmProvider,
+    ModelMetadata, OxibonsaiProvider, OxillamaProvider, DEFAULT_ENTITY_KEYS,
 };
 
 // RAG re-exports
@@ -85,6 +89,13 @@ pub use embedag_rag::{
     index::{DenseVectorIndex, SparseLexicalIndex},
     oxirag_engine::{OxiRagEngine, RagError},
     rrf::{RrfCandidate, RrfRanker},
+};
+
+// OxiRS TDB2 storage re-exports
+#[cfg(feature = "oxirs-tdb")]
+pub use embedag_oxirs::{
+    OxiRsStorageError, OxiRsTdbConfig, OxiRsTdbEngine, OxirsQueryResults, QueryResults,
+    StorageMode, SyncPolicy,
 };
 
 /// Ergonomic prelude for common imports across embedag applications.
@@ -103,9 +114,9 @@ pub mod prelude {
 
     #[cfg(feature = "llm")]
     pub use embedag_llm::{
-        define_entity_extractor, extract_entity_text, EntityExtractor, EntityExtractorConfig,
-        ExtractionDirective, ExtractionEnvelope, LlmError, LlmProvider, OxibonsaiProvider,
-        OxillamaProvider,
+        define_entity_extractor, entity_properties, extract_entity_text, EntityExtractor,
+        EntityExtractorConfig, EntityProperties, ExtractionDirective, ExtractionEnvelope,
+        LlmError, LlmProvider, OxibonsaiProvider, OxillamaProvider,
     };
 
     #[cfg(feature = "rag")]
@@ -116,4 +127,7 @@ pub mod prelude {
         oxirag_engine::{OxiRagEngine, RagError},
         rrf::{RrfCandidate, RrfRanker},
     };
+
+    #[cfg(feature = "oxirs-tdb")]
+    pub use embedag_oxirs::{OxiRsTdbConfig, OxiRsTdbEngine, StorageMode, SyncPolicy};
 }

@@ -5,19 +5,21 @@
 
 use serde_json::Value;
 
-/// Standard, domain-agnostic keys tested when identifying the primary label of an entity.
-///
-/// These keys represent common semantic identity conventions across arbitrary domains.
-pub const DEFAULT_ENTITY_KEYS: &[&str] = &["name", "title", "label", "id", "key"];
+/// Deprecated placeholder for legacy code. Developers must configure their own domain keys
+/// explicitly via [`entity_properties!`] or [`EntityExtractorConfig::with_keys`].
+#[deprecated(
+    note = "Define explicit domain keys via `entity_properties!` or `EntityExtractorConfig::with_keys`"
+)]
+pub const DEFAULT_ENTITY_KEYS: &[&str] = &[];
 
 /// Checks whether a JSON property key matches general identification naming conventions.
 ///
-/// Matches suffixes such as `_name`, `_title`, `_label`, `_id`, and `_key` (case-insensitive),
-/// allowing arbitrary user schemas (e.g. `item_name`, `category_name`, `product_title`, `account_id`)
-/// to be resolved without requiring hardcoded application terms in the core runtime.
+/// Matches standard keys ("name", "title", "label", "id", "key") and common affix patterns
+/// (`_name`, `_title`, `_label`, `_id`, `_key`) case-insensitively when heuristics are enabled.
 pub fn is_heuristic_entity_key(key: &str) -> bool {
     let lower = key.to_lowercase();
-    lower.ends_with("_name")
+    matches!(lower.as_str(), "name" | "title" | "label" | "id" | "key")
+        || lower.ends_with("_name")
         || lower.ends_with("_title")
         || lower.ends_with("_label")
         || lower.ends_with("_id")
@@ -61,13 +63,40 @@ pub trait EntityExtractor: Send + Sync {
     }
 }
 
+/// Developer-defined entity property contract inspired by Diesel schema declarations.
+///
+/// Implemented by developers or generated via [`entity_properties!`] to provide 100% control
+/// over attribute mapping and primary label extraction.
+pub trait EntityProperties: Send + Sync {
+    /// Returns the slice of attribute keys configured by the developer to identify this entity.
+    fn property_keys(&self) -> &[&'static str];
+
+    /// Extracts the primary label for this entity from a JSON Value using developer-defined keys.
+    fn extract_label(&self, value: &Value) -> Option<String> {
+        let Value::Object(map) = value else {
+            return None;
+        };
+        for key in self.property_keys() {
+            if let Some(val) = map.get(*key) {
+                if let Some(s) = val.as_str() {
+                    let trimmed = s.trim();
+                    if !trimmed.is_empty() {
+                        return Some(trimmed.to_string());
+                    }
+                } else if val.is_number() || val.is_boolean() {
+                    return Some(val.to_string());
+                }
+            }
+        }
+        None
+    }
+}
+
 /// Configuration governing entity text extraction strategies, key priorities, and fallbacks.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EntityExtractorConfig {
-    /// Prioritized list of application-specific keys to evaluate first.
+    /// Prioritized list of developer-configured keys to evaluate first.
     pub priority_keys: Vec<String>,
-    /// Whether to evaluate domain-agnostic standard keys (`["name", "title", "label", "id", "key"]`).
-    pub include_default_keys: bool,
     /// Whether to evaluate suffix-based heuristics (`*_name`, `*_title`, `*_label`, `*_id`, `*_key`).
     pub enable_suffix_heuristics: bool,
     /// Whether to fallback to any non-empty string attribute present in the JSON object.
@@ -82,7 +111,6 @@ impl Default for EntityExtractorConfig {
     fn default() -> Self {
         Self {
             priority_keys: Vec::new(),
-            include_default_keys: true,
             enable_suffix_heuristics: true,
             fallback_to_any_string: true,
             fallback_to_slice: true,
@@ -110,12 +138,6 @@ impl EntityExtractorConfig {
     /// Appends a single priority key.
     pub fn with_priority_key(mut self, key: impl Into<String>) -> Self {
         self.priority_keys.push(key.into());
-        self
-    }
-
-    /// Controls whether domain-agnostic default keys are checked.
-    pub fn include_default_keys(mut self, include: bool) -> Self {
-        self.include_default_keys = include;
         self
     }
 
@@ -150,7 +172,7 @@ impl EntityExtractor for EntityExtractorConfig {
                 }
             }
             Value::Object(map) => {
-                // 1. Check user-configured priority keys first
+                // 1. Check user-configured priority keys first (100% developer control)
                 for key in &self.priority_keys {
                     if let Some(val) = map.get(key) {
                         if let Some(s) = val.as_str() {
@@ -164,23 +186,7 @@ impl EntityExtractor for EntityExtractorConfig {
                     }
                 }
 
-                // 2. Check general default keys
-                if self.include_default_keys {
-                    for key in DEFAULT_ENTITY_KEYS {
-                        if let Some(val) = map.get(*key) {
-                            if let Some(s) = val.as_str() {
-                                let trimmed = s.trim();
-                                if !trimmed.is_empty() {
-                                    return Some(trimmed.to_string());
-                                }
-                            } else if val.is_number() || val.is_boolean() {
-                                return Some(val.to_string());
-                            }
-                        }
-                    }
-                }
-
-                // 3. Check suffix heuristics (*_name, *_title, *_label, *_id, *_key)
+                // 2. Check suffix heuristics (*_name, *_title, *_label, *_id, *_key) if enabled
                 if self.enable_suffix_heuristics {
                     for (k, val) in map {
                         if is_heuristic_entity_key(k) {
@@ -196,7 +202,7 @@ impl EntityExtractor for EntityExtractorConfig {
                     }
                 }
 
-                // 4. Fallback to any non-empty string in the object
+                // 3. Fallback to any non-empty string in the object if enabled
                 if self.fallback_to_any_string {
                     for (_k, val) in map {
                         if let Some(s) = val.as_str() {
@@ -269,15 +275,11 @@ pub fn extract_entity_text_from_value(
 /// ```rust
 /// use embedag_llm::extract_entity_text;
 ///
-/// let prompt = "### INCOMING RECORD\n{\"item_name\": \"Oat Milk\"}\n\n### CANDIDATE PARENT";
-///
-/// // Domain-agnostic extraction (matches via suffix heuristic *_name):
-/// let name = extract_entity_text!(prompt);
-/// assert_eq!(name, "Oat Milk");
+/// let prompt = "### INCOMING RECORD\n{\"sku\": \"SKU-001\"}\n\n### CANDIDATE PARENT";
 ///
 /// // Application-specific priority keys:
-/// let name2 = extract_entity_text!(prompt, ["item_name", "category_name"]);
-/// assert_eq!(name2, "Oat Milk");
+/// let name = extract_entity_text!(prompt, ["sku", "barcode"]);
+/// assert_eq!(name, "SKU-001");
 /// ```
 #[macro_export]
 macro_rules! extract_entity_text {
@@ -289,23 +291,79 @@ macro_rules! extract_entity_text {
     };
 }
 
+/// Declarative macro enabling developers to define their entity properties and schema mappings.
+///
+/// Follows the Diesel DSL concept, giving developers 100% compile-time control over
+/// which attributes, keys, and default labels define their domain entities.
+///
+/// # Example
+/// ```rust
+/// use embedag_llm::{entity_properties, EntityExtractor};
+///
+/// entity_properties! {
+///     ProductRecord {
+///         keys: ["sku", "barcode", "product_title"],
+///         default_label: "Unknown Product",
+///     }
+/// }
+///
+/// let record = ProductRecord;
+/// let prompt = "### INCOMING RECORD\n{\"sku\": \"SKU-001\"}\n\n###";
+/// assert_eq!(record.extract_from_prompt(prompt), "SKU-001");
+/// ```
+#[macro_export]
+macro_rules! entity_properties {
+    (
+        $struct_name:ident {
+            keys: [ $($key:expr),* $(,)? ] $(,)?
+            $(default_label: $default_label:expr,)?
+        }
+    ) => {
+        #[derive(Debug, Clone, Copy, Default)]
+        pub struct $struct_name;
+
+        impl $struct_name {
+            /// Inherent helper to extract an entity label from a prompt string.
+            pub fn extract_from_prompt(&self, prompt: &str) -> ::std::string::String {
+                <Self as $crate::extractor::EntityExtractor>::extract_from_prompt(self, prompt)
+            }
+        }
+
+        impl $crate::extractor::EntityProperties for $struct_name {
+            fn property_keys(&self) -> &[&'static str] {
+                &[ $($key),* ]
+            }
+        }
+
+        impl $crate::extractor::EntityExtractor for $struct_name {
+            fn extract_from_value(&self, value: &::serde_json::Value) -> ::std::option::Option<::std::string::String> {
+                $crate::extractor::EntityProperties::extract_label(self, value)
+            }
+
+            fn extract_from_prompt(&self, prompt: &str) -> ::std::string::String {
+                #[allow(unused_mut, unused_variables, unused_assignments)]
+                let mut fallback = "Unidentified Entity";
+                $(fallback = $default_label;)?
+
+                $crate::extractor::extract_record_slice(prompt)
+                    .and_then(|slice| {
+                        if let Ok(v) = ::serde_json::from_str::<::serde_json::Value>(slice) {
+                            $crate::extractor::EntityProperties::extract_label(self, &v)
+                        } else if !slice.is_empty() {
+                            Some(slice.to_string())
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or_else(|| fallback.to_string())
+            }
+        }
+    };
+}
+
 /// Defines an application-specific entity extractor with prioritized domain keys.
 ///
 /// Generates a struct implementing [`EntityExtractor`] and an associated extraction function.
-///
-/// # Examples
-/// ```rust
-/// use embedag_llm::{define_entity_extractor, EntityExtractor};
-///
-/// define_entity_extractor!(
-///     ReceiptExtractor,
-///     ["item_name", "category_name", "merchant_name"]
-/// );
-///
-/// let extractor = ReceiptExtractor;
-/// let prompt = "### INCOMING RECORD\n{\"item_name\": \"Whole Milk\"}\n\n###";
-/// assert_eq!(extractor.extract_from_prompt(prompt), "Whole Milk");
-/// ```
 #[macro_export]
 macro_rules! define_entity_extractor {
     ($extractor_name:ident, [ $($key:expr),* $(,)? ]) => {
@@ -392,5 +450,22 @@ mod tests {
         define_entity_extractor!(AstronomyExtractor, ["custom_alias", "name"]);
         let extractor = AstronomyExtractor;
         assert_eq!(extractor.extract_from_prompt(prompt), "Alpha Centauri");
+    }
+
+    #[test]
+    fn test_entity_properties_macro() {
+        entity_properties! {
+            PatientRecord {
+                keys: ["patient_id", "medical_record_number", "mrn"],
+                default_label: "Unknown Patient",
+            }
+        }
+
+        let record = PatientRecord;
+        let prompt = "### INCOMING RECORD\n{\"patient_id\": \"PT-99881\"}\n\n###";
+        assert_eq!(record.extract_from_prompt(prompt), "PT-99881");
+
+        let prompt_empty = "### INCOMING RECORD\n{}\n\n###";
+        assert_eq!(record.extract_from_prompt(prompt_empty), "Unknown Patient");
     }
 }
