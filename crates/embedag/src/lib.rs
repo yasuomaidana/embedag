@@ -70,8 +70,11 @@ pub use embedag_derive::{AsGraphContext, GraphTarget};
 // LLM re-exports
 #[cfg(feature = "llm")]
 pub use embedag_llm::{
+    define_entity_extractor, extract_entity_text, extract_entity_text_from_value,
+    extract_incoming_entity_text, extract_incoming_entity_text_with_config,
+    extract_incoming_entity_text_with_keys, EntityExtractor, EntityExtractorConfig,
     ExtractionDirective, ExtractionEnvelope, LlmError, LlmProvider, ModelMetadata,
-    OxibonsaiProvider, OxillamaProvider,
+    OxibonsaiProvider, OxillamaProvider, DEFAULT_ENTITY_KEYS,
 };
 
 // RAG re-exports
@@ -80,6 +83,7 @@ pub use embedag_rag::{
     evidence::GroundedEvidencePackager,
     expansion::{ExpandedNode, ExpandedSubgraph, SeedRelationship, SubgraphExpander},
     index::{DenseVectorIndex, SparseLexicalIndex},
+    oxirag_engine::{OxiRagEngine, RagError},
     rrf::{RrfCandidate, RrfRanker},
 };
 
@@ -99,6 +103,7 @@ pub mod prelude {
 
     #[cfg(feature = "llm")]
     pub use embedag_llm::{
+        define_entity_extractor, extract_entity_text, EntityExtractor, EntityExtractorConfig,
         ExtractionDirective, ExtractionEnvelope, LlmError, LlmProvider, OxibonsaiProvider,
         OxillamaProvider,
     };
@@ -108,6 +113,7 @@ pub mod prelude {
         evidence::GroundedEvidencePackager,
         expansion::{ExpandedSubgraph, SubgraphExpander},
         index::{DenseVectorIndex, SparseLexicalIndex},
+        oxirag_engine::{OxiRagEngine, RagError},
         rrf::{RrfCandidate, RrfRanker},
     };
 }

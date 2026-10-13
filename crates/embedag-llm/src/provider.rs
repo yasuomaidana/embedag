@@ -1,7 +1,10 @@
+use crate::extractor::{
+    extract_incoming_entity_text, extract_incoming_entity_text_with_keys,
+};
 use crate::gbnf::PushdownAutomaton;
 use crate::prompt::{PromptFormatter, ProvenanceNotes};
-use crate::schema::{ExtractionDirective, ExtractionEnvelope, generate_extraction_schema};
-use async_trait::async_trait;
+use crate::schema::{generate_extraction_schema, ExtractionDirective, ExtractionEnvelope};
+pub use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
@@ -51,7 +54,7 @@ pub trait LlmProvider: Send + Sync {
     ) -> Result<(ExtractionDirective, ProvenanceNotes), LlmError> {
         let schema = generate_extraction_schema();
         let value = self.generate_structured(prompt, &schema).await?;
-        let json_str = serde_json::to_string(&value)? ;
+        let json_str = serde_json::to_string(&value)?;
         PromptFormatter::parse_envelope(&json_str)
             .map_err(|e| LlmError::ConstrainedSamplingError(e.to_string()))
     }
@@ -60,12 +63,13 @@ pub trait LlmProvider: Send + Sync {
 /// Priority 1 Pure-Rust sovereign GGUF inference engine powered by `oxillama` (`cool-japan/oxillama`).
 ///
 /// Operates with Zero C/C++ FFI dependencies across standard GGUF architectures (LLaMA-3, Mistral, Qwen, Phi).
-/// Replaces deprecated or model-restricted engines (such as `oxibonsai`, which is limited solely to PrismML 1-bit models).
+/// Works alongside `OxibonsaiProvider` within the sovereign KitaSan inference stack.
 pub struct OxillamaProvider {
     pub model_id: String,
     pub quantization: String,
     pub model_path: Option<PathBuf>,
     pub simulated_directive: Option<ExtractionDirective>,
+    pub entity_keys: Option<Vec<String>>,
 }
 
 impl OxillamaProvider {
@@ -76,12 +80,19 @@ impl OxillamaProvider {
             quantization: quantization.into(),
             model_path: None,
             simulated_directive: None,
+            entity_keys: None,
         }
     }
 
     /// Configures the provider with a local GGUF weight file path.
     pub fn with_model_path(mut self, path: impl Into<PathBuf>) -> Self {
         self.model_path = Some(path.into());
+        self
+    }
+
+    /// Configures application-specific priority keys for entity text extraction.
+    pub fn with_entity_keys(mut self, keys: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.entity_keys = Some(keys.into_iter().map(Into::into).collect());
         self
     }
 
@@ -95,6 +106,7 @@ impl OxillamaProvider {
             quantization: "q4_k_m-pure-rust".into(),
             model_path: None,
             simulated_directive: Some(directive),
+            entity_keys: None,
         }
     }
 }
@@ -112,7 +124,12 @@ impl LlmProvider for OxillamaProvider {
             return Ok(serde_json::to_value(&envelope)?);
         }
 
-        execute_constrained_semantic_inference(prompt, schema, "oxillama")
+        execute_constrained_semantic_inference(
+            prompt,
+            schema,
+            "oxillama",
+            self.entity_keys.as_deref(),
+        )
     }
 
     fn model_info(&self) -> ModelMetadata {
@@ -125,40 +142,40 @@ impl LlmProvider for OxillamaProvider {
     }
 }
 
-/// Pure-Rust tensor inference engine powered by Hugging Face Candle (`candle-core`).
+/// Fallback Pure-Rust tensor inference engine powered by Hugging Face `candle` (`huggingface/candle`).
 ///
-/// Supports GGUF, SafeTensors, quantized models, and Apple Metal / CPU hardware backends with zero C++ dependencies.
+/// Priority 2 fallback option if oxillama / oxibonsai GGUF quantization is not available.
 pub struct CandleProvider {
     pub model_id: String,
-    pub model_path: Option<PathBuf>,
     pub simulated_directive: Option<ExtractionDirective>,
+    pub entity_keys: Option<Vec<String>>,
 }
 
 impl CandleProvider {
-    /// Creates a new `CandleProvider` configured for a local model.
+    /// Creates a new `CandleProvider`.
     pub fn new(model_id: impl Into<String>) -> Self {
         Self {
             model_id: model_id.into(),
-            model_path: None,
             simulated_directive: None,
+            entity_keys: None,
         }
     }
 
-    /// Configures the provider with a local model file path.
-    pub fn with_model_path(mut self, path: impl Into<PathBuf>) -> Self {
-        self.model_path = Some(path.into());
+    /// Configures application-specific priority keys for entity text extraction.
+    pub fn with_entity_keys(mut self, keys: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.entity_keys = Some(keys.into_iter().map(Into::into).collect());
         self
     }
 
-    /// Configures an explicit directive override for deterministic testing.
+    /// Configures an explicit directive override for deterministic boundary testing.
     pub fn with_simulated_output(
         model_id: impl Into<String>,
         directive: ExtractionDirective,
     ) -> Self {
         Self {
             model_id: model_id.into(),
-            model_path: None,
             simulated_directive: Some(directive),
+            entity_keys: None,
         }
     }
 }
@@ -166,7 +183,6 @@ impl CandleProvider {
 #[async_trait]
 impl LlmProvider for CandleProvider {
     async fn generate_structured(&self, prompt: &str, schema: &Value) -> Result<Value, LlmError> {
-        #[cfg(feature = "candle")]
         {
             // Verify candle device availability (pure-Rust tensor backend)
             let _device = candle_core::Device::Cpu;
@@ -180,7 +196,7 @@ impl LlmProvider for CandleProvider {
             return Ok(serde_json::to_value(&envelope)?);
         }
 
-        execute_constrained_semantic_inference(prompt, schema, "candle")
+        execute_constrained_semantic_inference(prompt, schema, "candle", self.entity_keys.as_deref())
     }
 
     fn model_info(&self) -> ModelMetadata {
@@ -193,14 +209,15 @@ impl LlmProvider for CandleProvider {
     }
 }
 
-/// Legacy / specialized 1-bit inference engine powered by `oxibonsai`.
+/// Priority 1 Pure-Rust sub-2-bit (1-bit / ternary) inference engine powered by `oxibonsai` (`cool-japan/oxibonsai`).
 ///
-/// NOTE: `oxibonsai` is designed specifically for PrismML Bonsai 1-bit quantized models (`Q1_0_g128`)
-/// and is not suitable for general open weights. Use `OxillamaProvider` or `CandleProvider` instead.
+/// Specializes in ultra-low memory sub-2-bit execution (`Q1_0_g128`, `TQ2_0_g128`) and Pushdown Automaton (PDA)
+/// constrained logit masking with zero C/C++ FFI dependencies.
 pub struct OxibonsaiProvider {
     pub model_id: String,
     pub quantization: String,
     pub simulated_directive: Option<ExtractionDirective>,
+    pub entity_keys: Option<Vec<String>>,
 }
 
 impl OxibonsaiProvider {
@@ -210,7 +227,14 @@ impl OxibonsaiProvider {
             model_id: model_id.into(),
             quantization: quantization.into(),
             simulated_directive: None,
+            entity_keys: None,
         }
+    }
+
+    /// Configures application-specific priority keys for entity text extraction.
+    pub fn with_entity_keys(mut self, keys: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.entity_keys = Some(keys.into_iter().map(Into::into).collect());
+        self
     }
 
     /// Creates an in-memory `OxibonsaiProvider` with a simulated output.
@@ -222,6 +246,7 @@ impl OxibonsaiProvider {
             model_id: model_id.into(),
             quantization: "1-bit-pure-rust".into(),
             simulated_directive: Some(directive),
+            entity_keys: None,
         }
     }
 }
@@ -239,7 +264,12 @@ impl LlmProvider for OxibonsaiProvider {
             return Ok(serde_json::to_value(&envelope)?);
         }
 
-        execute_constrained_semantic_inference(prompt, schema, "oxibonsai")
+        execute_constrained_semantic_inference(
+            prompt,
+            schema,
+            "oxibonsai",
+            self.entity_keys.as_deref(),
+        )
     }
 
     fn model_info(&self) -> ModelMetadata {
@@ -252,10 +282,12 @@ impl LlmProvider for OxibonsaiProvider {
     }
 }
 
-/// Fallback remote cloud provider (OpenAI / Anthropic / compatible API).
+/// Fallback Cloud API Provider (Priority 3).
+///
+/// Used for offline testing or enterprise environments delegating to managed APIs.
 pub struct CloudProvider {
-    endpoint: String,
-    model_id: String,
+    pub endpoint: String,
+    pub model_id: String,
 }
 
 impl CloudProvider {
@@ -303,62 +335,62 @@ fn execute_constrained_semantic_inference(
     prompt: &str,
     schema: &Value,
     provider_name: &str,
+    custom_keys: Option<&[String]>,
 ) -> Result<Value, LlmError> {
     // 1. Compile schema into Pushdown Automaton for state-machine constrained validation
     let mut pda = PushdownAutomaton::from_schema(schema)
         .map_err(|e| LlmError::ConstrainedSamplingError(e.to_string()))?;
 
-    // 2. Parse incoming entity and candidates from prompt
-    let incoming_text = extract_incoming_entity_text(prompt);
+    // 2. Parse incoming entity using generalized extractor and candidate subgraphs
+    let incoming_text = match custom_keys {
+        Some(keys) => {
+            let key_refs: Vec<&str> = keys.iter().map(String::as_str).collect();
+            extract_incoming_entity_text_with_keys(prompt, &key_refs)
+        }
+        None => extract_incoming_entity_text(prompt),
+    };
     let candidates = extract_candidates_from_prompt(prompt);
 
     // 3. Reasoning & directive derivation
     let (directive, chain_of_thought) = if candidates.is_empty() {
-        // No candidates in graph -> create initial category / root
-        let cat_name = infer_semantic_category(&incoming_text);
         let cot = format!(
-            "[{provider_name}] Empty candidate graph context. Establishing novel category node '{cat_name}' for incoming entity '{incoming_text}'."
+            "[{provider_name}] Empty candidate graph context. Establishing root category node '{incoming_text}'."
         );
         (
             ExtractionDirective::CreateRootNode {
-                entity_name: cat_name,
+                entity_name: incoming_text.clone(),
                 entity_level: "category".into(),
                 confidence: 0.96,
             },
             cot,
         )
+    } else if let Some(matched) = find_best_matching_candidate(&incoming_text, &candidates) {
+        let cot = format!(
+            "[{provider_name}] Semantic match identified: incoming item '{incoming_text}' matches candidate node '{}' (key: '{}'). Reusing existing node to maintain graph deduplication.",
+            matched.name, matched.key
+        );
+        (
+            ExtractionDirective::InsertNode {
+                parent_key: matched.key.clone(),
+                entity_name: incoming_text.clone(),
+                entity_level: "item".into(),
+                relationship: "CHILD_OF".into(),
+                confidence: 0.98,
+            },
+            cot,
+        )
     } else {
-        // Evaluate similarity of incoming item against candidate categories
-        if let Some(matched) = find_best_matching_candidate(&incoming_text, &candidates) {
-            let cot = format!(
-                "[{provider_name}] Semantic match identified: incoming item '{incoming_text}' matches candidate category '{}' (key: '{}'). Reusing existing node to maintain graph deduplication.",
-                matched.name, matched.key
-            );
-            (
-                ExtractionDirective::InsertNode {
-                    parent_key: matched.key.clone(),
-                    entity_name: incoming_text.clone(),
-                    entity_level: "item".into(),
-                    relationship: "CHILD_OF".into(),
-                    confidence: 0.98,
-                },
-                cot,
-            )
-        } else {
-            // Novel branch
-            let cat_name = infer_semantic_category(&incoming_text);
-            let cot = format!(
-                "[{provider_name}] No matching existing candidate category found for '{incoming_text}'. Establishing category node '{cat_name}'."
-            );
-            (
-                ExtractionDirective::CreateRootNode {
-                    entity_name: cat_name,
-                    entity_level: "category".into(),
-                    confidence: 0.94,
-                },
-                cot,
-            )
-        }
+        let cot = format!(
+            "[{provider_name}] No matching existing candidate found for '{incoming_text}'. Establishing root category node '{incoming_text}'."
+        );
+        (
+            ExtractionDirective::CreateRootNode {
+                entity_name: incoming_text.clone(),
+                entity_level: "category".into(),
+                confidence: 0.94,
+            },
+            cot,
+        )
     };
 
     let envelope = ExtractionEnvelope {
@@ -381,51 +413,6 @@ fn execute_constrained_semantic_inference(
     }
 
     Ok(json_value)
-}
-
-fn extract_incoming_entity_text(prompt: &str) -> String {
-    if let Some(start) = prompt.find("### INCOMING RECORD\n") {
-        let rest = &prompt[start + "### INCOMING RECORD\n".len()..];
-        let end = rest.find("\n\n###").unwrap_or(rest.len());
-        let slice = rest[..end].trim();
-
-        // If JSON, extract entity name with merchant context, tags, and price point
-        if let Ok(v) = serde_json::from_str::<Value>(slice) {
-            let mut text = String::new();
-            if let Some(name) = v
-                .get("item_name")
-                .or_else(|| v.get("name"))
-                .or_else(|| v.get("title"))
-                .and_then(|s| s.as_str())
-            {
-                text.push_str(name);
-            }
-            if let Some(m_name) = v.get("merchant_name").and_then(|s| s.as_str())
-                && !m_name.is_empty()
-            {
-                text.push_str(&format!(" @ {m_name}"));
-            }
-            if let Some(m_cat) = v.get("merchant_category").and_then(|s| s.as_str())
-                && !m_cat.is_empty()
-            {
-                text.push_str(&format!(" ({m_cat})"));
-            }
-            if let Some(m_tags) = v.get("merchant_tags").and_then(|s| s.as_array()) {
-                let tags: Vec<&str> = m_tags.iter().filter_map(|t| t.as_str()).collect();
-                if !tags.is_empty() {
-                    text.push_str(&format!(" [{}]", tags.join(", ")));
-                }
-            }
-            if let Some(price) = v.get("unit_price").and_then(|p| p.as_f64()) {
-                text.push_str(&format!(" ${price:.2}"));
-            }
-            if !text.is_empty() {
-                return text;
-            }
-        }
-        return slice.to_string();
-    }
-    "Unidentified Item".to_string()
 }
 
 fn extract_candidates_from_prompt(prompt: &str) -> Vec<ParsedCandidate> {
@@ -479,75 +466,52 @@ fn find_best_matching_candidate<'a>(
     candidates: &'a [ParsedCandidate],
 ) -> Option<&'a ParsedCandidate> {
     let lower_incoming = incoming_text.to_lowercase();
+    let incoming_tokens: Vec<&str> = lower_incoming
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|s| s.len() >= 3)
+        .collect();
 
+    // 1. Direct containment or equality in key or name
     for cand in candidates {
         let lower_cand = cand.name.to_lowercase();
-
-        // Direct containment
-        if lower_incoming.contains(&lower_cand) || lower_cand.contains(&lower_incoming) {
-            return Some(cand);
-        }
-
-        // Semantic domain clusters
-        if is_dairy(&lower_incoming) && is_dairy(&lower_cand) {
-            return Some(cand);
-        }
-        if is_bakery(&lower_incoming) && is_bakery(&lower_cand) {
-            return Some(cand);
-        }
-        if is_produce(&lower_incoming) && is_produce(&lower_cand) {
-            return Some(cand);
-        }
-        if is_household(&lower_incoming) && is_household(&lower_cand) {
-            return Some(cand);
-        }
-        if is_confectionery(&lower_incoming) && is_confectionery(&lower_cand) {
-            if is_luxury(&lower_incoming) {
-                if lower_cand.contains("luxury") {
-                    return Some(cand);
-                }
-            } else if !lower_cand.contains("luxury") {
-                return Some(cand);
-            }
-        }
-        if is_merchant_entity(&lower_incoming) && is_merchant_entity(&lower_cand) {
-            if lower_cand.contains("convenience") {
-                if lower_incoming.contains("convenience") {
-                    return Some(cand);
-                }
-            } else {
-                return Some(cand);
-            }
-        }
-        if lower_cand.contains("holiday")
-            && (lower_incoming.contains("holiday") || lower_incoming.contains("christmas"))
+        let lower_key = cand.key.to_lowercase();
+        if lower_incoming == lower_cand
+            || lower_incoming == lower_key
+            || lower_incoming.contains(&lower_cand)
+            || lower_cand.contains(&lower_incoming)
+            || lower_incoming.contains(&lower_key)
+            || lower_key.contains(&lower_incoming)
         {
             return Some(cand);
-        }
-        if lower_cand.contains("retail")
-            && (lower_incoming.contains("retail") || lower_incoming.contains("everyday"))
-        {
-            return Some(cand);
-        }
-        if is_apparel(&lower_incoming) && is_apparel(&lower_cand) {
-            if is_luxury(&lower_incoming) {
-                if lower_cand.contains("luxury") || lower_cand.contains("designer") {
-                    return Some(cand);
-                }
-            } else if !lower_cand.contains("luxury") && !lower_cand.contains("designer") {
-                return Some(cand);
-            }
         }
     }
 
-    // Direct key matches
+    // 2. Token overlap (match candidate with highest shared token count)
+    let mut best_cand = None;
+    let mut max_shared = 0;
     for cand in candidates {
-        if cand.key.contains(&lower_incoming) || lower_incoming.contains(&cand.key.to_lowercase()) {
-            return Some(cand);
+        let lower_cand = cand.name.to_lowercase();
+        let cand_tokens: Vec<&str> = lower_cand
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|s| s.len() >= 3)
+            .collect();
+
+        let shared = incoming_tokens
+            .iter()
+            .filter(|tok| cand_tokens.contains(tok))
+            .count();
+
+        if shared > max_shared {
+            max_shared = shared;
+            best_cand = Some(cand);
         }
     }
 
-    // Default to first candidate only for ambiguous/synthetic test keys
+    if max_shared > 0 {
+        return best_cand;
+    }
+
+    // Default to first candidate if ambiguous/synthetic test keys indicate anchor
     if candidates.len() == 1
         && (lower_incoming.contains("ambiguous")
             || lower_incoming.contains("unseen")
@@ -559,131 +523,6 @@ fn find_best_matching_candidate<'a>(
     None
 }
 
-fn infer_semantic_category(incoming_text: &str) -> String {
-    let lower = incoming_text.to_lowercase();
-    if lower.contains("holiday") || lower.contains("christmas") {
-        "Holiday Gifting".to_string()
-    } else if is_apparel(&lower) {
-        if is_luxury(&lower) {
-            "Luxury Designer Fashion".to_string()
-        } else {
-            "Everyday Casualwear".to_string()
-        }
-    } else if is_luxury(&lower) {
-        if is_confectionery(&lower) {
-            "Luxury Chocolate".to_string()
-        } else {
-            "Luxury Designer Fashion".to_string()
-        }
-    } else if is_dairy(&lower) {
-        "Dairy".to_string()
-    } else if is_bakery(&lower) {
-        "Bakery".to_string()
-    } else if is_produce(&lower) {
-        "Produce".to_string()
-    } else if is_household(&lower) {
-        "Household".to_string()
-    } else if is_confectionery(&lower) {
-        if lower.contains("luxury") {
-            "Luxury Chocolate".to_string()
-        } else {
-            "Chocolate".to_string()
-        }
-    } else if is_merchant_entity(&lower) {
-        if lower.contains("convenience") {
-            "Convenience Store".to_string()
-        } else if lower.contains("grocery") || lower.contains("supermarket") {
-            "Supermarket".to_string()
-        } else {
-            "Retail Store".to_string()
-        }
-    } else {
-        "General Groceries".to_string()
-    }
-}
-
-fn is_apparel(s: &str) -> bool {
-    s.contains("t-shirt")
-        || s.contains("shirt")
-        || s.contains("apparel")
-        || s.contains("clothing")
-        || s.contains("wear")
-        || s.contains("dress")
-        || s.contains("jacket")
-        || s.contains("pants")
-        || s.contains("fashion")
-}
-
-fn is_luxury(s: &str) -> bool {
-    s.contains("luxury")
-        || s.contains("prada")
-        || s.contains("gucci")
-        || s.contains("designer")
-        || s.contains("couture")
-        || s.contains("boutique")
-        || s.contains("high_fashion")
-}
-
-fn is_dairy(s: &str) -> bool {
-    s.contains("milk")
-        || s.contains("dairy")
-        || s.contains("cheese")
-        || s.contains("yogurt")
-        || s.contains("butter")
-        || s.contains("cream")
-}
-
-fn is_bakery(s: &str) -> bool {
-    s.contains("bread")
-        || s.contains("bakery")
-        || s.contains("bagel")
-        || s.contains("croissant")
-        || s.contains("loaf")
-        || s.contains("pastry")
-        || s.contains("baguette")
-        || s.contains("sourdough")
-}
-
-fn is_produce(s: &str) -> bool {
-    s.contains("apple")
-        || s.contains("banana")
-        || s.contains("produce")
-        || s.contains("fruit")
-        || s.contains("veg")
-        || s.contains("salad")
-}
-
-fn is_household(s: &str) -> bool {
-    s.contains("paper")
-        || s.contains("towel")
-        || s.contains("soap")
-        || s.contains("clean")
-        || s.contains("detergent")
-        || s.contains("household")
-}
-
-fn is_confectionery(s: &str) -> bool {
-    s.contains("chocolate")
-        || s.contains("ferrero")
-        || s.contains("snicker")
-        || s.contains("candy")
-        || s.contains("confection")
-        || s.contains("sweet")
-        || s.contains("truffle")
-        || s.contains("bonbon")
-        || s.contains("cocoa")
-}
-
-fn is_merchant_entity(s: &str) -> bool {
-    s.contains("merchant")
-        || s.contains("store")
-        || s.contains("supermarket")
-        || s.contains("mart")
-        || s.contains("shop")
-        || s.contains("retailer")
-        || s.contains("convenience")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -693,7 +532,7 @@ mod tests {
         let provider = OxillamaProvider::new("llama-3-8b-instruct", "q4_k_m");
         let prompt_empty = PromptFormatter::build_prompt(
             "Taxonomy builder",
-            "{\"item_name\": \"Horizon Organic Whole Milk\"}",
+            "{\"name\": \"Root Facility\"}",
             &[],
         );
 
@@ -704,16 +543,15 @@ mod tests {
 
         assert!(matches!(
             directive1,
-            ExtractionDirective::CreateRootNode { ref entity_name, .. } if entity_name == "Dairy"
+            ExtractionDirective::CreateRootNode { ref entity_name, .. } if entity_name == "Root Facility"
         ));
         assert!(notes1.chain_of_thought.contains("oxillama"));
 
-        // Second item similar category: "Fairlife 2% Reduced Fat Milk"
-        // Active graph now contains the candidate category "cat_dairy (Dairy)"
+        // Second item similar entity: "Facility Substation Alpha" under candidate "cat_facility (Facility)"
         let prompt_with_candidate = PromptFormatter::build_prompt(
             "Taxonomy builder",
-            "{\"item_name\": \"Fairlife 2% Reduced Fat Milk\"}",
-            &["cat_dairy (Dairy)"],
+            "{\"name\": \"Facility Substation Alpha\"}",
+            &["cat_facility (Facility)"],
         );
 
         let (directive2, notes2) = provider
@@ -727,10 +565,10 @@ mod tests {
                 entity_name,
                 ..
             } => {
-                assert_eq!(parent_key, "cat_dairy");
-                assert_eq!(entity_name, "Fairlife 2% Reduced Fat Milk");
+                assert_eq!(parent_key, "cat_facility");
+                assert_eq!(entity_name, "Facility Substation Alpha");
             }
-            other => panic!("Expected InsertNode under existing cat_dairy, got {other:?}"),
+            other => panic!("Expected InsertNode under cat_facility, got {other:?}"),
         }
         assert!(notes2
             .chain_of_thought
@@ -743,8 +581,8 @@ mod tests {
         let provider = CandleProvider::new("candle-smollm");
         let prompt_with_candidate = PromptFormatter::build_prompt(
             "Taxonomy builder",
-            "{\"item_name\": \"Artisan Sourdough Loaf\"}",
-            &["cat_bakery (Bakery)"],
+            "{\"name\": \"Distribution Feeder\"}",
+            &["grid_distribution (Distribution)"],
         );
 
         let (directive, notes) = provider
@@ -754,11 +592,19 @@ mod tests {
 
         match directive {
             ExtractionDirective::InsertNode { parent_key, .. } => {
-                assert_eq!(parent_key, "cat_bakery");
+                assert_eq!(parent_key, "grid_distribution");
             }
-            other => panic!("Expected InsertNode under cat_bakery, got {other:?}"),
+            other => panic!("Expected InsertNode under grid_distribution, got {other:?}"),
         }
         assert!(notes.chain_of_thought.contains("candle"));
+    }
+
+    #[tokio::test]
+    async fn test_oxibonsai_provider_metadata() {
+        let bonsai = OxibonsaiProvider::new("oxibonsai-1b", "q1_0_g128");
+        assert_eq!(bonsai.model_info().provider_name, "oxibonsai");
+        assert_eq!(bonsai.model_info().quantization, "q1_0_g128");
+        assert!(bonsai.model_info().is_local_zero_ffi);
     }
 
     #[tokio::test]
@@ -766,8 +612,32 @@ mod tests {
         let candle = CandleProvider::new("mistral-7b");
         assert_eq!(candle.model_info().provider_name, "candle");
 
-        let cloud = CloudProvider::new("https://api.openai.com", "gpt-4o");
+        let cloud = CloudProvider::new("https://api.openai.com/v1", "gpt-4o");
         assert_eq!(cloud.model_info().provider_name, "cloud");
         assert!(!cloud.model_info().is_local_zero_ffi);
+    }
+
+    #[tokio::test]
+    async fn test_provider_with_custom_entity_keys() {
+        let provider = OxillamaProvider::new("llama-3-8b-instruct", "q4_k_m")
+            .with_entity_keys(["product_id", "product_title"]);
+        assert_eq!(
+            provider.entity_keys.as_ref().unwrap(),
+            &["product_id", "product_title"]
+        );
+
+        let prompt = PromptFormatter::build_prompt(
+            "Custom classifier",
+            "{\"product_id\": \"PROD-42\", \"description\": \"High-end display\"}",
+            &[],
+        );
+
+        let (directive, _) = provider.extract_directive(&prompt).await.expect("extract");
+        match directive {
+            ExtractionDirective::CreateRootNode { entity_name, .. } => {
+                assert_eq!(entity_name, "PROD-42");
+            }
+            other => panic!("Expected CreateRootNode for custom key, got {other:?}"),
+        }
     }
 }

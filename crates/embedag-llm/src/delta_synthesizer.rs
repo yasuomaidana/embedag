@@ -114,14 +114,98 @@ pub struct SemanticDeltaSummary {
 pub type CandidateItem = CandidateEntity;
 pub type IncomingItem = IncomingEntity;
 
+/// User-defined proportional or unit-scaling comparison rule between candidate and incoming attributes.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ScalarRatioRule {
+    /// Attribute key expected on the candidate node (e.g., "unit_quantity", "base_price", "dosage").
+    pub candidate_key: String,
+    /// Attribute key expected on the incoming entity (e.g., "total_quantity", "bundle_price", "bulk_dosage").
+    pub incoming_key: String,
+    /// Optional attribute key on incoming representing the unit multiplier / pack count.
+    pub count_key: Option<String>,
+    /// Semantic label reported in the LLM comparison card.
+    pub label: String,
+}
+
+impl ScalarRatioRule {
+    /// Creates a new ratio scaling rule.
+    pub fn new(
+        candidate_key: impl Into<String>,
+        incoming_key: impl Into<String>,
+        label: impl Into<String>,
+    ) -> Self {
+        Self {
+            candidate_key: candidate_key.into(),
+            incoming_key: incoming_key.into(),
+            count_key: None,
+            label: label.into(),
+        }
+    }
+
+    /// Attaches an optional pack count or multiplier attribute key.
+    pub fn with_count_key(mut self, key: impl Into<String>) -> Self {
+        self.count_key = Some(key.into());
+        self
+    }
+}
+
+/// Configuration governing attribute comparison heuristics and proportional scale rules.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DeltaSynthesizerConfig {
+    /// Prefix or alias patterns to probe when searching for matching incoming attributes.
+    pub attribute_match_prefixes: Vec<String>,
+    /// Configurable scaling rules defined by developers for their specific domain.
+    pub ratio_rules: Vec<ScalarRatioRule>,
+}
+
+impl Default for DeltaSynthesizerConfig {
+    fn default() -> Self {
+        Self {
+            attribute_match_prefixes: vec!["detected_".to_string()],
+            ratio_rules: Vec::new(),
+        }
+    }
+}
+
+impl DeltaSynthesizerConfig {
+    /// Constructs an empty configuration with no rules or prefixes.
+    pub fn empty() -> Self {
+        Self {
+            attribute_match_prefixes: Vec::new(),
+            ratio_rules: Vec::new(),
+        }
+    }
+
+    /// Registers a custom attribute match prefix (e.g., "detected_", "total_", "parsed_").
+    pub fn with_prefix(mut self, prefix: impl Into<String>) -> Self {
+        self.attribute_match_prefixes.push(prefix.into());
+        self
+    }
+
+    /// Registers a domain-specific proportional scaling rule.
+    pub fn with_ratio_rule(mut self, rule: ScalarRatioRule) -> Self {
+        self.ratio_rules.push(rule);
+        self
+    }
+}
+
 /// Synthesizes mathematical comparison cards for LLM prompts to prevent numerical hallucination.
 pub struct SemanticDeltaSynthesizer;
 
 impl SemanticDeltaSynthesizer {
-    /// Compares a candidate node against an incoming entity and emits a pre-calculated mathematical delta card.
+    /// Compares a candidate node against an incoming entity using default domain-agnostic settings.
     pub fn synthesize(
         candidate: &CandidateEntity,
         incoming: &IncomingEntity,
+    ) -> SemanticDeltaSummary {
+        Self::synthesize_with_config(candidate, incoming, &DeltaSynthesizerConfig::default())
+    }
+
+    /// Compares a candidate node against an incoming entity using developer-provided configuration.
+    pub fn synthesize_with_config(
+        candidate: &CandidateEntity,
+        incoming: &IncomingEntity,
+        config: &DeltaSynthesizerConfig,
     ) -> SemanticDeltaSummary {
         let mut card = String::new();
         let mut attribute_deltas = HashMap::new();
@@ -162,18 +246,20 @@ impl SemanticDeltaSynthesizer {
         card.push_str("- Detected Numerical Deltas:\n");
 
         // 3. Dynamic numeric attribute delta detection
-        // Scan for numeric attributes present in both or matching pairs
         let mut detected_any_delta = false;
 
-        // Check for direct numeric matches on same key
+        // Check for direct numeric matches on same key or configured prefixes
         for (key, cand_val) in &candidate.attributes {
             if let Some(cand_num) = cand_val.as_f64() {
-                // Try exact key or key with prefixes in incoming
-                let inc_val = incoming
-                    .attributes
-                    .get(key)
-                    .or_else(|| incoming.attributes.get(&format!("detected_{key}")))
-                    .or_else(|| incoming.attributes.get(&format!("total_{key}")));
+                let mut inc_val = incoming.attributes.get(key);
+                if inc_val.is_none() {
+                    for prefix in &config.attribute_match_prefixes {
+                        if let Some(v) = incoming.attributes.get(&format!("{prefix}{key}")) {
+                            inc_val = Some(v);
+                            break;
+                        }
+                    }
+                }
 
                 if let Some(inc_num) = inc_val.and_then(|v| v.as_f64())
                     && cand_num > 0.0
@@ -198,9 +284,7 @@ impl SemanticDeltaSynthesizer {
                         },
                     );
 
-                    if primary_weight_pct.is_none()
-                        && (key.contains("weight") || key.contains("unit"))
-                    {
+                    if primary_weight_pct.is_none() && multiplier == 1.0 {
                         primary_weight_pct = Some(pct);
                     }
                     if primary_multiplier.is_none() && multiplier > 1.0 {
@@ -211,32 +295,35 @@ impl SemanticDeltaSynthesizer {
             }
         }
 
-        // Check total vs unit weight scaling if provided
-        if let (Some(cand_w), Some(tot_w)) = (
-            candidate
-                .attributes
-                .get("unit_weight_grams")
-                .and_then(|v| v.as_f64()),
-            incoming
-                .attributes
-                .get("total_weight_grams")
-                .and_then(|v| v.as_f64()),
-        ) && cand_w > 0.0
-        {
-            let mult = tot_w / cand_w;
-            primary_multiplier = Some(mult);
-            let pack_note = incoming
-                .attributes
-                .get("pack_count")
-                .and_then(|v| v.as_u64())
-                .map(|c| format!("{c} units"))
-                .unwrap_or_else(|| format!("{:.0}x units", mult));
+        // Evaluate user-configured proportional scalar ratio rules
+        for rule in &config.ratio_rules {
+            if let (Some(cand_num), Some(inc_num)) = (
+                candidate
+                    .attributes
+                    .get(&rule.candidate_key)
+                    .and_then(|v| v.as_f64()),
+                incoming
+                    .attributes
+                    .get(&rule.incoming_key)
+                    .and_then(|v| v.as_f64()),
+            ) && cand_num > 0.0
+            {
+                let mult = inc_num / cand_num;
+                primary_multiplier = Some(mult);
+                let pack_note = rule
+                    .count_key
+                    .as_ref()
+                    .and_then(|ck| incoming.attributes.get(ck))
+                    .and_then(|v| v.as_u64())
+                    .map(|c| format!("{c} units"))
+                    .unwrap_or_else(|| format!("{:.0}x units", mult));
 
-            card.push_str(&format!(
-                "  * Multiplier Detected: {} (Total: {:.1}, {:.0}x scale)\n",
-                pack_note, tot_w, mult
-            ));
-            detected_any_delta = true;
+                card.push_str(&format!(
+                    "  * Multiplier Detected ({}): {} (Total: {:.1}, {:.0}x scale)\n",
+                    rule.label, pack_note, inc_num, mult
+                ));
+                detected_any_delta = true;
+            }
         }
 
         if !detected_any_delta {
@@ -290,25 +377,32 @@ mod tests {
 
     #[test]
     fn test_semantic_delta_prompt_synthesis() {
-        let candidate = CandidateEntity::new("Carlos V Chocolate Bar")
+        let candidate = CandidateEntity::new("Sample Unit Product")
             .with_key("SKU-100")
             .with_hierarchy(vec![
-                "Food".into(),
-                "Confectionery".into(),
-                "Chocolate".into(),
+                "Category".into(),
+                "Subcategory".into(),
             ])
-            .with_attribute("unit_weight_grams", 50.0)
+            .with_attribute("unit_measure", 50.0)
             .with_attribute("packaging", "Single Unit")
             .with_h3_cell(0x8928308280fffff);
 
-        let incoming = IncomingEntity::new("Carlos V 12 pack 50g")
-            .with_attribute("total_weight_grams", 600.0)
-            .with_attribute("detected_unit_weight_grams", 50.0)
-            .with_attribute("unit_weight_grams", 50.0)
+        let incoming = IncomingEntity::new("Sample Pack of 12")
+            .with_attribute("total_measure", 600.0)
+            .with_attribute("detected_unit_measure", 50.0)
+            .with_attribute("unit_measure", 50.0)
             .with_attribute("pack_count", 12)
             .with_h3_cell(0x8928308280fffff);
 
-        let summary = SemanticDeltaSynthesizer::synthesize(&candidate, &incoming);
+        let config = DeltaSynthesizerConfig::empty()
+            .with_prefix("detected_")
+            .with_ratio_rule(
+                ScalarRatioRule::new("unit_measure", "total_measure", "Proportional Unit Scaling")
+                    .with_count_key("pack_count"),
+            );
+
+        let summary =
+            SemanticDeltaSynthesizer::synthesize_with_config(&candidate, &incoming, &config);
 
         // Assert 12x multiplier calculation
         assert_eq!(summary.scale_multiplier, Some(12.0));
@@ -319,7 +413,7 @@ mod tests {
         assert!(
             summary
                 .comparison_card
-                .contains("Carlos V Chocolate Bar (Key: SKU-100)")
+                .contains("Sample Unit Product (Key: SKU-100)")
         );
         assert!(summary.comparison_card.contains("12 units"));
         assert!(summary.comparison_card.contains("12x scale"));

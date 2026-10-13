@@ -8,6 +8,7 @@ pub mod community;
 pub mod evidence;
 pub mod expansion;
 pub mod index;
+pub mod oxirag_engine;
 pub mod rrf;
 
 pub use community::{CommunityDetector, CommunityPartition};
@@ -16,4 +17,5 @@ pub use expansion::{
     ExpandedEdge, ExpandedNode, ExpandedSubgraph, SeedRelationship, SubgraphExpander,
 };
 pub use index::{DenseVectorIndex, IndexError, LexicalDocument, SparseLexicalIndex};
+pub use oxirag_engine::{OxiRagEngine, RagError};
 pub use rrf::{RrfCandidate, RrfRanker};

@@ -35,12 +35,14 @@ h3o = "0.11"
 uuid = { version = "1", features = ["v4", "serde"] }
 
 # LLM & Schema
-schemars = { version = "1.0", features = ["derive"] }
+schemars = { version = "1.0", features = ["derive", "chrono04"] }
 gbnf = "0.2"
 async-trait = "0.1"
 tokio = { version = "1", features = ["full"] }
 candle-core = { version = "0.11", default-features = false }
 oxillama = { version = "0.1.4", default-features = false }
+oxirag = "0.1.1"
+oxirs-core = "0.4.1"
 
 # Relational Persistence
 diesel = { version = "2.3", features = ["postgres_backend", "sqlite", "returning_clauses_for_sqlite_3_35", "chrono", "uuid", "serde_json"] }
