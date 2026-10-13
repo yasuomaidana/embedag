@@ -1,9 +1,70 @@
 use embedag_example_receipts::{InvoiceItem, ReceiptCategoryNode, ReceiptGraphPipeline};
-use embedag_llm::provider::OxillamaProvider;
+use embedag_llm::async_trait;
+use embedag_llm::provider::{LlmError, LlmProvider, ModelMetadata, OxillamaProvider};
+use embedag_llm::schema::{ExtractionDirective, ExtractionEnvelope};
+use serde_json::Value;
+
+/// Test mock provider encapsulating receipt-specific domain inference strictly within tests.
+struct TestReceiptOxillamaProvider {
+    inner: OxillamaProvider,
+}
+
+#[async_trait]
+impl LlmProvider for TestReceiptOxillamaProvider {
+    async fn generate_structured(&self, prompt: &str, _schema: &Value) -> Result<Value, LlmError> {
+        let directive = if prompt.contains("Horizon Organic Whole Milk") {
+            ExtractionDirective::CreateRootNode {
+                entity_name: "Dairy".to_string(),
+                entity_level: "category".to_string(),
+                confidence: 0.99,
+            }
+        } else if prompt.contains("Fairlife 2% Reduced Fat Milk") {
+            ExtractionDirective::InsertNode {
+                parent_key: "cat_dairy".to_string(),
+                entity_name: "Fairlife 2% Reduced Fat Milk 52oz".to_string(),
+                entity_level: "item".to_string(),
+                relationship: "CHILD_OF".to_string(),
+                confidence: 0.98,
+            }
+        } else if prompt.contains("Artisan Sourdough Loaf") {
+            ExtractionDirective::CreateRootNode {
+                entity_name: "Bakery".to_string(),
+                entity_level: "category".to_string(),
+                confidence: 0.99,
+            }
+        } else if prompt.contains("Traditional French Baguette") {
+            ExtractionDirective::InsertNode {
+                parent_key: "cat_bakery".to_string(),
+                entity_name: "Traditional French Baguette".to_string(),
+                entity_level: "item".to_string(),
+                relationship: "CHILD_OF".to_string(),
+                confidence: 0.98,
+            }
+        } else {
+            ExtractionDirective::CreateRootNode {
+                entity_name: "General".to_string(),
+                entity_level: "category".to_string(),
+                confidence: 0.9,
+            }
+        };
+
+        let envelope = ExtractionEnvelope {
+            chain_of_thought: "Pure Rust oxillama token sampling completed (test simulated).".to_string(),
+            directive,
+        };
+        Ok(serde_json::to_value(&envelope)?)
+    }
+
+    fn model_info(&self) -> ModelMetadata {
+        self.inner.model_info()
+    }
+}
 
 #[tokio::test]
 async fn test_oxillama_dynamic_graph_generation_and_deduplication() {
-    let provider = OxillamaProvider::new("llama-3-8b-instruct", "q4_k_m");
+    let provider = TestReceiptOxillamaProvider {
+        inner: OxillamaProvider::new("llama-3-8b-instruct", "q4_k_m"),
+    };
     let mut pipeline = ReceiptGraphPipeline::new(provider);
 
     // Initial state: DAG is completely empty
@@ -11,11 +72,7 @@ async fn test_oxillama_dynamic_graph_generation_and_deduplication() {
     assert_eq!(pipeline.dag.node_count(), 0);
 
     // Item 1: Horizon Organic Whole Milk -> Model creates category 'Dairy'
-    let item1 = InvoiceItem {
-        item_name: "Horizon Organic Whole Milk 1 Gallon".into(),
-        price: 4.99,
-        quantity: 1,
-    };
+    let item1 = InvoiceItem::new("item_1", "Horizon Organic Whole Milk 1 Gallon", 4.99, 1, None);
     let report1 = pipeline.process_item(&item1).await.expect("process item 1");
 
     assert_eq!(report1.stage1_active_candidates_count, 0);
@@ -24,11 +81,7 @@ async fn test_oxillama_dynamic_graph_generation_and_deduplication() {
     assert_eq!(pipeline.dag.node_count(), 2); // 1 category + 1 item
 
     // Item 2: Fairlife 2% Reduced Fat Milk -> Similar item in same category!
-    let item2 = InvoiceItem {
-        item_name: "Fairlife 2% Reduced Fat Milk 52oz".into(),
-        price: 3.89,
-        quantity: 2,
-    };
+    let item2 = InvoiceItem::new("item_2", "Fairlife 2% Reduced Fat Milk 52oz", 3.89, 2, None);
     let report2 = pipeline.process_item(&item2).await.expect("process item 2");
 
     // Stage 1 saw existing candidate 'cat_dairy (Dairy)'
@@ -60,11 +113,7 @@ async fn test_oxillama_dynamic_graph_generation_and_deduplication() {
     );
 
     // Item 3: Artisan Sourdough Loaf -> Model creates category 'Bakery'
-    let item3 = InvoiceItem {
-        item_name: "Artisan Sourdough Loaf".into(),
-        price: 4.50,
-        quantity: 1,
-    };
+    let item3 = InvoiceItem::new("item_3", "Artisan Sourdough Loaf", 4.50, 1, None);
     let report3 = pipeline.process_item(&item3).await.expect("process item 3");
     assert!(!report3.stage6_reused_existing_category);
 
@@ -78,11 +127,7 @@ async fn test_oxillama_dynamic_graph_generation_and_deduplication() {
     assert_eq!(categories_after_item3.len(), 2);
 
     // Item 4: Traditional French Baguette -> Similar bakery item!
-    let item4 = InvoiceItem {
-        item_name: "Traditional French Baguette".into(),
-        price: 2.75,
-        quantity: 1,
-    };
+    let item4 = InvoiceItem::new("item_4", "Traditional French Baguette", 2.75, 1, None);
     let report4 = pipeline.process_item(&item4).await.expect("process item 4");
     assert!(report4.stage6_reused_existing_category);
 

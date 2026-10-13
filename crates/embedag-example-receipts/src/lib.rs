@@ -2,7 +2,7 @@
 //!
 //! Demonstrates how an end-user developer:
 //! 1. Defines only domain structures (`InvoiceTicket`, `InvoiceItem`, `ReceiptCategoryNode`) and how they are related.
-//! 2. Derives `#[derive(HierarchicalModel)]` to automatically generate table configuration and context for the LLM.
+//! 2. Derives `#[derive(HierarchicalModel)]` to automatically generate table configuration, context for LLM, and type-safe CRUD operations.
 //! 3. Passes field-level context instructions via `#[schemars(description = "...")]`.
 //! 4. Generates the taxonomy graph dynamically on-the-fly starting from an empty graph.
 //! 5. Uses real inference models (`OxillamaProvider` and `CandleProvider`) to validate that similar items with the same categories
@@ -10,8 +10,7 @@
 
 use embedag_core::dag::MemoryDag;
 use embedag_core::model::{EdgePayload, ProvenanceKind};
-use embedag_core::traits::NodePayload;
-use embedag_diesel::cte::{HierarchicalModel, HierarchicalNode};
+use embedag_diesel::cte::HierarchicalModel;
 use embedag_llm::diff::ChangesetDiffEngine;
 use embedag_llm::prompt::PromptFormatter;
 use embedag_llm::provider::{LlmError, LlmProvider};
@@ -22,27 +21,10 @@ use serde::{Deserialize, Serialize};
 pub mod finance;
 pub use finance::*;
 
-/// Line item in a purchase ticket invoice.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
-pub struct InvoiceItem {
-    pub item_name: String,
-    pub price: f64,
-    pub quantity: u32,
-}
-
-/// Purchase ticket invoice entity received as domain input.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
-pub struct InvoiceTicket {
-    pub store: String,
-    pub date: String,
-    pub card: String,
-    pub items: Vec<InvoiceItem>,
-    pub total: f64,
-}
-
 /// Developer's custom domain model representing a receipt item category hierarchy node `{ parent_category, category }`.
 ///
-/// Automatically implements [`HierarchicalModel`], providing `table_config()` and `table_context()`
+/// Automatically implements [`HierarchicalModel`], [`HierarchicalNode`], and [`NodePayload`],
+/// providing `table_config()`, `table_context()`, and type-safe CRUD methods (`insert_sqlite`, `insert_batch_sqlite`, etc.)
 /// directly to Diesel CTE queries and LLM prompts without hardcoded manual builder boilerplate.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, HierarchicalModel, PartialEq, Eq)]
 #[hierarchical(
@@ -61,38 +43,6 @@ pub struct ReceiptCategoryNode {
     )]
     pub category_name: String,
     pub entity_level: String,
-}
-
-impl HierarchicalNode for ReceiptCategoryNode {
-    type Id = String;
-
-    fn node_id(&self) -> Self::Id {
-        self.category_id.clone()
-    }
-
-    fn parent_id(&self) -> Option<Self::Id> {
-        self.parent_category_id.clone()
-    }
-
-    fn node_name(&self) -> &str {
-        &self.category_name
-    }
-}
-
-impl NodePayload for ReceiptCategoryNode {
-    type Key = String;
-
-    fn key(&self) -> &Self::Key {
-        &self.category_id
-    }
-
-    fn name(&self) -> &str {
-        &self.category_name
-    }
-
-    fn entity_level(&self) -> &str {
-        &self.entity_level
-    }
 }
 
 pub type ReceiptCategoryRecord = ReceiptCategoryNode;
@@ -302,14 +252,14 @@ pub async fn run_receipt_categories_postgres_migration(
 
 /// Infers hierarchical categories `{ parent_category, category }` from a ticket invoice's items.
 /// Provided for backwards compatibility with relational persistence tests.
-pub fn categorize_ticket_invoice(ticket: &InvoiceTicket) -> Vec<ReceiptCategoryRecord> {
+pub fn categorize_ticket_invoice(ticket: &FinanceInvoice) -> Vec<ReceiptCategoryRecord> {
     let mut records = Vec::new();
 
-    let store_root_id = format!("store_{}", sanitize_id(&ticket.store));
+    let store_root_id = format!("store_{}", sanitize_id(&ticket.merchant_id));
     records.push(ReceiptCategoryRecord {
         category_id: store_root_id.clone(),
         parent_category_id: None,
-        category_name: ticket.store.clone(),
+        category_name: ticket.merchant_id.clone(),
         entity_level: "store_root".into(),
     });
 

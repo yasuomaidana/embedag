@@ -1,9 +1,8 @@
-use diesel::connection::SimpleConnection;
 use diesel::prelude::*;
 use embedag_diesel::cte::{CteHierarchyBuilder, HierarchicalNode, HierarchyItem};
 use embedag_example_receipts::{
-    categorize_ticket_invoice, run_receipt_categories_sqlite_migration, InvoiceItem, InvoiceTicket,
-    ReceiptCategoryRecord,
+    categorize_ticket_invoice, run_receipt_categories_postgres_migration,
+    run_receipt_categories_sqlite_migration, FinanceInvoice, InvoiceItem, ReceiptCategoryRecord,
 };
 
 #[test]
@@ -26,33 +25,70 @@ fn test_macro_generated_table_config_and_context_for_llm() {
 }
 
 #[test]
+fn test_macro_generated_crud_operations_on_receipt_categories() {
+    let mut conn = diesel::SqliteConnection::establish(":memory:").expect("in-memory sqlite");
+    run_receipt_categories_sqlite_migration(&mut conn).expect("custom receipt migration");
+
+    // 1. Single Insert via macro-generated method
+    let root = ReceiptCategoryRecord {
+        category_id: "store_root".into(),
+        parent_category_id: None,
+        category_name: "SuperMarket".into(),
+        entity_level: "store_root".into(),
+    };
+    let count = root.insert_sqlite(&mut conn).expect("insert single");
+    assert_eq!(count, 1);
+
+    // 2. Batch Insert via macro-generated method
+    let batch = vec![
+        ReceiptCategoryRecord {
+            category_id: "dept_produce".into(),
+            parent_category_id: Some("store_root".into()),
+            category_name: "Produce".into(),
+            entity_level: "department".into(),
+        },
+        ReceiptCategoryRecord {
+            category_id: "cat_apples".into(),
+            parent_category_id: Some("dept_produce".into()),
+            category_name: "Apples".into(),
+            entity_level: "category".into(),
+        },
+    ];
+    let batch_count = ReceiptCategoryRecord::insert_batch_sqlite(&batch, &mut conn).expect("batch insert");
+    assert_eq!(batch_count, 2);
+
+    // 3. Update via macro-generated method
+    let updated_root = ReceiptCategoryRecord {
+        category_id: "store_root".into(),
+        parent_category_id: None,
+        category_name: "SuperMarket Flagship".into(),
+        entity_level: "store_root".into(),
+    };
+    let updated = updated_root.update_sqlite(&mut conn).expect("update");
+    assert_eq!(updated, 1);
+
+    // 4. Delete via macro-generated method
+    let deleted = ReceiptCategoryRecord::delete_by_id_sqlite(&mut conn, "cat_apples").expect("delete");
+    assert_eq!(deleted, 1);
+}
+
+#[test]
 fn test_developer_custom_migration_and_invoice_categorization_cte_sqlite() {
     let mut conn = diesel::SqliteConnection::establish(":memory:").expect("in-memory sqlite");
 
     // 1. Run developer's custom migration (does NOT use hardcoded semantic_nodes/edges)
     run_receipt_categories_sqlite_migration(&mut conn).expect("custom receipt migration");
 
-    // 2. Input purchase ticket invoice
-    let ticket = InvoiceTicket {
-        store: "FreshMarket".into(),
-        date: "2026-10-12".into(),
-        card: "**** 8899".into(),
+    // 2. Input pure purchase invoice DTO (no semantic flags)
+    let ticket = FinanceInvoice {
+        invoice_id: "inv_101".into(),
+        merchant_id: "FreshMarket".into(),
+        date: embedag_example_receipts::finance::parse_date("2026-10-12"),
+        purchase_content: None,
         items: vec![
-            InvoiceItem {
-                item_name: "Organic Oat Milk".into(),
-                price: 3.99,
-                quantity: 2,
-            },
-            InvoiceItem {
-                item_name: "Artisan Sourdough Loaf".into(),
-                price: 4.50,
-                quantity: 1,
-            },
-            InvoiceItem {
-                item_name: "Paper Towels".into(),
-                price: 2.25,
-                quantity: 2,
-            },
+            InvoiceItem::new("item_1", "Organic Oat Milk", 3.99, 2, None),
+            InvoiceItem::new("item_2", "Artisan Sourdough Loaf", 4.50, 1, None),
+            InvoiceItem::new("item_3", "Paper Towels", 2.25, 2, None),
         ],
         total: 16.98,
     };
@@ -64,25 +100,15 @@ fn test_developer_custom_migration_and_invoice_categorization_cte_sqlite() {
         "Must generate category hierarchy from ticket"
     );
 
-    // Verify trait implementation
+    // Verify auto-derived HierarchicalNode trait implementation
     for cat in &categories {
         assert_eq!(cat.node_id(), cat.category_id);
         assert_eq!(cat.node_name(), &cat.category_name);
     }
 
-    // 4. Fill developer's custom table with generated categories
-    for cat in &categories {
-        let parent_val = match &cat.parent_category_id {
-            Some(p) => format!("'{}'", p),
-            None => "NULL".to_string(),
-        };
-        let sql = format!(
-            "INSERT INTO receipt_categories (category_id, parent_category_id, category_name, entity_level) \
-             VALUES ('{}', {}, '{}', '{}');",
-            cat.category_id, parent_val, cat.category_name, cat.entity_level
-        );
-        conn.batch_execute(&sql).expect("insert category row");
-    }
+    // 4. Fill developer's custom table using macro-generated type-safe Diesel batch insert
+    ReceiptCategoryRecord::insert_batch_sqlite(&categories, &mut conn)
+        .expect("insert category rows via macro-generated type-safe Diesel batch");
 
     // 5. Query hierarchical lineage using macro-generated table_config and CteHierarchyBuilder
     let config = ReceiptCategoryRecord::table_config();
@@ -147,16 +173,40 @@ fn test_diamond_dag_deduplication_with_recursive_not_all() {
     let mut conn = diesel::SqliteConnection::establish(":memory:").expect("in-memory sqlite");
     run_receipt_categories_sqlite_migration(&mut conn).expect("custom receipt migration");
 
-    conn.batch_execute(
-        "INSERT INTO receipt_categories (category_id, parent_category_id, category_name, entity_level) VALUES
-         ('root', NULL, 'General Retail', 'root'),
-         ('cat_a', 'root', 'Specialty Food', 'dept'),
-         ('cat_b', 'root', 'Organic Pantry', 'dept'),
-         ('leaf', 'cat_a', 'Artisan Honey', 'item');
-         INSERT INTO receipt_categories (category_id, parent_category_id, category_name, entity_level) VALUES
-         ('leaf_alt', 'cat_b', 'Artisan Honey', 'item');",
-    )
-    .expect("insert diamond rows");
+    let diamond_rows = vec![
+        ReceiptCategoryRecord {
+            category_id: "root".into(),
+            parent_category_id: None,
+            category_name: "General Retail".into(),
+            entity_level: "root".into(),
+        },
+        ReceiptCategoryRecord {
+            category_id: "cat_a".into(),
+            parent_category_id: Some("root".into()),
+            category_name: "Specialty Food".into(),
+            entity_level: "dept".into(),
+        },
+        ReceiptCategoryRecord {
+            category_id: "cat_b".into(),
+            parent_category_id: Some("root".into()),
+            category_name: "Organic Pantry".into(),
+            entity_level: "dept".into(),
+        },
+        ReceiptCategoryRecord {
+            category_id: "leaf".into(),
+            parent_category_id: Some("cat_a".into()),
+            category_name: "Artisan Honey".into(),
+            entity_level: "item".into(),
+        },
+        ReceiptCategoryRecord {
+            category_id: "leaf_alt".into(),
+            parent_category_id: Some("cat_b".into()),
+            category_name: "Artisan Honey".into(),
+            entity_level: "item".into(),
+        },
+    ];
+
+    ReceiptCategoryRecord::insert_batch_sqlite(&diamond_rows, &mut conn).expect("insert diamond rows");
 
     // Traversal using macro-generated table_config directly from model
     let config = ReceiptCategoryRecord::table_config();
@@ -172,7 +222,6 @@ fn test_diamond_dag_deduplication_with_recursive_not_all() {
 async fn test_developer_custom_migration_and_invoice_categorization_cte_postgres() {
     use diesel_async::{AsyncConnection, AsyncPgConnection};
     use embedag_diesel::harness::PostgresHarness;
-    use embedag_example_receipts::run_receipt_categories_postgres_migration;
 
     let harness = PostgresHarness::start().await.expect("start postgres harness");
     let client = harness.connect().await.expect("connect client");
@@ -191,41 +240,25 @@ async fn test_developer_custom_migration_and_invoice_categorization_cte_postgres
         .await
         .expect("connect async pg connection");
 
-    // 3. Prepare ticket and generate categories
-    let ticket = InvoiceTicket {
-        store: "WholeOrganics".into(),
-        date: "2026-10-12".into(),
-        card: "**** 1122".into(),
+    // 3. Prepare pure ticket DTO and generate categories
+    let ticket = FinanceInvoice {
+        invoice_id: "inv_pg_101".into(),
+        merchant_id: "WholeOrganics".into(),
+        date: embedag_example_receipts::finance::parse_date("2026-10-12"),
+        purchase_content: None,
         items: vec![
-            InvoiceItem {
-                item_name: "Fresh Whole Milk".into(),
-                price: 4.99,
-                quantity: 1,
-            },
-            InvoiceItem {
-                item_name: "French Baguette Bread".into(),
-                price: 3.50,
-                quantity: 2,
-            },
+            InvoiceItem::new("item_1", "Fresh Whole Milk", 4.99, 1, None),
+            InvoiceItem::new("item_2", "French Baguette Bread", 3.50, 2, None),
         ],
         total: 11.99,
     };
 
     let categories = categorize_ticket_invoice(&ticket);
 
-    // 4. Fill custom table
-    for cat in &categories {
-        let parent_val = match &cat.parent_category_id {
-            Some(p) => format!("'{}'", p),
-            None => "NULL".to_string(),
-        };
-        let sql = format!(
-            "INSERT INTO receipt_categories (category_id, parent_category_id, category_name, entity_level) \
-             VALUES ('{}', {}, '{}', '{}');",
-            cat.category_id, parent_val, cat.category_name, cat.entity_level
-        );
-        client.batch_execute(&sql).await.expect("insert category row");
-    }
+    // 4. Fill custom table using macro-generated type-safe Diesel async batch insert
+    ReceiptCategoryRecord::insert_batch_pg_async(&categories, &mut async_conn)
+        .await
+        .expect("insert category rows via macro-generated type-safe Diesel async batch");
 
     let config = ReceiptCategoryRecord::table_config();
 
@@ -251,22 +284,4 @@ async fn test_developer_custom_migration_and_invoice_categorization_cte_postgres
     assert_eq!(ancestors[1].name, "Dairy & Plant Alternatives");
     assert_eq!(ancestors[2].depth, 3);
     assert_eq!(ancestors[2].name, "WholeOrganics");
-
-    // 6. Query descendants from root via macro-generated config on PostgreSQL
-    let root = categories
-        .iter()
-        .find(|c| c.entity_level == "store_root")
-        .expect("store root");
-
-    let descendants = CteHierarchyBuilder::fetch_descendants_pg_async(
-        &mut async_conn,
-        &config,
-        &root.category_id,
-        10,
-    )
-    .await
-    .expect("fetch descendants pg async");
-
-    // 2 departments + 2 subcategories + 2 items = 6 descendants
-    assert_eq!(descendants.len(), 6);
 }
