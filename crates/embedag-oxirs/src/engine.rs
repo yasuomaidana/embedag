@@ -408,14 +408,13 @@ impl OxiRsTdbEngine {
 
         let mut node_keys = HashMap::new();
         for q in node_quads {
-            if let Subject::NamedNode(_subj) = q.subject() {
-                if let Object::Literal(lit) = q.object() {
+            if let Subject::NamedNode(_subj) = q.subject()
+                && let Object::Literal(lit) = q.object() {
                     let node: T = serde_json::from_str(lit.value())?;
                     let key_str = node.key().to_string();
                     let idx = dag.upsert_node(node);
                     node_keys.insert(key_str, idx);
                 }
-            }
         }
 
         // 2. Query all reified edges (type embedag:Edge)
@@ -455,8 +454,8 @@ impl OxiRsTdbEngine {
                 child_quads.first(),
                 rel_quads.first(),
                 conf_quads.first(),
-            ) {
-                if let (Object::NamedNode(p_node), Object::NamedNode(c_node)) =
+            )
+                && let (Object::NamedNode(p_node), Object::NamedNode(c_node)) =
                     (pq.object(), cq.object())
                 {
                     let p_key = extract_key_from_iri(p_node.as_str());
@@ -477,7 +476,6 @@ impl OxiRsTdbEngine {
                         dag.add_edge(p_idx, c_idx, payload);
                     }
                 }
-            }
         }
 
         // Validate acyclic invariants

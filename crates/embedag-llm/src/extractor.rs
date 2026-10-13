@@ -5,13 +5,6 @@
 
 use serde_json::Value;
 
-/// Deprecated placeholder for legacy code. Developers must configure their own domain keys
-/// explicitly via [`entity_properties!`] or [`EntityExtractorConfig::with_keys`].
-#[deprecated(
-    note = "Define explicit domain keys via `entity_properties!` or `EntityExtractorConfig::with_keys`"
-)]
-pub const DEFAULT_ENTITY_KEYS: &[&str] = &[];
-
 /// Checks whether a JSON property key matches general identification naming conventions.
 ///
 /// Matches standard keys ("name", "title", "label", "id", "key") and common affix patterns
@@ -224,10 +217,10 @@ impl EntityExtractor for EntityExtractorConfig {
 
     fn extract_from_prompt(&self, prompt: &str) -> String {
         if let Some(slice) = extract_record_slice(prompt) {
-            if let Ok(v) = serde_json::from_str::<Value>(slice) {
-                if let Some(extracted) = self.extract_from_value(&v) {
-                    return extracted;
-                }
+            if let Ok(v) = serde_json::from_str::<Value>(slice)
+                && let Some(extracted) = self.extract_from_value(&v)
+            {
+                return extracted;
             }
             if self.fallback_to_slice && !slice.is_empty() {
                 return slice.to_string();
@@ -244,8 +237,10 @@ pub fn extract_incoming_entity_text(prompt: &str) -> String {
 
 /// Extracts entity text using application-specified priority keys followed by standard heuristics.
 pub fn extract_incoming_entity_text_with_keys(prompt: &str, candidate_keys: &[&str]) -> String {
-    let mut config = EntityExtractorConfig::default();
-    config.priority_keys = candidate_keys.iter().map(|s| s.to_string()).collect();
+    let config = EntityExtractorConfig {
+        priority_keys: candidate_keys.iter().map(|s| s.to_string()).collect(),
+        ..Default::default()
+    };
     config.extract_from_prompt(prompt)
 }
 

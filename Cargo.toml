@@ -37,7 +37,7 @@ h3o = "0.11"
 uuid = { version = "1", features = ["v4", "serde"] }
 
 # LLM & Schema
-schemars = { version = "1.0", features = ["derive", "chrono04"] }
+schemars = { version = "1", features = ["derive", "chrono04"] }
 gbnf = "0.2"
 async-trait = "0.1"
 tokio = { version = "1", features = ["full"] }
@@ -58,11 +58,13 @@ pgvector = { version = "0.4", features = ["diesel", "postgres"] }
 syn = { version = "2", features = ["full", "extra-traits"] }
 quote = "1"
 proc-macro2 = "1"
-proc-macro-crate = "3"
+
+# Concurrency & Utility
+parking_lot = "0.12"
 
 # Testing
 proptest = "1"
-trybuild = "1"
 jsonschema = "0.58"
+tempfile = "3"
 testcontainers = "0.27"
 testcontainers-modules = { version = "0.15", features = ["postgres"] }

@@ -72,13 +72,12 @@ pub use embedag_derive::{AsGraphContext, GraphTarget};
 
 // LLM re-exports
 #[cfg(feature = "llm")]
-#[allow(deprecated)]
 pub use embedag_llm::{
     define_entity_extractor, entity_properties, extract_entity_text, extract_entity_text_from_value,
     extract_incoming_entity_text, extract_incoming_entity_text_with_config,
     extract_incoming_entity_text_with_keys, EntityExtractor, EntityExtractorConfig,
     EntityProperties, ExtractionDirective, ExtractionEnvelope, LlmError, LlmProvider,
-    ModelMetadata, OxibonsaiProvider, OxillamaProvider, DEFAULT_ENTITY_KEYS,
+    ModelMetadata, OxibonsaiProvider, OxillamaProvider,
 };
 
 // RAG re-exports

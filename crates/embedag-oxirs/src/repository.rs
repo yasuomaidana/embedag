@@ -9,7 +9,6 @@ use embedag_core::traits::{
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::engine::OxiRsTdbEngine;
-use crate::error::OxiRsStorageError;
 
 #[async_trait]
 impl<T> ReadOnlyGraphRepository<T> for OxiRsTdbEngine
@@ -55,27 +54,25 @@ where
         for directive in directives {
             match directive {
                 MutationDirective::UpsertNode(node) => {
-                    self.insert_node(node).map_err(OxiRsStorageError::from)?;
+                    self.insert_node(node)?;
                 }
                 MutationDirective::AddEdge {
                     parent,
                     child,
                     edge,
                 } => {
-                    self.insert_edge(parent, child, edge)
-                        .map_err(OxiRsStorageError::from)?;
+                    self.insert_edge(parent, child, edge)?;
                 }
                 MutationDirective::RemoveEdge {
                     parent,
                     child,
                     relationship,
                 } => {
-                    self.remove_edge(parent, child, relationship.as_deref())
-                        .map_err(OxiRsStorageError::from)?;
+                    self.remove_edge(parent, child, relationship.as_deref())?;
                 }
             }
         }
-        self.flush().map_err(OxiRsStorageError::from)?;
+        self.flush()?;
         Ok(())
     }
 }

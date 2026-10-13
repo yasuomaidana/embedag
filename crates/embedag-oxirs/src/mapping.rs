@@ -281,13 +281,12 @@ pub fn edge_to_quads<K: Display>(
 pub fn reconstruct_node<T: DeserializeOwned>(quads: &[Quad], vocab: &SchemaVocab) -> Result<Option<T>, OxiRsStorageError> {
     // Look for exact embedag:payload literal first
     for quad in quads {
-        if let Predicate::NamedNode(pred) = quad.predicate() {
-            if pred == &vocab.payload {
-                if let Object::Literal(lit) = quad.object() {
-                    let parsed: T = serde_json::from_str(lit.value())?;
-                    return Ok(Some(parsed));
-                }
-            }
+        if let Predicate::NamedNode(pred) = quad.predicate()
+            && pred == &vocab.payload
+            && let Object::Literal(lit) = quad.object()
+        {
+            let parsed: T = serde_json::from_str(lit.value())?;
+            return Ok(Some(parsed));
         }
     }
 

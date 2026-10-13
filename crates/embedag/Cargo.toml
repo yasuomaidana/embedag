@@ -23,14 +23,12 @@ embedag-llm = { workspace = true, optional = true }
 embedag-diesel = { workspace = true, optional = true }
 embedag-rag = { workspace = true, optional = true }
 embedag-oxirs = { workspace = true, optional = true }
-chrono = { workspace = true }
 
 [dev-dependencies]
+chrono = { workspace = true }
 tokio = { workspace = true }
 uuid = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 diesel = { workspace = true }
 h3o = { workspace = true }
-testcontainers = { workspace = true }
-testcontainers-modules = { workspace = true }
