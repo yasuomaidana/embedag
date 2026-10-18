@@ -2163,6 +2163,7 @@ dependencies = [
  "embedag-derive",
  "embedag-diesel",
  "embedag-llm",
+ "embedag-matcher",
  "embedag-neo4j",
  "embedag-oxirs",
  "embedag-rag",
@@ -2179,6 +2180,7 @@ name = "embedag-core"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "blake3",
  "chrono",
  "h3o",
  "petgraph",
@@ -2258,6 +2260,16 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
+]
+
+[[package]]
+name = "embedag-matcher"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "embedag-core",
+ "petgraph",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

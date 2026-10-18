@@ -39,6 +39,22 @@
 #[cfg(feature = "core")]
 pub use embedag_core as core;
 
+/// Dependency-graph API consumed by Dendrite: DAG arena, resolution, and Merkle deltas.
+#[cfg(feature = "core")]
+pub mod dag {
+    pub use embedag_core::dag::*;
+    pub use embedag_core::error::DagError;
+    pub use embedag_core::resolve::{critical_path, levels, reverse_deps, toposort};
+    /// Content-addressed Merkle trees for change detection.
+    pub mod merkle {
+        pub use embedag_core::merkle::*;
+    }
+}
+
+/// Structural AST similarity matching and similarity graphs.
+#[cfg(feature = "matcher")]
+pub use embedag_matcher as matcher;
+
 #[cfg(feature = "derive")]
 pub use embedag_derive as derive;
 

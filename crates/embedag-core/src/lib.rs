@@ -11,9 +11,11 @@
 //! - [`encoder`]: Deterministic mathematical feature encoders for numbers, time, geography, and hybrid distances.
 //! - [`error`]: Typed domain and cycle errors.
 //! - [`export`]: Visual graph exporters (Mermaid, Graphviz DOT) and interchange formats (GraphML, JSON-LD).
+//! - [`merkle`]: Content-addressed Merkle trees and delta diffing for change detection.
 //! - [`migration`]: Declarative graph schema migrations and reparenting transformations.
 //! - [`model`]: Core value types including edges, classification targets, and media blobs.
 //! - [`mutation`]: Typestate mutation plans and atomic graph modification directives.
+//! - [`resolve`]: Deterministic DAG dependency resolution, topological sorting, levels, reverse dependencies, and critical paths.
 //! - [`traits`]: Contracts for graph ingestion ([`AsGraphContext`]), node payloads ([`NodePayload`]), and capability storage ports.
 
 #![warn(missing_docs)]
@@ -23,10 +25,12 @@ pub mod dag_iter;
 pub mod encoder;
 pub mod error;
 pub mod export;
+pub mod merkle;
 pub mod migration;
 pub mod model;
 pub mod mutation;
 pub mod pagination;
+pub mod resolve;
 pub mod traits;
 
 // Re-exports for clean prelude access

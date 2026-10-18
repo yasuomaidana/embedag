@@ -1,6 +1,6 @@
 # Project Status & Ticket Log
 
-**Progress:** 55/55 completed (100%) — **Milestones 1, 2, 3, 4, 5, 6, 7 & 8 COMPLETE**  
+**Progress:** 55/61 completed (90%) — **Milestones 1–8 COMPLETE**; Milestone 9 (Dendrite integration) in progress
 **Current Focus:** All milestone development tickets completed (`Milestone 7` delivered: `embedag-surrealdb` & `embedag-neo4j`)
 
 ---
@@ -76,3 +76,12 @@
 - [x] Ticket 8.1.3: Localized Differential Cycle Validation (`embedag-core`)
 - [x] Ticket 8.2.1: Hub-Bounded GraphRAG Subgraph Expansion (`embedag-rag`)
 - [x] Ticket 8.3.1: Windowed & Degree-Bounded Recursive CTE Traversals (`embedag-diesel`)
+
+### Milestone 9: Dendrite Integration (graph & DAG engine for the Dendrite control plane)
+Tickets relocated from Plane project DEN on 2026-10-18; each DEN ticket stays as the umbrella for its Go side.
+- [~] Ticket 9.1.1: Dendrite-facing API — `embedag::dag` (toposort, levels, reverse_deps, critical_path), `embedag::dag::merkle` (blake3 Merkle delta trees), `embedag-matcher` (AST similarity graphs); slim facade features `core,matcher` (`embedag-core`, `embedag-matcher`, `embedag`) — implemented on branch `feat/dendrite-dag-api`, tests pass, awaiting review
+- [ ] Ticket 9.2.1: Multi-directory dependency DAG solver for `dendrite pool` (umbrella DEN-051, Go side `pkg/pool/dag`) (`embedag-core`)
+- [ ] Ticket 9.2.2: Ticket–milestone dependency DAG solver & prioritizer (umbrella DEN-074, Go side `pkg/stories/dag`, `pkg/tracker`) (`embedag-core`)
+- [ ] Ticket 9.3.1: Merkle digest verification protocol for WAL state journals (umbrella DEN-068, Go side `pkg/node/wal`, `pkg/store`) (`embedag-core`)
+- [ ] Ticket 9.4.1: Leiden community clustering & god-node dependency index for code-knowledge graphs (from DEND-202 / Plane DEN #107) (`embedag-rag`)
+- [ ] Ticket 9.5.1: Public SCC detection & condensation API for possibly-cyclic graphs (cyclic input → condensed DAG + component membership), consumed by dendrite-git-rs hunk graph clustering (DGIT DEN-932/933) (`embedag-core`)

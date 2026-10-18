@@ -12,6 +12,7 @@ std = []
 h3o = ["dep:h3o"]
 
 [dependencies]
+blake3 = { workspace = true }
 petgraph = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }

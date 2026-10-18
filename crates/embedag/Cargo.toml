@@ -8,8 +8,9 @@ repository.workspace = true
 
 [features]
 default = ["full"]
-full = ["core", "derive", "llm", "diesel", "rag", "oxirs-tdb", "surrealdb", "neo4j", "turso", "turso-async"]
+full = ["core", "derive", "llm", "diesel", "rag", "oxirs-tdb", "surrealdb", "neo4j", "turso", "turso-async", "matcher"]
 core = ["dep:embedag-core"]
+matcher = ["dep:embedag-matcher", "core"]
 derive = ["dep:embedag-derive"]
 llm = ["dep:embedag-llm"]
 diesel = ["dep:embedag-diesel"]
@@ -22,6 +23,7 @@ neo4j = ["dep:embedag-neo4j"]
 
 [dependencies]
 embedag-core = { workspace = true, optional = true }
+embedag-matcher = { workspace = true, optional = true }
 embedag-derive = { workspace = true, optional = true }
 embedag-llm = { workspace = true, optional = true }
 embedag-diesel = { workspace = true, optional = true }

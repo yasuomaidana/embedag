@@ -1,0 +1,13 @@
+[package]
+name = "embedag-matcher"
+description = "Language-agnostic structural AST similarity matching and similarity graphs for embedag."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+embedag-core = { workspace = true }
+petgraph = { workspace = true }
+blake3 = { workspace = true }
+thiserror = { workspace = true }
