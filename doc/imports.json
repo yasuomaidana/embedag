@@ -1,0 +1,9 @@
+[
+  "docs/architecture/2026-10-quality-audit-execution-plan.md",
+  "docs/features/FEAT-029-autonomous-pool-dag-synchronization.md",
+  "docs/features/FEAT-004-repo-intel-ast.md",
+  "docs/features/FEAT-022-agent-search-and-capability-discovery.md",
+  "docs/features/FEAT-026-distributed-codebase-ecosystem.md",
+  "docs/features/FEAT-040-turso-offline-cache-outbox-sync.md",
+  "docs/cli/pool.md"
+]
