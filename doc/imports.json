@@ -5,5 +5,9 @@
   "docs/features/FEAT-022-agent-search-and-capability-discovery.md",
   "docs/features/FEAT-026-distributed-codebase-ecosystem.md",
   "docs/features/FEAT-040-turso-offline-cache-outbox-sync.md",
-  "docs/cli/pool.md"
+  "docs/cli/pool.md",
+  "docs/features/FEAT-036-ticket-milestone-dag-story-prioritization.md",
+  "docs/mcp/dendrite_pool_resolve.md",
+  "docs/mcp/dendrite_ticket_smart_select.md",
+  "docs/features/FEAT-033-infrastructure-mobility-smart-backup.md"
 ]
