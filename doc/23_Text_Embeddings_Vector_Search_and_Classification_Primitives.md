@@ -25,6 +25,7 @@ This document specifies the capabilities that move embedag's waterfall from call
 
 | Ticket | Priority | Points | Crate | Requirement |
 |---|---|---|---|---|
+| `10.0.1` | high | 1 | `embedag-llm` | Local inference priority: GPU-capable candle first, Ollama-compatible HTTP next, oxillama last (CPU-only prefill) |
 | `10.1.1` | high | 5 | `embedag-core` | Embedder trait + real text embeddings per spec 08 (trustformers/oxirag pure-Rust; fastembed/ONNX optional) |
 | `10.1.2` | high | 5 | `embedag-diesel` | Diesel VectorSearchRepository for pgvector and SQLite (BLOB brute-force / sqlite-vec) |
 | `10.2.1` | high | 5 | `embedag-llm` | Fuzzy merchant-descriptor normalization (bank descriptor cleaning + trigram/Jaro-Winkler) |
@@ -38,14 +39,19 @@ This document specifies the capabilities that move embedag's waterfall from call
 
 ## 4. Specifications
 
+### 10.0.1: Local inference priority
+
+oxillama-runtime 0.1.4 offloads only Q4_0 single-token decode to the GPU (`oxillama-gpu`, wgpu); multi-token prefill, and therefore prompt processing and embeddings, runs on the CPU (measured: over 3 s per 500-token embedding on Apple Silicon, against about 0.1 s for a GPU runtime). Provider documentation and the embedding backends below are ranked GPU first: `candle` on Metal or CUDA, then an Ollama-compatible or Text Embeddings Inference HTTP server, then CPU runtimes. See [11](11_Pure_Rust_LLM_Inference_and_Constrained_Decoding.md) §2.3.
+
 ### 10.1.1: Embedder trait + real text embeddings per spec 08 (trustformers/oxirag pure-Rust; fastembed/ONNX optional)
 
 `doc/08_Neural_and_Multimodal_Embeddings.md` specifies pure-Rust transformer embeddings (`trustformers` / `oxirag`), with ONNX via `fastembed-rs` only as an optional secondary backend. The code has no text-embedding model, so callers must supply their own vectors.
 
 **Request:**
 - A trait `Embedder { fn embed(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>>; fn dim(); fn model_id(); }`.
-- A pure-Rust multilingual small model behind `embed-local` (the data is Spanish and English merchant and item names).
-- Optional `embed-onnx` and `embed-http` implementations.
+- A pure-Rust multilingual small model behind `embed-local` (the data is Spanish and English merchant and item names), on `candle` with `embed-local-metal` / `embed-local-cuda` features so the forward pass runs on the GPU. Encoder families supported by candle-transformers (BERT, XLM-RoBERTa, NomicBERT, JinaBERT) cover multilingual-e5-small and similar models.
+- Optional `embed-http` (Ollama `/api/embed`, Text Embeddings Inference `/embed`, OpenAI-compatible `/v1/embeddings`) and `embed-onnx` implementations.
+- Not an oxillama-based embedder: its embeddings run on the CPU (see 10.0.1).
 
 **Acceptance criteria:** deterministic output, with a recorded `model_id` and `dim` so they can be stored.
 

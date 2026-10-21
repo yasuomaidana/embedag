@@ -58,10 +58,12 @@ pub trait LlmProvider: Send + Sync {
     }
 }
 
-/// Priority 1 Pure-Rust sovereign GGUF inference engine powered by `oxillama` (`cool-japan/oxillama`).
+/// Pure-Rust GGUF inference engine powered by `oxillama` (`cool-japan/oxillama`), for CPU-only deployments.
 ///
 /// Operates with Zero C/C++ FFI dependencies across standard GGUF architectures (LLaMA-3, Mistral, Qwen, Phi).
-/// Works alongside `OxibonsaiProvider` within the sovereign KitaSan inference stack.
+/// Ranked after GPU-capable providers: oxillama-runtime 0.1.4 offloads only Q4_0 single-token decode to the
+/// GPU, so prompt prefill runs on the CPU. Prefer `CandleProvider` on a GPU, then an Ollama-compatible
+/// HTTP provider.
 pub struct OxillamaProvider {
     pub model_id: String,
     pub quantization: String,
@@ -140,9 +142,10 @@ impl LlmProvider for OxillamaProvider {
     }
 }
 
-/// Fallback Pure-Rust tensor inference engine powered by Hugging Face `candle` (`huggingface/candle`).
+/// Pure-Rust tensor inference engine powered by Hugging Face `candle` (`huggingface/candle`).
 ///
-/// Priority 2 fallback option if oxillama / oxibonsai GGUF quantization is not available.
+/// Priority 1 local provider: candle runs whole forward passes (prefill included) on Metal or CUDA,
+/// and on the CPU elsewhere.
 pub struct CandleProvider {
     pub model_id: String,
     pub simulated_directive: Option<ExtractionDirective>,
@@ -212,7 +215,8 @@ impl LlmProvider for CandleProvider {
     }
 }
 
-/// Priority 1 Pure-Rust sub-2-bit (1-bit / ternary) inference engine powered by `oxibonsai` (`cool-japan/oxibonsai`).
+/// Pure-Rust sub-2-bit (1-bit / ternary) inference engine powered by `oxibonsai` (`cool-japan/oxibonsai`), for
+/// memory-constrained CPU deployments.
 ///
 /// Specializes in ultra-low memory sub-2-bit execution (`Q1_0_g128`, `TQ2_0_g128`) and Pushdown Automaton (PDA)
 /// constrained logit masking with zero C/C++ FFI dependencies.

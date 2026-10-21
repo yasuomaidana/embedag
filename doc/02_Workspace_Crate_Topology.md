@@ -73,8 +73,9 @@ flowchart TD
 ### 3.3 `embedag-llm` (LLM & Constrained Inference Adapter)
 - **Role**: Zero-FFI local inference, schema derivation, and constrained logit masking.
 - **Primary Engines**:
-  - `cool-japan/oxibonsai`: Priority 1 sub-2-bit (1-bit / ternary) inference engine with Pushdown Automaton (PDA) token logit masking.
-  - `cool-japan/oxillama`: Priority 1 pure-Rust GGUF inference engine (sovereign alternative to `llama.cpp`) supporting 25 architectures and Q4_0..Q8_0 quants.
+  - `huggingface/candle`: priority 1 local runtime on Metal or CUDA (whole forward passes on the GPU).
+  - `cool-japan/oxibonsai`: sub-2-bit (1-bit / ternary) inference engine with Pushdown Automaton (PDA) token logit masking, for memory-constrained CPU deployments.
+  - `cool-japan/oxillama`: pure-Rust GGUF inference engine (sovereign alternative to `llama.cpp`) supporting 25 architectures and Q4_0..Q8_0 quants. CPU-only for prompt prefill and embeddings (GPU offload covers only Q4_0 single-token decode), so it ranks after GPU-capable providers ([11](11_Pure_Rust_LLM_Inference_and_Constrained_Decoding.md) §2.3).
 - **Key Modules**: Pushdown automaton (PDA) logit mask generation, `schemars` JSON schema reflection, Draft-Then-Decode cognitive scratchpad.
 
 ### 3.4 `embedag-diesel` (Relational Persistence Adapter)
