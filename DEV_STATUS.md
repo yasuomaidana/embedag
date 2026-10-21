@@ -1,6 +1,6 @@
 # Project Status & Ticket Log
 
-**Progress:** 55/61 completed (90%) — **Milestones 1–8 COMPLETE**; Milestone 9 (dependency resolution & code-graph APIs) in progress
+**Progress:** 55/71 completed (77%) — **Milestones 1–8 COMPLETE**; Milestone 9 (dependency resolution & code-graph APIs) in progress; Milestone 10 (embeddings, vector search & classification primitives) planned
 **Current Focus:** All milestone development tickets completed (`Milestone 7` delivered: `embedag-surrealdb` & `embedag-neo4j`)
 
 ---
@@ -86,3 +86,15 @@ Slim, dependency-light graph APIs for dependency schedulers, change detectors an
 - [ ] Ticket 9.3.1: Merkle journal verification — recompute and compare Merkle roots of append-only state journals, with a canonical wire format for trees (`embedag-core`)
 - [ ] Ticket 9.4.1: Leiden community clustering and god-node (high in-degree) index for code-knowledge graphs (`embedag-rag`)
 - [ ] Ticket 9.5.1: Public SCC detection & condensation API for possibly-cyclic graphs (cyclic input → condensed DAG + component membership) (`embedag-core`)
+
+### Milestone 10: Text Embeddings, Vector Search & Classification Primitives
+- [ ] Ticket 10.1.1: Embedder trait + real text embeddings per spec 08 (trustformers/oxirag pure-Rust; fastembed/ONNX optional) (`embedag-core`)
+- [ ] Ticket 10.1.2: Diesel VectorSearchRepository for pgvector and SQLite (BLOB brute-force / sqlite-vec) (`embedag-diesel`)
+- [ ] Ticket 10.2.1: Fuzzy merchant-descriptor normalization (bank descriptor cleaning + trigram/Jaro-Winkler) (`embedag-llm`)
+- [ ] Ticket 10.2.2: kNN categorizer over labelled history producing CandidateMatch (`embedag-llm`)
+- [ ] Ticket 10.2.3: Recurring/subscription series detection + amount-drift alerts (`embedag-core`)
+- [ ] Ticket 10.3.1: Real HTTP LlmProvider (Anthropic / OpenAI / Ollama-compatible) for Tier-3 (`embedag-llm`)
+- [ ] Ticket 10.3.2: Lean default features (test-harness and full off by default) (`embedag`)
+- [ ] Ticket 10.4.1: HierarchicalModel: discriminator-scoped hierarchies + configurable ON DELETE (`embedag-derive`)
+- [ ] Ticket 10.4.2: Brand hierarchy + trait facet with inheritance in the finance categorization engine (`embedag-example-receipts`)
+- [ ] Ticket 10.5.1: Incremental Merkle trees with prefix-subtree digests for replica anti-entropy (builds on 9.3.1 wire format) (`embedag-core`)
