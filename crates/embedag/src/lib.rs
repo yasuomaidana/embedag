@@ -39,7 +39,7 @@
 #[cfg(feature = "core")]
 pub use embedag_core as core;
 
-/// Dependency-graph API consumed by Dendrite: DAG arena, resolution, and Merkle deltas.
+/// Dependency-graph API: DAG arena, deterministic resolution, and Merkle deltas.
 #[cfg(feature = "core")]
 pub mod dag {
     pub use embedag_core::dag::*;

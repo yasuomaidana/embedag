@@ -1,6 +1,6 @@
 # Project Status & Ticket Log
 
-**Progress:** 55/61 completed (90%) — **Milestones 1–8 COMPLETE**; Milestone 9 (Dendrite integration) in progress
+**Progress:** 55/61 completed (90%) — **Milestones 1–8 COMPLETE**; Milestone 9 (dependency resolution & code-graph APIs) in progress
 **Current Focus:** All milestone development tickets completed (`Milestone 7` delivered: `embedag-surrealdb` & `embedag-neo4j`)
 
 ---
@@ -77,11 +77,12 @@
 - [x] Ticket 8.2.1: Hub-Bounded GraphRAG Subgraph Expansion (`embedag-rag`)
 - [x] Ticket 8.3.1: Windowed & Degree-Bounded Recursive CTE Traversals (`embedag-diesel`)
 
-### Milestone 9: Dendrite Integration (graph & DAG engine for the Dendrite control plane)
-Tickets relocated from Plane project DEN on 2026-10-18; each DEN ticket stays as the umbrella for its Go side.
-- [~] Ticket 9.1.1: Dendrite-facing API — `embedag::dag` (toposort, levels, reverse_deps, critical_path), `embedag::dag::merkle` (blake3 Merkle delta trees), `embedag-matcher` (AST similarity graphs); slim facade features `core,matcher` (`embedag-core`, `embedag-matcher`, `embedag`) — implemented on branch `feat/dendrite-dag-api`, tests pass, awaiting review
-- [ ] Ticket 9.2.1: Multi-directory dependency DAG solver for `dendrite pool` (umbrella DEN-051, Go side `pkg/pool/dag`) (`embedag-core`)
-- [ ] Ticket 9.2.2: Ticket–milestone dependency DAG solver & prioritizer (umbrella DEN-074, Go side `pkg/stories/dag`, `pkg/tracker`) (`embedag-core`)
-- [ ] Ticket 9.3.1: Merkle digest verification protocol for WAL state journals (umbrella DEN-068, Go side `pkg/node/wal`, `pkg/store`) (`embedag-core`)
-- [ ] Ticket 9.4.1: Leiden community clustering & god-node dependency index for code-knowledge graphs (from DEND-202 / Plane DEN #107) (`embedag-rag`)
-- [ ] Ticket 9.5.1: Public SCC detection & condensation API for possibly-cyclic graphs (cyclic input → condensed DAG + component membership), consumed by dendrite-git-rs hunk graph clustering (DGIT DEN-932/933) (`embedag-core`)
+### Milestone 9: Dependency Resolution, Change Detection & Code-Graph APIs
+Slim, dependency-light graph APIs for dependency schedulers, change detectors and code-analysis tools (`doc/22_Dependency_Resolution_and_Merkle_Delta_API.md`).
+- [x] Ticket 9.0.1: Specification `22_Dependency_Resolution_and_Merkle_Delta_API` (`doc`)
+- [x] Ticket 9.1.1: Slim facade — `embedag::dag` (toposort, levels, reverse_deps, critical_path), `embedag::dag::merkle` (BLAKE3 Merkle delta trees), `embedag-matcher` (AST similarity graphs); features `core,matcher` (`embedag-core`, `embedag-matcher`, `embedag`)
+- [ ] Ticket 9.2.1: Multi-root dependency manifests — build a `MemoryDag` from per-directory manifests (`go.mod`, `Cargo.toml`, `package.json`, `pyproject.toml`), cycle hazards and deterministic build order (`embedag-core`)
+- [ ] Ticket 9.2.2: Work-item prioritisation — downstream unblock weights with distance decay plus critical-path scheduling over item/milestone DAGs (`embedag-core`)
+- [ ] Ticket 9.3.1: Merkle journal verification — recompute and compare Merkle roots of append-only state journals, with a canonical wire format for trees (`embedag-core`)
+- [ ] Ticket 9.4.1: Leiden community clustering and god-node (high in-degree) index for code-knowledge graphs (`embedag-rag`)
+- [ ] Ticket 9.5.1: Public SCC detection & condensation API for possibly-cyclic graphs (cyclic input → condensed DAG + component membership) (`embedag-core`)
