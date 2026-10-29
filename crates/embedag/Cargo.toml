@@ -40,3 +40,4 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 diesel = { workspace = true }
 h3o = { workspace = true }
+rstest = { workspace = true }

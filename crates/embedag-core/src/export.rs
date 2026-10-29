@@ -236,6 +236,7 @@ fn quick_xml_escape(raw: &str) -> String {
 mod tests {
     use super::*;
     use crate::model::{EdgePayload, ProvenanceKind};
+    use rstest::{fixture, rstest};
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct MockItem {
@@ -267,6 +268,7 @@ mod tests {
         }
     }
 
+    #[fixture]
     fn sample_dag() -> MemoryDag<MockItem> {
         let mut dag = MemoryDag::new();
         let parent = MockItem::new("CAT-1", "Dairy", "Category");
@@ -281,10 +283,9 @@ mod tests {
         dag
     }
 
-    #[test]
-    fn test_mermaid_export_syntax() {
-        let dag = sample_dag();
-        let mermaid = GraphExporter::to_mermaid(&dag);
+    #[rstest]
+    fn test_mermaid_export_syntax(sample_dag: MemoryDag<MockItem>) {
+        let mermaid = GraphExporter::to_mermaid(&sample_dag);
 
         assert!(mermaid.starts_with("graph TD\n"));
         assert!(mermaid.contains("CAT-1: Dairy (Category)"));
@@ -292,10 +293,9 @@ mod tests {
         assert!(mermaid.contains("-->|\"PARENT_OF (1.00)\"|"));
     }
 
-    #[test]
-    fn test_dot_export_syntax() {
-        let dag = sample_dag();
-        let dot = GraphExporter::to_dot(&dag);
+    #[rstest]
+    fn test_dot_export_syntax(sample_dag: MemoryDag<MockItem>) {
+        let dot = GraphExporter::to_dot(&sample_dag);
 
         assert!(dot.starts_with("digraph G {\n"));
         assert!(dot.contains("CAT-1\\Dairy\\[Category]"));
@@ -304,10 +304,9 @@ mod tests {
         assert!(dot.ends_with("}\n"));
     }
 
-    #[test]
-    fn test_graphml_serialization() {
-        let dag = sample_dag();
-        let xml = GraphExporter::to_graphml(&dag);
+    #[rstest]
+    fn test_graphml_serialization(sample_dag: MemoryDag<MockItem>) {
+        let xml = GraphExporter::to_graphml(&sample_dag);
 
         assert!(xml.contains("<graphml xmlns="));
         assert!(xml.contains("<data key=\"key\">CAT-1</data>"));
@@ -316,10 +315,9 @@ mod tests {
         assert!(xml.contains("</graphml>"));
     }
 
-    #[test]
-    fn test_json_ld_serialization() {
-        let dag = sample_dag();
-        let json_ld = GraphExporter::to_json_ld(&dag);
+    #[rstest]
+    fn test_json_ld_serialization(sample_dag: MemoryDag<MockItem>) {
+        let json_ld = GraphExporter::to_json_ld(&sample_dag);
 
         assert_eq!(json_ld["@context"]["@vocab"], "https://schema.org/");
         let graph = json_ld["@graph"].as_array().unwrap();
@@ -331,10 +329,9 @@ mod tests {
         assert_eq!(cat_item["relationships"][0]["@type"], "PARENT_OF");
     }
 
-    #[test]
-    fn test_rdf_star_turtle_serialization() {
-        let dag = sample_dag();
-        let ttl = GraphExporter::to_rdf_star_turtle(&dag);
+    #[rstest]
+    fn test_rdf_star_turtle_serialization(sample_dag: MemoryDag<MockItem>) {
+        let ttl = GraphExporter::to_rdf_star_turtle(&sample_dag);
 
         assert!(ttl.contains("@prefix embedag: <https://embedag.dev/ns#> ."));
         assert!(ttl.contains("node:CAT-1 a embedag:Category ;"));

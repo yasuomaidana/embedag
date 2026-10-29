@@ -16,18 +16,21 @@ pub use tree::Tree;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::{fixture, rstest};
 
-    fn sample_add_fn(fn_name: &str, lhs: &str, rhs: &str) -> Tree {
+    #[fixture]
+    fn sample_add_fn(
+        #[default("add")] fn_name: &str,
+        #[default("a")] lhs: &str,
+        #[default("b")] rhs: &str,
+    ) -> Tree {
         Tree::new(
             "function_item",
             Some(fn_name.to_string()),
             vec![
                 Tree::branch(
                     "parameters",
-                    vec![
-                        Tree::leaf("parameter", lhs),
-                        Tree::leaf("parameter", rhs),
-                    ],
+                    vec![Tree::leaf("parameter", lhs), Tree::leaf("parameter", rhs)],
                 ),
                 Tree::branch(
                     "block",
@@ -44,6 +47,7 @@ mod tests {
         )
     }
 
+    #[fixture]
     fn sample_unrelated_tree() -> Tree {
         Tree::branch(
             "struct_item",
@@ -75,48 +79,40 @@ mod tests {
         )
     }
 
-    #[test]
-    fn test_identical_trees_score_one() {
-        let t1 = sample_add_fn("add", "a", "b");
-        let t2 = sample_add_fn("add", "a", "b");
+    #[rstest]
+    #[case::identical("add", "a", "b", "add", "a", "b")]
+    #[case::label_only_rename("compute_sum", "first_val", "second_val", "total", "x", "y")]
+    fn test_tree_matching_score_one(
+        #[case] name1: &str,
+        #[case] lhs1: &str,
+        #[case] rhs1: &str,
+        #[case] name2: &str,
+        #[case] lhs2: &str,
+        #[case] rhs2: &str,
+    ) {
+        let t1 = sample_add_fn(name1, lhs1, rhs1);
+        let t2 = sample_add_fn(name2, lhs2, rhs2);
         let matcher = AstMatcher::default();
         let s = matcher.score(&t1, &t2);
         assert!((s - 1.0).abs() < f32::EPSILON, "expected 1.0, got {s}");
     }
 
-    #[test]
-    fn test_label_only_rename_scores_one() {
-        let t1 = sample_add_fn("compute_sum", "first_val", "second_val");
-        let t2 = sample_add_fn("total", "x", "y");
+    #[rstest]
+    fn test_unrelated_trees_score_low(sample_add_fn: Tree, sample_unrelated_tree: Tree) {
         let matcher = AstMatcher::default();
-        let s = matcher.score(&t1, &t2);
-        assert!(
-            (s - 1.0).abs() < f32::EPSILON,
-            "renamed identifiers must still match 1.0, got {s}"
-        );
-    }
-
-    #[test]
-    fn test_unrelated_trees_score_low() {
-        let func_tree = sample_add_fn("add", "a", "b");
-        let struct_tree = sample_unrelated_tree();
-        let matcher = AstMatcher::default();
-        let s = matcher.score(&func_tree, &struct_tree);
+        let s = matcher.score(&sample_add_fn, &sample_unrelated_tree);
         assert!(s < 0.3, "expected unrelated score < 0.3, got {s}");
     }
 
-    #[test]
-    fn test_score_is_symmetric() {
+    #[rstest]
+    fn test_score_is_symmetric(sample_unrelated_tree: Tree) {
         let t1 = sample_add_fn("add", "a", "b");
         let mut t2 = sample_add_fn("add_extra", "a", "b");
         t2.children.push(Tree::branch(
             "return_statement",
-            vec![
-                Tree::leaf("keyword", "return"),
-                Tree::leaf("literal", "0"),
-            ],
+            vec![Tree::leaf("keyword", "return"), Tree::leaf("literal", "0")],
         ));
-        let t3 = sample_unrelated_tree();
+        let t3 = sample_unrelated_tree;
 
         let matcher = AstMatcher::default();
         let s12 = matcher.score(&t1, &t2);
@@ -129,8 +125,8 @@ mod tests {
         assert_eq!(s23.to_bits(), s32.to_bits());
     }
 
-    #[test]
-    fn test_similarity_graph_threshold_neighbors_and_clusters() {
+    #[rstest]
+    fn test_similarity_graph_threshold_neighbors_and_clusters(sample_unrelated_tree: Tree) {
         let fn_a = sample_add_fn("add_a", "x", "y");
         let fn_b = sample_add_fn("add_b", "u", "v");
         let mut fn_c = sample_add_fn("add_c", "p", "q");
@@ -141,7 +137,7 @@ mod tests {
                 Tree::leaf("integer_literal", "1"),
             ],
         ));
-        let unrelated = sample_unrelated_tree();
+        let unrelated = sample_unrelated_tree;
 
         let items = vec![
             ("fn_b".to_string(), fn_b),

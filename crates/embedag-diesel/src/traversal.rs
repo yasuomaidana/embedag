@@ -277,9 +277,10 @@ impl RecursiveTraversalBuilder {
         max_depth: i32,
     ) -> Result<Vec<AncestorRow>, PersistenceError> {
         let sql = Self::turso_ancestor_query(target_id, max_depth);
-        let rows: Vec<TursoTraversalRow> = diesel_async::RunQueryDsl::load(diesel::sql_query(sql), conn)
-            .await
-            .map_err(PersistenceError::Diesel)?;
+        let rows: Vec<TursoTraversalRow> =
+            diesel_async::RunQueryDsl::load(diesel::sql_query(sql), conn)
+                .await
+                .map_err(PersistenceError::Diesel)?;
 
         Ok(rows
             .into_iter()
@@ -301,9 +302,10 @@ impl RecursiveTraversalBuilder {
         max_depth: i32,
     ) -> Result<Vec<DescendantRow>, PersistenceError> {
         let sql = Self::turso_descendant_query(root_id, max_depth);
-        let rows: Vec<TursoTraversalRow> = diesel_async::RunQueryDsl::load(diesel::sql_query(sql), conn)
-            .await
-            .map_err(PersistenceError::Diesel)?;
+        let rows: Vec<TursoTraversalRow> =
+            diesel_async::RunQueryDsl::load(diesel::sql_query(sql), conn)
+                .await
+                .map_err(PersistenceError::Diesel)?;
 
         Ok(rows
             .into_iter()

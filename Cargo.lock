@@ -2169,6 +2169,7 @@ dependencies = [
  "embedag-rag",
  "embedag-surrealdb",
  "h3o",
+ "rstest",
  "serde",
  "serde_json",
  "tokio",
@@ -2185,6 +2186,7 @@ dependencies = [
  "h3o",
  "petgraph",
  "proptest",
+ "rstest",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -2198,6 +2200,7 @@ dependencies = [
  "embedag-core",
  "proc-macro2",
  "quote",
+ "rstest",
  "syn 2.0.119",
 ]
 
@@ -2217,6 +2220,7 @@ dependencies = [
  "libsql",
  "libsqlite3-sys",
  "pgvector",
+ "rstest",
  "serde",
  "serde_json",
  "tempfile",
@@ -2238,6 +2242,7 @@ dependencies = [
  "embedag-core",
  "embedag-diesel",
  "embedag-llm",
+ "rstest",
  "schemars 1.2.3",
  "serde",
  "serde_json",
@@ -2255,6 +2260,7 @@ dependencies = [
  "gbnf",
  "jsonschema",
  "oxillama",
+ "rstest",
  "schemars 1.2.3",
  "serde",
  "serde_json",
@@ -2269,6 +2275,7 @@ dependencies = [
  "blake3",
  "embedag-core",
  "petgraph",
+ "rstest",
  "thiserror 2.0.21",
 ]
 
@@ -2281,6 +2288,7 @@ dependencies = [
  "neo4rs",
  "parking_lot",
  "petgraph",
+ "rstest",
  "serde",
  "serde_json",
  "tempfile",
@@ -2300,6 +2308,7 @@ dependencies = [
  "oxirs-core",
  "parking_lot",
  "petgraph",
+ "rstest",
  "serde",
  "serde_json",
  "tempfile",
@@ -2314,6 +2323,7 @@ dependencies = [
  "embedag-core",
  "oxirag",
  "petgraph",
+ "rstest",
  "thiserror 2.0.21",
  "tokio",
  "uuid",
@@ -2327,6 +2337,7 @@ dependencies = [
  "embedag-core",
  "parking_lot",
  "petgraph",
+ "rstest",
  "serde",
  "serde_json",
  "surrealdb",
@@ -2730,6 +2741,12 @@ name = "futures-task"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cd417de3d1d015fc3bfd2b1ea46dfc7bab72ef86f1cc7cc9c78e728b34a6d1fd"
+
+[[package]]
+name = "futures-timer"
+version = "3.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af43fadb8a98512d547e37b4e92e0ced13e205c061b87b4623eff01d918d6968"
 
 [[package]]
 name = "futures-util"
@@ -6641,6 +6658,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
+name = "relative-path"
+version = "1.9.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba39f3699c378cd8970968dcbff9c43159ea4cfbd88d43c00b22f2ef10a435d2"
+
+[[package]]
 name = "rend"
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6970,6 +6993,35 @@ dependencies = [
  "num-traits",
  "serde",
  "smallvec",
+]
+
+[[package]]
+name = "rstest"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b376e512f30a7686a8dbc6aeaace99b3ade1c26c1c63473473a817ade226dafc"
+dependencies = [
+ "futures-timer",
+ "futures-util",
+ "rstest_macros",
+]
+
+[[package]]
+name = "rstest_macros"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "88512dbfb5b73a0dfa38aef7bc73b5657035fce477b923faf12d332dd83051ea"
+dependencies = [
+ "cfg-if",
+ "glob",
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "relative-path",
+ "rustc_version",
+ "syn 2.0.119",
+ "unicode-ident",
 ]
 
 [[package]]

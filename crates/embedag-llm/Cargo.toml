@@ -25,3 +25,4 @@ oxillama = { workspace = true, optional = true }
 
 [dev-dependencies]
 jsonschema = { workspace = true }
+rstest = { workspace = true }

@@ -17,3 +17,4 @@ proc-macro2 = { workspace = true }
 [dev-dependencies]
 embedag-core = { workspace = true }
 chrono = { workspace = true }
+rstest = { workspace = true }

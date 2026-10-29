@@ -140,11 +140,7 @@ pub fn diff(old: &MerkleNode, new: &MerkleNode) -> Delta {
 }
 
 /// Computes the [`Delta`] between `old` and `new` while counting the number of visited nodes.
-pub(crate) fn diff_with_counter(
-    old: &MerkleNode,
-    new: &MerkleNode,
-    visited: &mut usize,
-) -> Delta {
+pub(crate) fn diff_with_counter(old: &MerkleNode, new: &MerkleNode, visited: &mut usize) -> Delta {
     let mut delta = Delta::default();
     diff_node(old, new, "", &mut delta, visited);
     delta
@@ -222,12 +218,7 @@ fn diff_node(
     }
 }
 
-fn collect_leaves(
-    node: &MerkleNode,
-    path: &str,
-    out: &mut Vec<String>,
-    visited: &mut usize,
-) {
+fn collect_leaves(node: &MerkleNode, path: &str, out: &mut Vec<String>, visited: &mut usize) {
     *visited += 1;
     if node.leaf_hash.is_some() || node.children.is_empty() {
         out.push(path.to_string());
@@ -258,7 +249,10 @@ mod tests {
         let files = vec![
             ("src/lib.rs".to_string(), b"pub mod a;".to_vec()),
             ("src/a/mod.rs".to_string(), b"pub fn run() {}".to_vec()),
-            ("Cargo.toml".to_string(), b"[package]\nname = \"x\"".to_vec()),
+            (
+                "Cargo.toml".to_string(),
+                b"[package]\nname = \"x\"".to_vec(),
+            ),
         ];
         let t1 = MerkleNode::from_paths("root", files.clone());
         let t2 = MerkleNode::from_paths("root", files);

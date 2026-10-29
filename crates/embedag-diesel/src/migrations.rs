@@ -174,9 +174,7 @@ pub async fn establish_turso_async(
 
 /// Initializes Turso / libSQL database prerequisites asynchronously.
 #[cfg(feature = "turso-async")]
-pub async fn setup_turso_async(
-    conn: &mut AsyncLibSqlConnection,
-) -> Result<(), MigrationError> {
+pub async fn setup_turso_async(conn: &mut AsyncLibSqlConnection) -> Result<(), MigrationError> {
     use diesel_async::SimpleAsyncConnection;
     conn.batch_execute(TURSO_SETUP).await?;
     Ok(())

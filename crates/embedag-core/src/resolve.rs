@@ -479,10 +479,7 @@ mod tests {
             reverse_deps(&diamond, &"A".to_string()).unwrap(),
             vec!["B", "C", "D"]
         );
-        assert_eq!(
-            reverse_deps(&diamond, &"B".to_string()).unwrap(),
-            vec!["D"]
-        );
+        assert_eq!(reverse_deps(&diamond, &"B".to_string()).unwrap(), vec!["D"]);
         assert!(matches!(
             reverse_deps(&diamond, &"UNKNOWN".to_string()),
             Err(DagError::NodeNotFound { .. })

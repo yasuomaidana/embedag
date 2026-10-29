@@ -13,6 +13,6 @@ thiserror = { workspace = true }
 petgraph = { workspace = true }
 oxirag = { workspace = true }
 
-
 [dev-dependencies]
 tokio = { workspace = true }
+rstest = { workspace = true }

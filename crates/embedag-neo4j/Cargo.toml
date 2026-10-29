@@ -25,3 +25,4 @@ tokio = { workspace = true }
 tempfile = { workspace = true }
 testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }
+rstest = { workspace = true }

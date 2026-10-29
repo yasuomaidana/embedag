@@ -22,3 +22,4 @@ petgraph = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true }
 tempfile = { workspace = true }
+rstest = { workspace = true }
