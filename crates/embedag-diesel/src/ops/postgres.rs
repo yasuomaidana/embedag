@@ -33,38 +33,77 @@ where
     }
 }
 
+/// The query parameters of one record: the record's own columns, then the write time.
+#[cfg(feature = "postgres-async")]
+type Params<'a> = Vec<&'a (dyn tokio_postgres::types::ToSql + Sync)>;
+
+/// A record `batch_upsert` writes: the upsert statement of its table and the parameters of one row.
+#[cfg(feature = "postgres-async")]
+trait PgUpsert {
+    fn statement() -> String;
+    fn params<'a>(&'a self, now: &'a chrono::DateTime<chrono::Utc>) -> Params<'a>;
+}
+
+/// Implements [`PgUpsert`] for a record: the descriptor of its table and the fields that fill the
+/// statement's placeholders, in order.
+#[cfg(feature = "postgres-async")]
+macro_rules! pg_upsert {
+    ($record:ty, $descriptor:ident, [$($field:ident),+ $(,)?]) => {
+        impl PgUpsert for $record {
+            fn statement() -> String {
+                UpsertDescriptor::$descriptor().build_postgres_sql()
+            }
+
+            fn params<'a>(&'a self, now: &'a chrono::DateTime<chrono::Utc>) -> Params<'a> {
+                vec![$(&self.$field,)+ now]
+            }
+        }
+    };
+}
+
+#[cfg(feature = "postgres-async")]
+pg_upsert!(
+    NodeUpsertRecord,
+    semantic_nodes,
+    [id, business_key, entity_level, name, attributes]
+);
+
+#[cfg(feature = "postgres-async")]
+pg_upsert!(
+    EdgeUpsertRecord,
+    semantic_edges,
+    [
+        parent_id,
+        child_id,
+        relationship_type,
+        confidence,
+        provenance
+    ]
+);
+
+/// Executes the upsert of `T` once per item and counts the executions.
+#[cfg(feature = "postgres-async")]
+async fn batch_upsert<T: PgUpsert>(
+    client: &(impl tokio_postgres::GenericClient + ?Sized),
+    items: &[T],
+) -> Result<u64, PersistenceError> {
+    let stmt = T::statement();
+    let mut count = 0;
+    for item in items {
+        let now = chrono::Utc::now();
+        client.execute(&stmt, &item.params(&now)).await?;
+        count += 1;
+    }
+    Ok(count)
+}
+
 /// Performs a batch upsert of node records generated via [`UpsertDescriptor`].
 #[cfg(feature = "postgres-async")]
 pub async fn batch_upsert_nodes(
     client: &(impl tokio_postgres::GenericClient + ?Sized),
     nodes: &[NodeUpsertRecord],
 ) -> Result<u64, PersistenceError> {
-    if nodes.is_empty() {
-        return Ok(0);
-    }
-
-    let descriptor = UpsertDescriptor::semantic_nodes();
-    let stmt = descriptor.build_postgres_sql();
-
-    let mut count = 0;
-    for node in nodes {
-        client
-            .execute(
-                &stmt,
-                &[
-                    &node.id,
-                    &node.business_key,
-                    &node.entity_level,
-                    &node.name,
-                    &node.attributes,
-                    &chrono::Utc::now(),
-                ],
-            )
-            .await?;
-        count += 1;
-    }
-
-    Ok(count)
+    batch_upsert(client, nodes).await
 }
 
 /// Performs a batch upsert of edge records generated via [`UpsertDescriptor`].
@@ -73,32 +112,7 @@ pub async fn batch_upsert_edges(
     client: &(impl tokio_postgres::GenericClient + ?Sized),
     edges: &[EdgeUpsertRecord],
 ) -> Result<u64, PersistenceError> {
-    if edges.is_empty() {
-        return Ok(0);
-    }
-
-    let descriptor = UpsertDescriptor::semantic_edges();
-    let stmt = descriptor.build_postgres_sql();
-
-    let mut count = 0;
-    for edge in edges {
-        client
-            .execute(
-                &stmt,
-                &[
-                    &edge.parent_id,
-                    &edge.child_id,
-                    &edge.relationship_type,
-                    &edge.confidence,
-                    &edge.provenance,
-                    &chrono::Utc::now(),
-                ],
-            )
-            .await?;
-        count += 1;
-    }
-
-    Ok(count)
+    batch_upsert(client, edges).await
 }
 
 /// Executes a dynamic graph mutation lifecycle batch atomically within a transaction.
@@ -112,21 +126,10 @@ pub async fn apply_mutation_lifecycle(
             MutationDirectiveRecord::InsertNode(node) => {
                 batch_upsert_nodes(tx, std::slice::from_ref(node)).await?;
             }
-            MutationDirectiveRecord::AttachParent {
-                parent_id,
-                child_id,
-                relationship_type,
-                confidence,
-                provenance,
-            } => {
-                let edge = EdgeUpsertRecord {
-                    parent_id: *parent_id,
-                    child_id: *child_id,
-                    relationship_type: relationship_type.clone(),
-                    confidence: *confidence,
-                    provenance: provenance.clone(),
-                };
-                batch_upsert_edges(tx, &[edge]).await?;
+            MutationDirectiveRecord::AttachParent { .. } => {
+                if let Some(edge) = mutation.attached_edge() {
+                    batch_upsert_edges(tx, &[edge]).await?;
+                }
             }
             MutationDirectiveRecord::UpdateNodePayload {
                 id,

@@ -19,30 +19,19 @@ async fn test_point_in_time_dag_traversal() {
     let product_id = Uuid::new_v4();
 
     let nodes = vec![
-        NodeUpsertRecord {
-            id: cat_old_id,
-            business_key: "cat_confectionery_old".into(),
-            entity_level: "category".into(),
-            name: "Confectionery (Historic)".into(),
-            attributes: serde_json::json!({}),
-            embedding: None,
-        },
-        NodeUpsertRecord {
-            id: cat_new_id,
-            business_key: "cat_chocolate_new".into(),
-            entity_level: "category".into(),
-            name: "Chocolate (Modern)".into(),
-            attributes: serde_json::json!({}),
-            embedding: None,
-        },
-        NodeUpsertRecord {
-            id: product_id,
-            business_key: "sku_carlos_v".into(),
-            entity_level: "sku".into(),
-            name: "Carlos V Dark 50g".into(),
-            attributes: serde_json::json!({}),
-            embedding: None,
-        },
+        NodeUpsertRecord::new(
+            cat_old_id,
+            "cat_confectionery_old",
+            "category",
+            "Confectionery (Historic)",
+        ),
+        NodeUpsertRecord::new(
+            cat_new_id,
+            "cat_chocolate_new",
+            "category",
+            "Chocolate (Modern)",
+        ),
+        NodeUpsertRecord::new(product_id, "sku_carlos_v", "sku", "Carlos V Dark 50g"),
     ];
     batch_upsert_nodes(&client, &nodes)
         .await

@@ -20,12 +20,8 @@ async fn test_transaction_rollback_on_constraint_violation() {
     // 1. Insert a valid node in the transaction
     let valid_node_id = Uuid::new_v4();
     let valid_node = NodeUpsertRecord {
-        id: valid_node_id,
-        business_key: "valid_root_1".into(),
-        entity_level: "category".into(),
-        name: "Beverages".into(),
         attributes: serde_json::json!({"department": "grocery"}),
-        embedding: None,
+        ..NodeUpsertRecord::new(valid_node_id, "valid_root_1", "category", "Beverages")
     };
     batch_upsert_nodes(&tx, &[valid_node])
         .await
@@ -34,13 +30,8 @@ async fn test_transaction_rollback_on_constraint_violation() {
     // 2. Execute an operation in a savepoint that fails a foreign key constraint
     let non_existent_parent = Uuid::new_v4();
     let savepoint_res = execute_with_savepoint(&tx, "sp_fk_test", || async {
-        let bad_edge = EdgeUpsertRecord {
-            parent_id: non_existent_parent,
-            child_id: valid_node_id,
-            relationship_type: "CHILD_OF".into(),
-            confidence: 0.90,
-            provenance: "test".into(),
-        };
+        let bad_edge =
+            EdgeUpsertRecord::new(non_existent_parent, valid_node_id, "CHILD_OF", 0.90, "test");
         batch_upsert_edges(&tx, &[bad_edge]).await
     })
     .await;
@@ -50,14 +41,7 @@ async fn test_transaction_rollback_on_constraint_violation() {
 
     // 3. Verify outer transaction was NOT poisoned and can still commit
     let child_node_id = Uuid::new_v4();
-    let child_node = NodeUpsertRecord {
-        id: child_node_id,
-        business_key: "valid_child_1".into(),
-        entity_level: "sku".into(),
-        name: "Tea".into(),
-        attributes: serde_json::json!({}),
-        embedding: None,
-    };
+    let child_node = NodeUpsertRecord::new(child_node_id, "valid_child_1", "sku", "Tea");
     batch_upsert_nodes(&tx, &[child_node])
         .await
         .expect("subsequent insert in same outer tx must succeed");
@@ -166,37 +150,27 @@ async fn test_dynamic_mutation_lifecycle_commit() {
     let child_id = Uuid::new_v4();
 
     let mutations = vec![
+        MutationDirectiveRecord::InsertNode(NodeUpsertRecord::new(
+            root_id,
+            "root_dept",
+            "department",
+            "Supermarket",
+        )),
+        MutationDirectiveRecord::InsertNode(NodeUpsertRecord::new(
+            old_parent_id,
+            "old_cat",
+            "category",
+            "Old Category",
+        )),
+        MutationDirectiveRecord::InsertNode(NodeUpsertRecord::new(
+            new_parent_id,
+            "new_cat",
+            "category",
+            "New Category",
+        )),
         MutationDirectiveRecord::InsertNode(NodeUpsertRecord {
-            id: root_id,
-            business_key: "root_dept".into(),
-            entity_level: "department".into(),
-            name: "Supermarket".into(),
-            attributes: serde_json::json!({}),
-            embedding: None,
-        }),
-        MutationDirectiveRecord::InsertNode(NodeUpsertRecord {
-            id: old_parent_id,
-            business_key: "old_cat".into(),
-            entity_level: "category".into(),
-            name: "Old Category".into(),
-            attributes: serde_json::json!({}),
-            embedding: None,
-        }),
-        MutationDirectiveRecord::InsertNode(NodeUpsertRecord {
-            id: new_parent_id,
-            business_key: "new_cat".into(),
-            entity_level: "category".into(),
-            name: "New Category".into(),
-            attributes: serde_json::json!({}),
-            embedding: None,
-        }),
-        MutationDirectiveRecord::InsertNode(NodeUpsertRecord {
-            id: child_id,
-            business_key: "item_cold_brew".into(),
-            entity_level: "sku".into(),
-            name: "Cold Brew".into(),
             attributes: serde_json::json!({"volume_ml": 250}),
-            embedding: None,
+            ..NodeUpsertRecord::new(child_id, "item_cold_brew", "sku", "Cold Brew")
         }),
         // Connect child under old parent
         MutationDirectiveRecord::AttachParent {

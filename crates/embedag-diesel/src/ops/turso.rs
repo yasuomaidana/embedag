@@ -122,21 +122,10 @@ pub async fn apply_mutation_lifecycle_turso(
             MutationDirectiveRecord::InsertNode(node) => {
                 batch_upsert_nodes_turso(conn, std::slice::from_ref(node)).await?;
             }
-            MutationDirectiveRecord::AttachParent {
-                parent_id,
-                child_id,
-                relationship_type,
-                confidence,
-                provenance,
-            } => {
-                let edge = EdgeUpsertRecord {
-                    parent_id: *parent_id,
-                    child_id: *child_id,
-                    relationship_type: relationship_type.clone(),
-                    confidence: *confidence,
-                    provenance: provenance.clone(),
-                };
-                batch_upsert_edges_turso(conn, &[edge]).await?;
+            MutationDirectiveRecord::AttachParent { .. } => {
+                if let Some(edge) = mutation.attached_edge() {
+                    batch_upsert_edges_turso(conn, &[edge]).await?;
+                }
             }
             MutationDirectiveRecord::UpdateNodePayload {
                 id,

@@ -27,6 +27,59 @@ pub enum LlmError {
     ProviderError(String),
 }
 
+/// The result of one inference: the simulated `directive` wrapped in an envelope when one is set,
+/// else the constrained semantic inference of `runtime` over `prompt` and `schema`.
+fn infer(
+    simulated: Option<&ExtractionDirective>,
+    chain_of_thought: &str,
+    prompt: &str,
+    schema: &Value,
+    runtime: &str,
+    entity_keys: Option<&[String]>,
+) -> Result<Value, LlmError> {
+    if let Some(directive) = simulated {
+        let envelope = ExtractionEnvelope {
+            chain_of_thought: chain_of_thought.into(),
+            directive: directive.clone(),
+        };
+        return Ok(serde_json::to_value(&envelope)?);
+    }
+    execute_constrained_semantic_inference(prompt, schema, runtime, entity_keys)
+}
+
+/// Implements [`LlmProvider`] for a quantized pure-Rust runtime provider with `model_id`,
+/// `quantization`, `simulated_directive` and `entity_keys` fields.
+macro_rules! quantized_provider {
+    ($provider:ident, $runtime:literal, $chain_of_thought:literal) => {
+        #[async_trait]
+        impl LlmProvider for $provider {
+            async fn generate_structured(
+                &self,
+                prompt: &str,
+                schema: &Value,
+            ) -> Result<Value, LlmError> {
+                infer(
+                    self.simulated_directive.as_ref(),
+                    $chain_of_thought,
+                    prompt,
+                    schema,
+                    $runtime,
+                    self.entity_keys.as_deref(),
+                )
+            }
+
+            fn model_info(&self) -> ModelMetadata {
+                ModelMetadata {
+                    provider_name: $runtime.into(),
+                    model_id: self.model_id.clone(),
+                    quantization: self.quantization.clone(),
+                    is_local_zero_ffi: true,
+                }
+            }
+        }
+    };
+}
+
 /// Metadata describing an LLM provider and model runtime characteristics.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModelMetadata {
@@ -111,36 +164,11 @@ impl OxillamaProvider {
     }
 }
 
-#[async_trait]
-impl LlmProvider for OxillamaProvider {
-    async fn generate_structured(&self, prompt: &str, schema: &Value) -> Result<Value, LlmError> {
-        if let Some(directive) = &self.simulated_directive {
-            let envelope = ExtractionEnvelope {
-                chain_of_thought:
-                    "Pure Rust oxillama GGUF inference runtime completed on SciRS2/OxiBLAS kernels without C++ FFI."
-                        .into(),
-                directive: directive.clone(),
-            };
-            return Ok(serde_json::to_value(&envelope)?);
-        }
-
-        execute_constrained_semantic_inference(
-            prompt,
-            schema,
-            "oxillama",
-            self.entity_keys.as_deref(),
-        )
-    }
-
-    fn model_info(&self) -> ModelMetadata {
-        ModelMetadata {
-            provider_name: "oxillama".into(),
-            model_id: self.model_id.clone(),
-            quantization: self.quantization.clone(),
-            is_local_zero_ffi: true,
-        }
-    }
-}
+quantized_provider!(
+    OxillamaProvider,
+    "oxillama",
+    "Pure Rust oxillama GGUF inference runtime completed on SciRS2/OxiBLAS kernels without C++ FFI."
+);
 
 /// Pure-Rust tensor inference engine powered by Hugging Face `candle` (`huggingface/candle`).
 ///
@@ -189,15 +217,9 @@ impl LlmProvider for CandleProvider {
             let _device = candle_core::Device::Cpu;
         }
 
-        if let Some(directive) = &self.simulated_directive {
-            let envelope = ExtractionEnvelope {
-                chain_of_thought: "Hugging Face Candle tensor inference runtime completed.".into(),
-                directive: directive.clone(),
-            };
-            return Ok(serde_json::to_value(&envelope)?);
-        }
-
-        execute_constrained_semantic_inference(
+        infer(
+            self.simulated_directive.as_ref(),
+            "Hugging Face Candle tensor inference runtime completed.",
             prompt,
             schema,
             "candle",
@@ -258,36 +280,11 @@ impl OxibonsaiProvider {
     }
 }
 
-#[async_trait]
-impl LlmProvider for OxibonsaiProvider {
-    async fn generate_structured(&self, prompt: &str, schema: &Value) -> Result<Value, LlmError> {
-        if let Some(directive) = &self.simulated_directive {
-            let envelope = ExtractionEnvelope {
-                chain_of_thought:
-                    "Pure Rust oxibonsai transformer token sampling step completed with zero FFI."
-                        .into(),
-                directive: directive.clone(),
-            };
-            return Ok(serde_json::to_value(&envelope)?);
-        }
-
-        execute_constrained_semantic_inference(
-            prompt,
-            schema,
-            "oxibonsai",
-            self.entity_keys.as_deref(),
-        )
-    }
-
-    fn model_info(&self) -> ModelMetadata {
-        ModelMetadata {
-            provider_name: "oxibonsai".into(),
-            model_id: self.model_id.clone(),
-            quantization: self.quantization.clone(),
-            is_local_zero_ffi: true,
-        }
-    }
-}
+quantized_provider!(
+    OxibonsaiProvider,
+    "oxibonsai",
+    "Pure Rust oxibonsai transformer token sampling step completed with zero FFI."
+);
 
 /// Fallback Cloud API Provider (Priority 3).
 ///

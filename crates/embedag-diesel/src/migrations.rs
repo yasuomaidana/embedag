@@ -87,10 +87,7 @@ pub fn run_sqlite_migration(
     conn: &mut diesel::SqliteConnection,
     migration_sql: &str,
 ) -> Result<(), MigrationError> {
-    use diesel::connection::SimpleConnection;
-    setup_sqlite(conn)?;
-    conn.batch_execute(migration_sql)?;
-    Ok(())
+    run_after_setup(conn, setup_sqlite, migration_sql)
 }
 
 /// Executes a user-defined SQL migration on PostgreSQL.
@@ -152,8 +149,17 @@ pub fn run_turso_migration_sync(
     conn: &mut diesel_libsql::LibSqlConnection,
     migration_sql: &str,
 ) -> Result<(), MigrationError> {
-    use diesel::connection::SimpleConnection;
-    setup_turso_sync(conn)?;
+    run_after_setup(conn, setup_turso_sync, migration_sql)
+}
+
+/// Runs the baseline `setup` on `conn`, then the user's migration.
+#[cfg(any(feature = "sqlite", feature = "turso"))]
+fn run_after_setup<C: diesel::connection::SimpleConnection>(
+    conn: &mut C,
+    setup: fn(&mut C) -> Result<(), MigrationError>,
+    migration_sql: &str,
+) -> Result<(), MigrationError> {
+    setup(conn)?;
     conn.batch_execute(migration_sql)?;
     Ok(())
 }

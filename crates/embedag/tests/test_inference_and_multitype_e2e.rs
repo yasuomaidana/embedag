@@ -115,6 +115,24 @@ embedag_core::impl_node_payload!(
     level = |n| &n.entity_level
 );
 
+/// The relational node record of `asset`, with the given attributes and embedding.
+fn asset_node(
+    asset: &MultimodalIndustrialAsset,
+    attributes: serde_json::Value,
+    embedding: Option<Vec<f32>>,
+) -> NodeUpsertRecord {
+    NodeUpsertRecord {
+        attributes,
+        embedding,
+        ..NodeUpsertRecord::new(
+            asset.id,
+            &asset.asset_code,
+            &asset.entity_level,
+            &asset.asset_name,
+        )
+    }
+}
+
 #[tokio::test]
 async fn test_inference_and_multitype_e2e_pipeline() {
     // =========================================================================
@@ -132,21 +150,36 @@ async fn test_inference_and_multitype_e2e_pipeline() {
         "s3://facility-telemetry/west/inverter_diag.webp",
     );
 
-    let root_asset = MultimodalIndustrialAsset {
+    let asset = |code: &str,
+                 name: &str,
+                 level: &str,
+                 capacity: f64,
+                 hours: i64,
+                 specs: Option<&str>,
+                 degradation: Option<f64>| MultimodalIndustrialAsset {
         id: Uuid::new_v4(),
-        asset_code: "FACILITY-GLOBAL-ALPHA".into(),
-        asset_name: "Clean Energy Microgrid Facility".into(),
-        entity_level: "Facility".into(),
-        rated_capacity_mw: 150.0,
-        operational_hours: 12450,
+        asset_code: code.into(),
+        asset_name: name.into(),
+        entity_level: level.into(),
+        rated_capacity_mw: capacity,
+        operational_hours: hours,
         is_online: true,
         commissioned_at: test_timestamp,
         geographic_zone: "US-WEST".into(),
-        secondary_specs: Some("Redundant dual-bus topology".into()),
-        degradation_ratio: Some(0.012),
+        secondary_specs: specs.map(Into::into),
+        degradation_ratio: degradation,
         geo_h3_cell: h3_u64,
         inspection_blob: blob.clone(),
     };
+    let root_asset = asset(
+        "FACILITY-GLOBAL-ALPHA",
+        "Clean Energy Microgrid Facility",
+        "Facility",
+        150.0,
+        12450,
+        Some("Redundant dual-bus topology"),
+        Some(0.012),
+    );
 
     // Verify AsGraphContext procedural derive methods across multiple types
     assert_eq!(root_asset.context_key(), "FACILITY-GLOBAL-ALPHA");
@@ -233,53 +266,35 @@ async fn test_inference_and_multitype_e2e_pipeline() {
     // =========================================================================
     let mut dag = MemoryDag::new();
 
-    let subcat_solar = MultimodalIndustrialAsset {
-        id: Uuid::new_v4(),
-        asset_code: "SUBSYSTEM-SOLAR-01".into(),
-        asset_name: "Solar Generation Array Alpha".into(),
-        entity_level: "GenerationSubsystem".into(),
-        rated_capacity_mw: 90.0,
-        operational_hours: 8200,
-        is_online: true,
-        commissioned_at: test_timestamp,
-        geographic_zone: "US-WEST".into(),
-        secondary_specs: None,
-        degradation_ratio: Some(0.005),
-        geo_h3_cell: h3_u64,
-        inspection_blob: blob.clone(),
-    };
+    let subcat_solar = asset(
+        "SUBSYSTEM-SOLAR-01",
+        "Solar Generation Array Alpha",
+        "GenerationSubsystem",
+        90.0,
+        8200,
+        None,
+        Some(0.005),
+    );
 
-    let subcat_battery = MultimodalIndustrialAsset {
-        id: Uuid::new_v4(),
-        asset_code: "SUBSYSTEM-BATTERY-01".into(),
-        asset_name: "Battery Energy Storage System".into(),
-        entity_level: "StorageSubsystem".into(),
-        rated_capacity_mw: 60.0,
-        operational_hours: 4250,
-        is_online: true,
-        commissioned_at: test_timestamp,
-        geographic_zone: "US-WEST".into(),
-        secondary_specs: Some("Lithium Iron Phosphate (LFP)".into()),
-        degradation_ratio: Some(0.008),
-        geo_h3_cell: h3_u64,
-        inspection_blob: blob.clone(),
-    };
+    let subcat_battery = asset(
+        "SUBSYSTEM-BATTERY-01",
+        "Battery Energy Storage System",
+        "StorageSubsystem",
+        60.0,
+        4250,
+        Some("Lithium Iron Phosphate (LFP)"),
+        Some(0.008),
+    );
 
-    let leaf_inverter = MultimodalIndustrialAsset {
-        id: Uuid::new_v4(),
-        asset_code: "DEVICE-INVERTER-SMART-01".into(),
-        asset_name: "Hybrid Grid-Forming Smart Inverter 2500kVA".into(),
-        entity_level: "PowerElectronicsDevice".into(),
-        rated_capacity_mw: 2.5,
-        operational_hours: 1200,
-        is_online: true,
-        commissioned_at: test_timestamp,
-        geographic_zone: "US-WEST".into(),
-        secondary_specs: Some("IEEE 1547-2018 Compliant".into()),
-        degradation_ratio: None,
-        geo_h3_cell: h3_u64,
-        inspection_blob: blob.clone(),
-    };
+    let leaf_inverter = asset(
+        "DEVICE-INVERTER-SMART-01",
+        "Hybrid Grid-Forming Smart Inverter 2500kVA",
+        "PowerElectronicsDevice",
+        2.5,
+        1200,
+        Some("IEEE 1547-2018 Compliant"),
+        None,
+    );
 
     dag.upsert_node(root_asset.clone());
     dag.upsert_node(subcat_solar.clone());
@@ -571,52 +586,40 @@ async fn test_inference_and_multitype_e2e_pipeline() {
 
     // Batch upsert multi-type nodes into PostgreSQL
     let pg_node_records = vec![
-        NodeUpsertRecord {
-            id: root_asset.id,
-            business_key: root_asset.asset_code.clone(),
-            entity_level: root_asset.entity_level.clone(),
-            name: root_asset.asset_name.clone(),
-            attributes: serde_json::json!({
+        asset_node(
+            &root_asset,
+            serde_json::json!({
                 "capacity_mw": root_asset.rated_capacity_mw,
                 "operational_hours": root_asset.operational_hours,
                 "is_online": root_asset.is_online,
                 "geo_h3": root_asset.geo_h3_cell,
             }),
-            embedding: Some(vec![0.30, 0.20, 0.10, 0.80]),
-        },
-        NodeUpsertRecord {
-            id: subcat_solar.id,
-            business_key: subcat_solar.asset_code.clone(),
-            entity_level: subcat_solar.entity_level.clone(),
-            name: subcat_solar.asset_name.clone(),
-            attributes: serde_json::json!({
+            Some(vec![0.30, 0.20, 0.10, 0.80]),
+        ),
+        asset_node(
+            &subcat_solar,
+            serde_json::json!({
                 "capacity_mw": subcat_solar.rated_capacity_mw,
                 "operational_hours": subcat_solar.operational_hours,
             }),
-            embedding: Some(vec![0.75, 0.60, 0.20, 0.10]),
-        },
-        NodeUpsertRecord {
-            id: subcat_battery.id,
-            business_key: subcat_battery.asset_code.clone(),
-            entity_level: subcat_battery.entity_level.clone(),
-            name: subcat_battery.asset_name.clone(),
-            attributes: serde_json::json!({
+            Some(vec![0.75, 0.60, 0.20, 0.10]),
+        ),
+        asset_node(
+            &subcat_battery,
+            serde_json::json!({
                 "capacity_mw": subcat_battery.rated_capacity_mw,
                 "operational_hours": subcat_battery.operational_hours,
             }),
-            embedding: Some(vec![0.70, 0.55, 0.30, 0.15]),
-        },
-        NodeUpsertRecord {
-            id: leaf_inverter.id,
-            business_key: leaf_inverter.asset_code.clone(),
-            entity_level: leaf_inverter.entity_level.clone(),
-            name: leaf_inverter.asset_name.clone(),
-            attributes: serde_json::json!({
+            Some(vec![0.70, 0.55, 0.30, 0.15]),
+        ),
+        asset_node(
+            &leaf_inverter,
+            serde_json::json!({
                 "capacity_mw": leaf_inverter.rated_capacity_mw,
                 "operational_hours": leaf_inverter.operational_hours,
             }),
-            embedding: Some(vec![0.92, 0.85, 0.12, 0.05]),
-        },
+            Some(vec![0.92, 0.85, 0.12, 0.05]),
+        ),
     ];
     batch_upsert_nodes(&pg_client, &pg_node_records)
         .await

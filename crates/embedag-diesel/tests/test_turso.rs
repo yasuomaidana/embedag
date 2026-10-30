@@ -9,7 +9,7 @@ use embedag_diesel::migrations::{
 use embedag_diesel::ops::{
     EdgeUpsertRecord, MutationDirectiveRecord, NodeUpsertRecord, PersistenceError,
     apply_mutation_lifecycle_turso, batch_upsert_edges_turso, batch_upsert_nodes_turso,
-    execute_with_savepoint_turso,
+    cycle_records, execute_with_savepoint_turso, lineage_records,
 };
 use embedag_diesel::traversal::RecursiveTraversalBuilder;
 use futures_util::FutureExt;
@@ -149,20 +149,12 @@ async fn test_turso_batch_upserts_and_conflict_handling() {
 
     let nodes = vec![
         NodeUpsertRecord {
-            id: node1_id,
-            business_key: "CAT-DAIRY".into(),
-            entity_level: "category".into(),
-            name: "Dairy".into(),
             attributes: serde_json::json!({"department": "Grocery"}),
-            embedding: None,
+            ..NodeUpsertRecord::new(node1_id, "CAT-DAIRY", "category", "Dairy")
         },
         NodeUpsertRecord {
-            id: node2_id,
-            business_key: "SKU-MILK".into(),
-            entity_level: "sku".into(),
-            name: "Whole Milk 1L".into(),
             attributes: serde_json::json!({"fat": "3.5%"}),
-            embedding: None,
+            ..NodeUpsertRecord::new(node2_id, "SKU-MILK", "sku", "Whole Milk 1L")
         },
     ];
 
@@ -173,12 +165,8 @@ async fn test_turso_batch_upserts_and_conflict_handling() {
 
     // Upsert duplicate node with updated name and attributes to test DO UPDATE conflict handling
     let update_node = NodeUpsertRecord {
-        id: node1_id,
-        business_key: "CAT-DAIRY".into(),
-        entity_level: "category".into(),
-        name: "Dairy & Eggs".into(),
         attributes: serde_json::json!({"department": "Grocery", "refrigerated": true}),
-        embedding: None,
+        ..NodeUpsertRecord::new(node1_id, "CAT-DAIRY", "category", "Dairy & Eggs")
     };
     let updated = batch_upsert_nodes_turso(&mut conn, &[update_node])
         .await
@@ -186,26 +174,20 @@ async fn test_turso_batch_upserts_and_conflict_handling() {
     assert_eq!(updated, 1, "Must update 1 conflicting node");
 
     // Edges batch upsert
-    let edges = vec![EdgeUpsertRecord {
-        parent_id: node1_id,
-        child_id: node2_id,
-        relationship_type: "PARENT_OF".into(),
-        confidence: 0.95,
-        provenance: "human_curated".into(),
-    }];
+    let edges = vec![EdgeUpsertRecord::new(
+        node1_id,
+        node2_id,
+        "PARENT_OF",
+        0.95,
+        "human_curated",
+    )];
     let edge_count = batch_upsert_edges_turso(&mut conn, &edges)
         .await
         .expect("batch upsert edges");
     assert_eq!(edge_count, 1, "Must insert 1 edge");
 
     // Edge conflict resolution: re-insert with higher confidence
-    let edge_update = EdgeUpsertRecord {
-        parent_id: node1_id,
-        child_id: node2_id,
-        relationship_type: "PARENT_OF".into(),
-        confidence: 0.99,
-        provenance: "verified".into(),
-    };
+    let edge_update = EdgeUpsertRecord::new(node1_id, node2_id, "PARENT_OF", 0.99, "verified");
     let edge_updated = batch_upsert_edges_turso(&mut conn, &[edge_update])
         .await
         .expect("upsert conflicting edge");
@@ -228,29 +210,21 @@ async fn test_turso_mutation_lifecycle() {
     let sku_id = Uuid::new_v4();
 
     let directives = vec![
+        MutationDirectiveRecord::InsertNode(NodeUpsertRecord::new(
+            dept_id,
+            "DEPT-FOOD",
+            "department",
+            "Food & Beverage",
+        )),
+        MutationDirectiveRecord::InsertNode(NodeUpsertRecord::new(
+            cat_id,
+            "CAT-SNACKS",
+            "category",
+            "Snacks",
+        )),
         MutationDirectiveRecord::InsertNode(NodeUpsertRecord {
-            id: dept_id,
-            business_key: "DEPT-FOOD".into(),
-            entity_level: "department".into(),
-            name: "Food & Beverage".into(),
-            attributes: serde_json::json!({}),
-            embedding: None,
-        }),
-        MutationDirectiveRecord::InsertNode(NodeUpsertRecord {
-            id: cat_id,
-            business_key: "CAT-SNACKS".into(),
-            entity_level: "category".into(),
-            name: "Snacks".into(),
-            attributes: serde_json::json!({}),
-            embedding: None,
-        }),
-        MutationDirectiveRecord::InsertNode(NodeUpsertRecord {
-            id: sku_id,
-            business_key: "SKU-CHIPS".into(),
-            entity_level: "sku".into(),
-            name: "Potato Chips".into(),
             attributes: serde_json::json!({"brand": "Crispy"}),
-            embedding: None,
+            ..NodeUpsertRecord::new(sku_id, "SKU-CHIPS", "sku", "Potato Chips")
         }),
         MutationDirectiveRecord::AttachParent {
             parent_id: dept_id,
@@ -302,14 +276,7 @@ async fn test_turso_savepoint_isolation_and_rollback() {
     // 1. Successful savepoint commit
     let commit_res = execute_with_savepoint_turso(&mut conn, "sp_success", |c| {
         async move {
-            let node = NodeUpsertRecord {
-                id: node_id,
-                business_key: "KEY-COMMITTED".into(),
-                entity_level: "item".into(),
-                name: "Committed Node".into(),
-                attributes: serde_json::json!({}),
-                embedding: None,
-            };
+            let node = NodeUpsertRecord::new(node_id, "KEY-COMMITTED", "item", "Committed Node");
             batch_upsert_nodes_turso(c, &[node]).await?;
             Ok("success")
         }
@@ -325,14 +292,12 @@ async fn test_turso_savepoint_isolation_and_rollback() {
     let rollback_res: Result<(), PersistenceError> =
         execute_with_savepoint_turso(&mut conn, "sp_fail", |c| {
             async move {
-                let node = NodeUpsertRecord {
-                    id: rollback_node_id,
-                    business_key: "KEY-ROLLED-BACK".into(),
-                    entity_level: "item".into(),
-                    name: "Doomed Node".into(),
-                    attributes: serde_json::json!({}),
-                    embedding: None,
-                };
+                let node = NodeUpsertRecord::new(
+                    rollback_node_id,
+                    "KEY-ROLLED-BACK",
+                    "item",
+                    "Doomed Node",
+                );
                 batch_upsert_nodes_turso(c, &[node]).await?;
                 Err(PersistenceError::SavepointRolledBack(
                     "Simulated failure in transaction".into(),
@@ -356,6 +321,14 @@ async fn test_turso_savepoint_isolation_and_rollback() {
     );
 }
 
+/// Enterprise (L1) -> Division (L2) -> Team (L3) -> Engineer (L4): business key, level and name.
+const ORG_LEVELS: [(&str, &str, &str); 4] = [
+    ("ORG-ENT", "enterprise", "Global Corp"),
+    ("ORG-DIV", "division", "AI Systems Division"),
+    ("ORG-TEAM", "team", "Knowledge Graph Team"),
+    ("USER-ENG", "individual", "Staff Engineer"),
+];
+
 #[tokio::test(flavor = "multi_thread")]
 async fn test_turso_recursive_cte_traversals() {
     let harness = TursoHarness::in_memory();
@@ -365,72 +338,11 @@ async fn test_turso_recursive_cte_traversals() {
         .expect("run migration");
 
     // Build 4-level taxonomy: Enterprise (L1) -> Division (L2) -> Team (L3) -> Engineer (L4)
-    let l1_id = Uuid::new_v4();
-    let l2_id = Uuid::new_v4();
-    let l3_id = Uuid::new_v4();
-    let l4_id = Uuid::new_v4();
-
-    let nodes = vec![
-        NodeUpsertRecord {
-            id: l1_id,
-            business_key: "ORG-ENT".into(),
-            entity_level: "enterprise".into(),
-            name: "Global Corp".into(),
-            attributes: serde_json::json!({}),
-            embedding: None,
-        },
-        NodeUpsertRecord {
-            id: l2_id,
-            business_key: "ORG-DIV".into(),
-            entity_level: "division".into(),
-            name: "AI Systems Division".into(),
-            attributes: serde_json::json!({}),
-            embedding: None,
-        },
-        NodeUpsertRecord {
-            id: l3_id,
-            business_key: "ORG-TEAM".into(),
-            entity_level: "team".into(),
-            name: "Knowledge Graph Team".into(),
-            attributes: serde_json::json!({}),
-            embedding: None,
-        },
-        NodeUpsertRecord {
-            id: l4_id,
-            business_key: "USER-ENG".into(),
-            entity_level: "individual".into(),
-            name: "Staff Engineer".into(),
-            attributes: serde_json::json!({}),
-            embedding: None,
-        },
-    ];
+    let (nodes, edges) = lineage_records(&ORG_LEVELS, "MANAGES", "org_chart");
+    let (l1_id, l4_id) = (nodes[0].id, nodes[3].id);
     batch_upsert_nodes_turso(&mut conn, &nodes)
         .await
         .expect("insert hierarchy nodes");
-
-    let edges = vec![
-        EdgeUpsertRecord {
-            parent_id: l1_id,
-            child_id: l2_id,
-            relationship_type: "MANAGES".into(),
-            confidence: 1.0,
-            provenance: "org_chart".into(),
-        },
-        EdgeUpsertRecord {
-            parent_id: l2_id,
-            child_id: l3_id,
-            relationship_type: "MANAGES".into(),
-            confidence: 1.0,
-            provenance: "org_chart".into(),
-        },
-        EdgeUpsertRecord {
-            parent_id: l3_id,
-            child_id: l4_id,
-            relationship_type: "MANAGES".into(),
-            confidence: 1.0,
-            provenance: "org_chart".into(),
-        },
-    ];
     batch_upsert_edges_turso(&mut conn, &edges)
         .await
         .expect("insert hierarchy edges");
@@ -480,63 +392,19 @@ async fn test_turso_recursive_cte_cycle_guardrail() {
         .expect("run migration");
 
     // Create 3 nodes forming a cycle: A -> B -> C -> A
-    let node_a = Uuid::new_v4();
-    let node_b = Uuid::new_v4();
-    let node_c = Uuid::new_v4();
-
-    let nodes = vec![
-        NodeUpsertRecord {
-            id: node_a,
-            business_key: "CYC-A".into(),
-            entity_level: "node".into(),
-            name: "Node A".into(),
-            attributes: serde_json::json!({}),
-            embedding: None,
-        },
-        NodeUpsertRecord {
-            id: node_b,
-            business_key: "CYC-B".into(),
-            entity_level: "node".into(),
-            name: "Node B".into(),
-            attributes: serde_json::json!({}),
-            embedding: None,
-        },
-        NodeUpsertRecord {
-            id: node_c,
-            business_key: "CYC-C".into(),
-            entity_level: "node".into(),
-            name: "Node C".into(),
-            attributes: serde_json::json!({}),
-            embedding: None,
-        },
-    ];
+    let (nodes, edges) = cycle_records(
+        &[
+            ("CYC-A", "node", "Node A"),
+            ("CYC-B", "node", "Node B"),
+            ("CYC-C", "node", "Node C"),
+        ],
+        "CYCLE",
+        "test",
+    );
+    let node_b = nodes[1].id;
     batch_upsert_nodes_turso(&mut conn, &nodes)
         .await
         .expect("insert cyclic nodes");
-
-    let edges = vec![
-        EdgeUpsertRecord {
-            parent_id: node_a,
-            child_id: node_b,
-            relationship_type: "CYCLE".into(),
-            confidence: 1.0,
-            provenance: "test".into(),
-        },
-        EdgeUpsertRecord {
-            parent_id: node_b,
-            child_id: node_c,
-            relationship_type: "CYCLE".into(),
-            confidence: 1.0,
-            provenance: "test".into(),
-        },
-        EdgeUpsertRecord {
-            parent_id: node_c,
-            child_id: node_a,
-            relationship_type: "CYCLE".into(),
-            confidence: 1.0,
-            provenance: "test".into(),
-        },
-    ];
     batch_upsert_edges_turso(&mut conn, &edges)
         .await
         .expect("insert cyclic edges");

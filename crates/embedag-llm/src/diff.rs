@@ -39,6 +39,35 @@ impl<K: Clone> GraphDiff<K> {
     }
 }
 
+/// Proposes the edge `parent_key -> entity_name` unless the DAG already has it; the confidence is
+/// clamped to `[0.0, 1.0]`.
+fn push_new_edge<T>(
+    diff: &mut GraphDiff<String>,
+    dag: &MemoryDag<T>,
+    parent_key: &String,
+    entity_name: &String,
+    relationship: &str,
+    confidence: f32,
+) where
+    T: NodePayload<Key = String>,
+{
+    let edge_exists = dag
+        .children_of(parent_key)
+        .iter()
+        .any(|child| child.key() == entity_name);
+    if edge_exists {
+        return;
+    }
+    if let Ok(edge) = EdgePayload::new(
+        relationship,
+        confidence.clamp(0.0, 1.0),
+        ProvenanceKind::LlmConstrainedInference,
+    ) {
+        diff.new_edges
+            .push((parent_key.clone(), entity_name.clone(), edge));
+    }
+}
+
 /// Changeset diffing engine comparing LLM proposals or target topologies against an active `MemoryDag`.
 pub struct ChangesetDiffEngine;
 
@@ -68,22 +97,14 @@ impl ChangesetDiffEngine {
                 }
 
                 // Check if directed edge (parent -> child) exists
-                let edge_exists = dag
-                    .children_of(parent_key)
-                    .iter()
-                    .any(|child| child.key() == entity_name);
-
-                if !edge_exists {
-                    let valid_conf = confidence.clamp(0.0, 1.0);
-                    if let Ok(edge) = EdgePayload::new(
-                        relationship.clone(),
-                        valid_conf,
-                        ProvenanceKind::LlmConstrainedInference,
-                    ) {
-                        diff.new_edges
-                            .push((parent_key.clone(), entity_name.clone(), edge));
-                    }
-                }
+                push_new_edge(
+                    &mut diff,
+                    dag,
+                    parent_key,
+                    entity_name,
+                    relationship,
+                    *confidence,
+                );
             }
 
             ExtractionDirective::InsertMultiParentNode {
@@ -99,22 +120,14 @@ impl ChangesetDiffEngine {
                 }
 
                 for parent_key in parent_keys {
-                    let edge_exists = dag
-                        .children_of(parent_key)
-                        .iter()
-                        .any(|child| child.key() == entity_name);
-
-                    if !edge_exists {
-                        let valid_conf = confidence.clamp(0.0, 1.0);
-                        if let Ok(edge) = EdgePayload::new(
-                            relationship.clone(),
-                            valid_conf,
-                            ProvenanceKind::LlmConstrainedInference,
-                        ) {
-                            diff.new_edges
-                                .push((parent_key.clone(), entity_name.clone(), edge));
-                        }
-                    }
+                    push_new_edge(
+                        &mut diff,
+                        dag,
+                        parent_key,
+                        entity_name,
+                        relationship,
+                        *confidence,
+                    );
                 }
             }
 

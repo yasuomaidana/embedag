@@ -117,38 +117,20 @@ impl UpsertDescriptor {
 
     /// Generates PostgreSQL-compatible parameterized SQL statement for this descriptor.
     pub fn build_postgres_sql(&self) -> String {
-        let cols_joined = self.columns.join(", ");
-        let placeholders: Vec<String> = (1..=self.columns.len()).map(|i| format!("${i}")).collect();
-        let placeholders_joined = placeholders.join(", ");
-        let conflict_joined = self.conflict_columns.join(", ");
-
-        let conflict_part = match &self.strategy {
-            ConflictStrategy::DoNothing => format!("ON CONFLICT ({conflict_joined}) DO NOTHING"),
-            ConflictStrategy::DoUpdate { columns } => {
-                let updates: Vec<String> = columns
-                    .iter()
-                    .map(|c| format!("{c} = EXCLUDED.{c}"))
-                    .collect();
-                format!(
-                    "ON CONFLICT ({conflict_joined}) DO UPDATE SET {}",
-                    updates.join(", ")
-                )
-            }
-            ConflictStrategy::CustomClause(clause) => {
-                format!("ON CONFLICT ({conflict_joined}) {clause}")
-            }
-        };
-
-        format!(
-            "INSERT INTO {} ({cols_joined}) VALUES ({placeholders_joined}) {conflict_part};",
-            self.table_name
-        )
+        let placeholders = (1..=self.columns.len()).map(|i| format!("${i}")).collect();
+        self.build_sql(placeholders, "EXCLUDED")
     }
 
     /// Generates SQLite-compatible parameterized SQL statement for this descriptor.
     pub fn build_sqlite_sql(&self) -> String {
+        let placeholders = (0..self.columns.len()).map(|_| "?".to_string()).collect();
+        self.build_sql(placeholders, "excluded")
+    }
+
+    /// The upsert statement over the given `placeholders`; `excluded` is how the dialect names the
+    /// row that failed to insert.
+    fn build_sql(&self, placeholders: Vec<String>, excluded: &str) -> String {
         let cols_joined = self.columns.join(", ");
-        let placeholders: Vec<&str> = (0..self.columns.len()).map(|_| "?").collect();
         let placeholders_joined = placeholders.join(", ");
         let conflict_joined = self.conflict_columns.join(", ");
 
@@ -157,7 +139,7 @@ impl UpsertDescriptor {
             ConflictStrategy::DoUpdate { columns } => {
                 let updates: Vec<String> = columns
                     .iter()
-                    .map(|c| format!("{c} = excluded.{c}"))
+                    .map(|c| format!("{c} = {excluded}.{c}"))
                     .collect();
                 format!(
                     "ON CONFLICT ({conflict_joined}) DO UPDATE SET {}",

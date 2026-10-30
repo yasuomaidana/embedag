@@ -70,19 +70,21 @@ pub trait EntityProperties: Send + Sync {
             return None;
         };
         for key in self.property_keys() {
-            if let Some(val) = map.get(*key) {
-                if let Some(s) = val.as_str() {
-                    let trimmed = s.trim();
-                    if !trimmed.is_empty() {
-                        return Some(trimmed.to_string());
-                    }
-                } else if val.is_number() || val.is_boolean() {
-                    return Some(val.to_string());
-                }
+            if let Some(label) = map.get(*key).and_then(scalar_label) {
+                return Some(label);
             }
         }
         None
     }
+}
+
+/// The label a JSON scalar carries: a non-empty trimmed string, or a number or boolean as text.
+fn scalar_label(val: &Value) -> Option<String> {
+    if let Some(s) = val.as_str() {
+        let trimmed = s.trim();
+        return (!trimmed.is_empty()).then(|| trimmed.to_string());
+    }
+    (val.is_number() || val.is_boolean()).then(|| val.to_string())
 }
 
 /// Configuration governing entity text extraction strategies, key priorities, and fallbacks.
@@ -167,30 +169,18 @@ impl EntityExtractor for EntityExtractorConfig {
             Value::Object(map) => {
                 // 1. Check user-configured priority keys first (100% developer control)
                 for key in &self.priority_keys {
-                    if let Some(val) = map.get(key) {
-                        if let Some(s) = val.as_str() {
-                            let trimmed = s.trim();
-                            if !trimmed.is_empty() {
-                                return Some(trimmed.to_string());
-                            }
-                        } else if val.is_number() || val.is_boolean() {
-                            return Some(val.to_string());
-                        }
+                    if let Some(label) = map.get(key).and_then(scalar_label) {
+                        return Some(label);
                     }
                 }
 
                 // 2. Check suffix heuristics (*_name, *_title, *_label, *_id, *_key) if enabled
                 if self.enable_suffix_heuristics {
                     for (k, val) in map {
-                        if is_heuristic_entity_key(k) {
-                            if let Some(s) = val.as_str() {
-                                let trimmed = s.trim();
-                                if !trimmed.is_empty() {
-                                    return Some(trimmed.to_string());
-                                }
-                            } else if val.is_number() || val.is_boolean() {
-                                return Some(val.to_string());
-                            }
+                        if is_heuristic_entity_key(k)
+                            && let Some(label) = scalar_label(val)
+                        {
+                            return Some(label);
                         }
                     }
                 }
@@ -380,43 +370,23 @@ macro_rules! define_entity_extractor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
-    #[test]
-    fn test_domain_agnostic_default_keys() {
-        let prompt_name = "### INCOMING RECORD\n{\"name\": \"Central Station\"}\n\n###";
-        assert_eq!(extract_incoming_entity_text(prompt_name), "Central Station");
-
-        let prompt_title = "### INCOMING RECORD\n{\"title\": \"Chief Architect\"}\n\n###";
-        assert_eq!(
-            extract_incoming_entity_text(prompt_title),
-            "Chief Architect"
-        );
-
-        let prompt_label = "### INCOMING RECORD\n{\"label\": \"High Priority\"}\n\n###";
-        assert_eq!(extract_incoming_entity_text(prompt_label), "High Priority");
-    }
-
-    #[test]
-    fn test_suffix_heuristics() {
-        // Domain-specific keys like item_name, category_name, product_title match automatically without hardcoding
-        let prompt_item = "### INCOMING RECORD\n{\"item_name\": \"Fairlife 2% Milk\"}\n\n###";
-        assert_eq!(
-            extract_incoming_entity_text(prompt_item),
-            "Fairlife 2% Milk"
-        );
-
-        let prompt_cat = "### INCOMING RECORD\n{\"category_name\": \"Dairy & Eggs\"}\n\n###";
-        assert_eq!(extract_incoming_entity_text(prompt_cat), "Dairy & Eggs");
-
-        let prompt_product =
-            "### INCOMING RECORD\n{\"product_title\": \"Mechanical Keyboard\"}\n\n###";
-        assert_eq!(
-            extract_incoming_entity_text(prompt_product),
-            "Mechanical Keyboard"
-        );
-
-        let prompt_id = "### INCOMING RECORD\n{\"device_id\": \"DEV-4091\"}\n\n###";
-        assert_eq!(extract_incoming_entity_text(prompt_id), "DEV-4091");
+    #[rstest]
+    #[case::name(r#"{"name": "Central Station"}"#, "Central Station")]
+    #[case::title(r#"{"title": "Chief Architect"}"#, "Chief Architect")]
+    #[case::label(r#"{"label": "High Priority"}"#, "High Priority")]
+    // Domain-specific keys like item_name, category_name, product_title match automatically
+    #[case::item_name(r#"{"item_name": "Fairlife 2% Milk"}"#, "Fairlife 2% Milk")]
+    #[case::category_name(r#"{"category_name": "Dairy & Eggs"}"#, "Dairy & Eggs")]
+    #[case::product_title(r#"{"product_title": "Mechanical Keyboard"}"#, "Mechanical Keyboard")]
+    #[case::device_id(r#"{"device_id": "DEV-4091"}"#, "DEV-4091")]
+    #[case::any_string(r#"{"arbitrary_key": "Something unique"}"#, "Something unique")]
+    #[case::raw_slice("Raw Unformatted Entity", "Raw Unformatted Entity")]
+    #[case::nothing_to_extract("", "Unidentified Entity")]
+    fn extracts_the_entity_text(#[case] record: &str, #[case] expected: &str) {
+        let prompt = format!("### INCOMING RECORD\n{record}\n\n###");
+        assert_eq!(extract_incoming_entity_text(&prompt), expected);
     }
 
     #[test]
@@ -429,27 +399,6 @@ mod tests {
         // Custom keys prioritize sku
         let extracted = extract_incoming_entity_text_with_keys(prompt, &["sku", "title"]);
         assert_eq!(extracted, "SKU-999");
-    }
-
-    #[test]
-    fn test_fallback_to_any_string_and_slice() {
-        let prompt_misc = "### INCOMING RECORD\n{\"arbitrary_key\": \"Something unique\"}\n\n###";
-        assert_eq!(
-            extract_incoming_entity_text(prompt_misc),
-            "Something unique"
-        );
-
-        let prompt_raw = "### INCOMING RECORD\nRaw Unformatted Entity\n\n###";
-        assert_eq!(
-            extract_incoming_entity_text(prompt_raw),
-            "Raw Unformatted Entity"
-        );
-
-        let prompt_empty = "### INCOMING RECORD\n\n\n###";
-        assert_eq!(
-            extract_incoming_entity_text(prompt_empty),
-            "Unidentified Entity"
-        );
     }
 
     #[test]

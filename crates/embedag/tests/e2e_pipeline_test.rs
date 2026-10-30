@@ -106,28 +106,19 @@ async fn test_end_to_end_pipeline() {
     // 3. Persist DAG nodes and edges into containerized PostgreSQL
     let node_records = vec![
         NodeUpsertRecord {
-            id: root_cat_id,
-            business_key: root_cat.sku.clone(),
-            entity_level: root_cat.level.clone(),
-            name: root_cat.title.clone(),
             attributes: serde_json::json!({ "department": "Beverages" }),
             embedding: None,
+            ..NodeUpsertRecord::new(root_cat_id, &root_cat.sku, &root_cat.level, &root_cat.title)
         },
         NodeUpsertRecord {
-            id: subcat_id,
-            business_key: subcat.sku.clone(),
-            entity_level: subcat.level.clone(),
-            name: subcat.title.clone(),
             attributes: serde_json::json!({ "roast": "Various" }),
             embedding: None,
+            ..NodeUpsertRecord::new(subcat_id, &subcat.sku, &subcat.level, &subcat.title)
         },
         NodeUpsertRecord {
-            id: product_id,
-            business_key: product.sku.clone(),
-            entity_level: product.level.clone(),
-            name: product.title.clone(),
             attributes: serde_json::json!({ "weight_grams": 250, "origin": "Colombia" }),
             embedding: None,
+            ..NodeUpsertRecord::new(product_id, &product.sku, &product.level, &product.title)
         },
     ];
     batch_upsert_nodes(&client, &node_records)

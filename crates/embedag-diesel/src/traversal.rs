@@ -8,9 +8,9 @@ use crate::ops::PersistenceError;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-/// Ancestor lineage entry retrieved in a single roundtrip via recursive CTE.
+/// A node of a lineage (ancestors or descendants) retrieved in a single roundtrip via recursive CTE.
 #[derive(Debug, Clone, PartialEq)]
-pub struct AncestorRow {
+pub struct LineageRow {
     pub node_id: Uuid,
     pub depth: i32,
     pub business_key: String,
@@ -18,14 +18,108 @@ pub struct AncestorRow {
     pub entity_level: String,
 }
 
+/// Ancestor lineage entry retrieved in a single roundtrip via recursive CTE.
+pub type AncestorRow = LineageRow;
+
 /// Descendant entry retrieved in a single roundtrip via recursive CTE.
-#[derive(Debug, Clone, PartialEq)]
-pub struct DescendantRow {
-    pub node_id: Uuid,
-    pub depth: i32,
-    pub business_key: String,
-    pub name: String,
-    pub entity_level: String,
+pub type DescendantRow = LineageRow;
+
+impl LineageRow {
+    /// Reads the five traversal columns of a PostgreSQL row.
+    fn from_pg(row: tokio_postgres::Row) -> Self {
+        Self {
+            node_id: row.get(0),
+            depth: row.get(1),
+            business_key: row.get(2),
+            name: row.get(3),
+            entity_level: row.get(4),
+        }
+    }
+
+    /// Reads a Turso / libSQL row, whose ids come back as text.
+    #[cfg(feature = "turso-async")]
+    fn from_turso(row: TursoTraversalRow) -> Self {
+        Self {
+            node_id: Uuid::parse_str(&row.node_id).unwrap_or_default(),
+            depth: row.depth,
+            business_key: row.business_key,
+            name: row.name,
+            entity_level: row.entity_level,
+        }
+    }
+}
+
+/// The default semantic table, with at most `max_breadth` children per node when given.
+#[cfg(any(
+    feature = "sqlite",
+    all(feature = "postgres-async", feature = "diesel-async")
+))]
+fn semantic_config(max_breadth: Option<i32>) -> crate::cte::HierarchicalTableConfig {
+    let config = crate::cte::HierarchicalTableConfig::default_semantic();
+    match max_breadth {
+        Some(breadth) => config.with_max_breadth_per_node(breadth),
+        None => config,
+    }
+}
+
+/// Defines the traversals over the default semantic table: each runs the `CteHierarchyBuilder`
+/// function `$inner`, limiting the children per node when a `max_breadth` parameter is declared;
+/// `async` entries are awaited.
+macro_rules! semantic_traversals {
+    ($(
+        $(#[$meta:meta])*
+        $name:ident($conn:ty, $id:ident $(, $breadth:ident)?) => $inner:ident $($async:ident)?;
+    )*) => {$(
+        $(#[$meta])*
+        pub $($async)? fn $name(
+            conn: &mut $conn,
+            $id: &str,
+            max_depth: i32 $(, $breadth: i32)?
+        ) -> Result<Vec<crate::cte::HierarchyItem>, diesel::result::Error> {
+            let config = semantic_config(None $(.or(Some($breadth)))?);
+            let items = crate::cte::CteHierarchyBuilder::$inner(conn, &config, $id, max_depth);
+            semantic_traversals!(@wait items $($async)?)
+        }
+    )*};
+    (@wait $items:ident async) => { $items.await };
+    (@wait $items:ident) => { $items };
+}
+
+/// Defines the PostgreSQL traversals that take a node id and a depth and run one of the
+/// `RecursiveTraversalBuilder` queries.
+macro_rules! pg_lineages {
+    ($(
+        $(#[$meta:meta])*
+        $name:ident => $query:ident, $row:ident;
+    )*) => {$(
+        $(#[$meta])*
+        pub async fn $name(
+            client: &tokio_postgres::Client,
+            target_id: Uuid,
+            max_depth: i32,
+        ) -> Result<Vec<$row>, PersistenceError> {
+            Self::lineage(client, Self::$query(), &[&target_id, &max_depth]).await
+        }
+    )*};
+}
+
+/// Defines the Turso / libSQL traversals that take a node id and a depth and run one of the
+/// `RecursiveTraversalBuilder` statements.
+#[cfg(feature = "turso-async")]
+macro_rules! turso_lineages {
+    ($(
+        $(#[$meta:meta])*
+        $name:ident($id:ident) => $query:ident, $row:ident;
+    )*) => {$(
+        $(#[$meta])*
+        pub async fn $name(
+            conn: &mut crate::migrations::AsyncLibSqlConnection,
+            $id: Uuid,
+            max_depth: i32,
+        ) -> Result<Vec<$row>, PersistenceError> {
+            Self::lineage_turso(conn, Self::$query($id, max_depth)).await
+        }
+    )*};
 }
 
 /// Type-safe recursive CTE traversal builder with cycle guardrails for PostgreSQL and SQLite.
@@ -53,28 +147,14 @@ impl RecursiveTraversalBuilder {
         WITH RECURSIVE descendant_tree(node_id, depth, visited, cycle) AS (\n            SELECT\n                child_id,\n                1 AS depth,\n                ARRAY[parent_id, child_id] AS visited,\n                FALSE AS cycle\n            FROM semantic_edges\n            WHERE parent_id = $1\n\n            UNION ALL\n\n            SELECT\n                e.child_id,\n                t.depth + 1,\n                t.visited || e.child_id,\n                e.child_id = ANY(t.visited) AS cycle\n            FROM semantic_edges e\n            JOIN descendant_tree t ON e.parent_id = t.node_id\n            WHERE t.depth < $2\n              AND NOT t.cycle\n              AND NOT (e.child_id = ANY(t.visited))\n        )\n        SELECT\n            t.node_id,\n            t.depth,\n            n.business_key,\n            n.name,\n            n.entity_level\n        FROM descendant_tree t\n        JOIN semantic_nodes n ON n.id = t.node_id\n        ORDER BY t.depth ASC;\n        "
     }
 
-    /// Executes multi-hop ancestor traversal on PostgreSQL in a single round-trip.
-    pub async fn fetch_ancestors(
+    /// Runs a lineage query on PostgreSQL and reads its rows.
+    async fn lineage(
         client: &tokio_postgres::Client,
-        target_id: Uuid,
-        max_depth: i32,
-    ) -> Result<Vec<AncestorRow>, PersistenceError> {
-        let rows = client
-            .query(Self::postgres_ancestor_query(), &[&target_id, &max_depth])
-            .await?;
-
-        let ancestors = rows
-            .into_iter()
-            .map(|row| AncestorRow {
-                node_id: row.get(0),
-                depth: row.get(1),
-                business_key: row.get(2),
-                name: row.get(3),
-                entity_level: row.get(4),
-            })
-            .collect();
-
-        Ok(ancestors)
+        query: &str,
+        params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> Result<Vec<LineageRow>, PersistenceError> {
+        let rows = client.query(query, params).await?;
+        Ok(rows.into_iter().map(LineageRow::from_pg).collect())
     }
 
     /// Executes historical point-in-time multi-hop ancestor traversal on PostgreSQL in a single round-trip.
@@ -84,125 +164,36 @@ impl RecursiveTraversalBuilder {
         max_depth: i32,
         as_of: DateTime<Utc>,
     ) -> Result<Vec<AncestorRow>, PersistenceError> {
-        let rows = client
-            .query(
-                Self::postgres_ancestor_as_of_query(),
-                &[&target_id, &max_depth, &as_of],
-            )
-            .await?;
-
-        let ancestors = rows
-            .into_iter()
-            .map(|row| AncestorRow {
-                node_id: row.get(0),
-                depth: row.get(1),
-                business_key: row.get(2),
-                name: row.get(3),
-                entity_level: row.get(4),
-            })
-            .collect();
-
-        Ok(ancestors)
+        let query = Self::postgres_ancestor_as_of_query();
+        Self::lineage(client, query, &[&target_id, &max_depth, &as_of]).await
     }
 
-    /// Executes multi-hop descendant traversal on PostgreSQL in a single round-trip.
-    pub async fn fetch_descendants(
-        client: &tokio_postgres::Client,
-        target_id: Uuid,
-        max_depth: i32,
-    ) -> Result<Vec<DescendantRow>, PersistenceError> {
-        let rows = client
-            .query(Self::postgres_descendant_query(), &[&target_id, &max_depth])
-            .await?;
-
-        let descendants = rows
-            .into_iter()
-            .map(|row| DescendantRow {
-                node_id: row.get(0),
-                depth: row.get(1),
-                business_key: row.get(2),
-                name: row.get(3),
-                entity_level: row.get(4),
-            })
-            .collect();
-
-        Ok(descendants)
+    pg_lineages! {
+        /// Executes multi-hop ancestor traversal on PostgreSQL in a single round-trip.
+        fetch_ancestors => postgres_ancestor_query, AncestorRow;
+        /// Executes multi-hop descendant traversal on PostgreSQL in a single round-trip.
+        fetch_descendants => postgres_descendant_query, DescendantRow;
     }
 
-    /// Executes multi-hop ancestor traversal on an SQLite connection using `diesel-cte-ext`.
-    #[cfg(feature = "sqlite")]
-    pub fn fetch_ancestors_sqlite(
-        conn: &mut diesel::SqliteConnection,
-        target_id: &str,
-        max_depth: i32,
-    ) -> Result<Vec<crate::cte::HierarchyItem>, diesel::result::Error> {
-        let config = crate::cte::HierarchicalTableConfig::default_semantic();
-        crate::cte::CteHierarchyBuilder::fetch_ancestors_sqlite(conn, &config, target_id, max_depth)
-    }
-
-    /// Executes multi-hop descendant traversal on an SQLite connection using `diesel-cte-ext`.
-    #[cfg(feature = "sqlite")]
-    pub fn fetch_descendants_sqlite(
-        conn: &mut diesel::SqliteConnection,
-        root_id: &str,
-        max_depth: i32,
-    ) -> Result<Vec<crate::cte::HierarchyItem>, diesel::result::Error> {
-        let config = crate::cte::HierarchicalTableConfig::default_semantic();
-        crate::cte::CteHierarchyBuilder::fetch_descendants_sqlite(conn, &config, root_id, max_depth)
-    }
-
-    /// Executes multi-hop descendant traversal on an SQLite connection with breadth limits per level.
-    #[cfg(feature = "sqlite")]
-    pub fn fetch_descendants_bounded_sqlite(
-        conn: &mut diesel::SqliteConnection,
-        root_id: &str,
-        max_depth: i32,
-        max_breadth: i32,
-    ) -> Result<Vec<crate::cte::HierarchyItem>, diesel::result::Error> {
-        let config = crate::cte::HierarchicalTableConfig::default_semantic()
-            .with_max_breadth_per_node(max_breadth);
-        crate::cte::CteHierarchyBuilder::fetch_descendants_sqlite(conn, &config, root_id, max_depth)
-    }
-
-    /// Executes multi-hop ancestor traversal on an SQLite connection with breadth limits per level.
-    #[cfg(feature = "sqlite")]
-    pub fn fetch_ancestors_bounded_sqlite(
-        conn: &mut diesel::SqliteConnection,
-        target_id: &str,
-        max_depth: i32,
-        max_breadth: i32,
-    ) -> Result<Vec<crate::cte::HierarchyItem>, diesel::result::Error> {
-        let config = crate::cte::HierarchicalTableConfig::default_semantic()
-            .with_max_breadth_per_node(max_breadth);
-        crate::cte::CteHierarchyBuilder::fetch_ancestors_sqlite(conn, &config, target_id, max_depth)
-    }
-
-    /// Executes multi-hop ancestor traversal asynchronously on PostgreSQL using `diesel-cte-ext`.
-    #[cfg(all(feature = "postgres-async", feature = "diesel-async"))]
-    pub async fn fetch_ancestors_async(
-        conn: &mut diesel_async::AsyncPgConnection,
-        target_id: &str,
-        max_depth: i32,
-    ) -> Result<Vec<crate::cte::HierarchyItem>, diesel::result::Error> {
-        let config = crate::cte::HierarchicalTableConfig::default_semantic();
-        crate::cte::CteHierarchyBuilder::fetch_ancestors_pg_async(
-            conn, &config, target_id, max_depth,
-        )
-        .await
-    }
-
-    /// Executes multi-hop descendant traversal asynchronously on PostgreSQL using `diesel-cte-ext`.
-    #[cfg(all(feature = "postgres-async", feature = "diesel-async"))]
-    pub async fn fetch_descendants_async(
-        conn: &mut diesel_async::AsyncPgConnection,
-        root_id: &str,
-        max_depth: i32,
-    ) -> Result<Vec<crate::cte::HierarchyItem>, diesel::result::Error> {
-        let config = crate::cte::HierarchicalTableConfig::default_semantic();
-        crate::cte::CteHierarchyBuilder::fetch_descendants_pg_async(
-            conn, &config, root_id, max_depth,
-        )
-        .await
+    semantic_traversals! {
+        /// Executes multi-hop ancestor traversal on an SQLite connection using `diesel-cte-ext`.
+        #[cfg(feature = "sqlite")]
+        fetch_ancestors_sqlite(diesel::SqliteConnection, target_id) => fetch_ancestors_sqlite;
+        /// Executes multi-hop descendant traversal on an SQLite connection using `diesel-cte-ext`.
+        #[cfg(feature = "sqlite")]
+        fetch_descendants_sqlite(diesel::SqliteConnection, root_id) => fetch_descendants_sqlite;
+        /// Executes multi-hop descendant traversal on an SQLite connection with breadth limits per level.
+        #[cfg(feature = "sqlite")]
+        fetch_descendants_bounded_sqlite(diesel::SqliteConnection, root_id, max_breadth) => fetch_descendants_sqlite;
+        /// Executes multi-hop ancestor traversal on an SQLite connection with breadth limits per level.
+        #[cfg(feature = "sqlite")]
+        fetch_ancestors_bounded_sqlite(diesel::SqliteConnection, target_id, max_breadth) => fetch_ancestors_sqlite;
+        /// Executes multi-hop ancestor traversal asynchronously on PostgreSQL using `diesel-cte-ext`.
+        #[cfg(all(feature = "postgres-async", feature = "diesel-async"))]
+        fetch_ancestors_async(diesel_async::AsyncPgConnection, target_id) => fetch_ancestors_pg_async async;
+        /// Executes multi-hop descendant traversal asynchronously on PostgreSQL using `diesel-cte-ext`.
+        #[cfg(all(feature = "postgres-async", feature = "diesel-async"))]
+        fetch_descendants_async(diesel_async::AsyncPgConnection, root_id) => fetch_descendants_pg_async async;
     }
 
     /// Constructs Turso / libSQL recursive CTE SQL query for multi-hop ancestors with cycle guard.
@@ -269,54 +260,25 @@ impl RecursiveTraversalBuilder {
         )
     }
 
-    /// Executes multi-hop ancestor traversal asynchronously on Turso / libSQL using .
+    /// Runs a lineage statement on Turso / libSQL and reads its rows.
     #[cfg(feature = "turso-async")]
-    pub async fn fetch_ancestors_turso_async(
+    async fn lineage_turso(
         conn: &mut crate::migrations::AsyncLibSqlConnection,
-        target_id: Uuid,
-        max_depth: i32,
-    ) -> Result<Vec<AncestorRow>, PersistenceError> {
-        let sql = Self::turso_ancestor_query(target_id, max_depth);
+        sql: String,
+    ) -> Result<Vec<LineageRow>, PersistenceError> {
         let rows: Vec<TursoTraversalRow> =
             diesel_async::RunQueryDsl::load(diesel::sql_query(sql), conn)
                 .await
                 .map_err(PersistenceError::Diesel)?;
-
-        Ok(rows
-            .into_iter()
-            .map(|r| AncestorRow {
-                node_id: Uuid::parse_str(&r.node_id).unwrap_or_default(),
-                depth: r.depth,
-                business_key: r.business_key,
-                name: r.name,
-                entity_level: r.entity_level,
-            })
-            .collect())
+        Ok(rows.into_iter().map(LineageRow::from_turso).collect())
     }
 
-    /// Executes multi-hop descendant traversal asynchronously on Turso / libSQL using .
     #[cfg(feature = "turso-async")]
-    pub async fn fetch_descendants_turso_async(
-        conn: &mut crate::migrations::AsyncLibSqlConnection,
-        root_id: Uuid,
-        max_depth: i32,
-    ) -> Result<Vec<DescendantRow>, PersistenceError> {
-        let sql = Self::turso_descendant_query(root_id, max_depth);
-        let rows: Vec<TursoTraversalRow> =
-            diesel_async::RunQueryDsl::load(diesel::sql_query(sql), conn)
-                .await
-                .map_err(PersistenceError::Diesel)?;
-
-        Ok(rows
-            .into_iter()
-            .map(|r| DescendantRow {
-                node_id: Uuid::parse_str(&r.node_id).unwrap_or_default(),
-                depth: r.depth,
-                business_key: r.business_key,
-                name: r.name,
-                entity_level: r.entity_level,
-            })
-            .collect())
+    turso_lineages! {
+        /// Executes multi-hop ancestor traversal asynchronously on Turso / libSQL using .
+        fetch_ancestors_turso_async(target_id) => turso_ancestor_query, AncestorRow;
+        /// Executes multi-hop descendant traversal asynchronously on Turso / libSQL using .
+        fetch_descendants_turso_async(root_id) => turso_descendant_query, DescendantRow;
     }
 }
 

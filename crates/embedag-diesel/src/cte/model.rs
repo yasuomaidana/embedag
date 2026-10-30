@@ -4,6 +4,47 @@ use diesel::sqlite::SqliteConnection;
 use super::builder::CteHierarchyBuilder;
 use super::config::{HierarchicalTableConfig, HierarchyItem};
 
+/// Defines the SQLite traversal methods of [`HierarchicalModel`]: each runs the builder function of
+/// the same name with the model's table configuration.
+#[cfg(feature = "sqlite")]
+macro_rules! sqlite_traversals {
+    ($($(#[$doc:meta])* $name:ident, $id:ident;)*) => {$(
+        $(#[$doc])*
+        fn $name(
+            conn: &mut SqliteConnection,
+            $id: &str,
+            max_depth: i32,
+        ) -> diesel::QueryResult<Vec<HierarchyItem>>
+        where
+            Self: Sized,
+        {
+            CteHierarchyBuilder::$name(conn, &Self::table_config(), $id, max_depth)
+        }
+    )*};
+}
+
+/// Defines the asynchronous PostgreSQL traversal methods of [`HierarchicalModel`]: each runs the
+/// builder function of the same name with the model's table configuration.
+#[cfg(all(feature = "postgres-async", feature = "diesel-async"))]
+macro_rules! pg_async_traversals {
+    ($($(#[$doc:meta])* $name:ident, $id:ident;)*) => {$(
+        $(#[$doc])*
+        fn $name<'a>(
+            conn: &'a mut diesel_async::AsyncPgConnection,
+            $id: &'a str,
+            max_depth: i32,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = diesel::QueryResult<Vec<HierarchyItem>>> + Send + 'a>,
+        >
+        where
+            Self: Sized + 'a,
+        {
+            let config = Self::table_config();
+            Box::pin(async move { CteHierarchyBuilder::$name(conn, &config, $id, max_depth).await })
+        }
+    )*};
+}
+
 /// Trait implemented by models representing hierarchical tables (derived via `#[derive(HierarchicalModel)]`).
 ///
 /// Automatically generates type-safe Diesel CTE queries, column mappings, and step queries.
@@ -40,94 +81,20 @@ pub trait HierarchicalModel {
         Self::table_config().table_context()
     }
 
-    /// Traverses ancestors of `target_id` up to `max_depth` on an SQLite connection.
-    #[cfg(feature = "sqlite")]
-    fn fetch_ancestors_sqlite(
-        conn: &mut SqliteConnection,
-        target_id: &str,
-        max_depth: i32,
-    ) -> diesel::QueryResult<Vec<HierarchyItem>>
-    where
-        Self: Sized,
-    {
-        CteHierarchyBuilder::fetch_ancestors_sqlite(
-            conn,
-            &Self::table_config(),
-            target_id,
-            max_depth,
-        )
+    sqlite_traversals! {
+        /// Traverses ancestors of `target_id` up to `max_depth` on an SQLite connection.
+        fetch_ancestors_sqlite, target_id;
+        /// Traverses descendants of `root_id` down to `max_depth` on an SQLite connection.
+        fetch_descendants_sqlite, root_id;
+        /// Traverses ancestors with deduplication on an SQLite connection.
+        fetch_ancestors_dedup_sqlite, target_id;
     }
 
-    /// Traverses descendants of `root_id` down to `max_depth` on an SQLite connection.
-    #[cfg(feature = "sqlite")]
-    fn fetch_descendants_sqlite(
-        conn: &mut SqliteConnection,
-        root_id: &str,
-        max_depth: i32,
-    ) -> diesel::QueryResult<Vec<HierarchyItem>>
-    where
-        Self: Sized,
-    {
-        CteHierarchyBuilder::fetch_descendants_sqlite(
-            conn,
-            &Self::table_config(),
-            root_id,
-            max_depth,
-        )
-    }
-
-    /// Traverses ancestors with deduplication on an SQLite connection.
-    #[cfg(feature = "sqlite")]
-    fn fetch_ancestors_dedup_sqlite(
-        conn: &mut SqliteConnection,
-        target_id: &str,
-        max_depth: i32,
-    ) -> diesel::QueryResult<Vec<HierarchyItem>>
-    where
-        Self: Sized,
-    {
-        CteHierarchyBuilder::fetch_ancestors_dedup_sqlite(
-            conn,
-            &Self::table_config(),
-            target_id,
-            max_depth,
-        )
-    }
-
-    /// Traverses ancestors of `target_id` up to `max_depth` asynchronously on PostgreSQL via `diesel-async`.
-    #[cfg(all(feature = "postgres-async", feature = "diesel-async"))]
-    fn fetch_ancestors_pg_async<'a>(
-        conn: &'a mut diesel_async::AsyncPgConnection,
-        target_id: &'a str,
-        max_depth: i32,
-    ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = diesel::QueryResult<Vec<HierarchyItem>>> + Send + 'a>,
-    >
-    where
-        Self: Sized + 'a,
-    {
-        let config = Self::table_config();
-        Box::pin(async move {
-            CteHierarchyBuilder::fetch_ancestors_pg_async(conn, &config, target_id, max_depth).await
-        })
-    }
-
-    /// Traverses descendants of `root_id` down to `max_depth` asynchronously on PostgreSQL via `diesel-async`.
-    #[cfg(all(feature = "postgres-async", feature = "diesel-async"))]
-    fn fetch_descendants_pg_async<'a>(
-        conn: &'a mut diesel_async::AsyncPgConnection,
-        root_id: &'a str,
-        max_depth: i32,
-    ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = diesel::QueryResult<Vec<HierarchyItem>>> + Send + 'a>,
-    >
-    where
-        Self: Sized + 'a,
-    {
-        let config = Self::table_config();
-        Box::pin(async move {
-            CteHierarchyBuilder::fetch_descendants_pg_async(conn, &config, root_id, max_depth).await
-        })
+    pg_async_traversals! {
+        /// Traverses ancestors of `target_id` up to `max_depth` asynchronously on PostgreSQL via `diesel-async`.
+        fetch_ancestors_pg_async, target_id;
+        /// Traverses descendants of `root_id` down to `max_depth` asynchronously on PostgreSQL via `diesel-async`.
+        fetch_descendants_pg_async, root_id;
     }
 
     /// Generates the recursive CTE step query for ancestor traversal.

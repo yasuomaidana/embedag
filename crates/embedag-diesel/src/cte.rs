@@ -8,6 +8,7 @@
 pub mod builder;
 pub mod config;
 pub mod model;
+mod sql;
 
 pub use builder::*;
 pub use config::*;
