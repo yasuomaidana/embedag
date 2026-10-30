@@ -130,6 +130,14 @@ jobs:
           echo "LIBRARY_PATH=$(brew --prefix libpq)/lib" >> "$GITHUB_ENV"
           echo "PQ_LIB_DIR=$(brew --prefix libpq)/lib" >> "$GITHUB_ENV"
 
+      - name: Locate libpq (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $pg = (Get-ChildItem 'C:\Program Files\PostgreSQL' | Sort-Object Name -Descending | Select-Object -First 1).FullName
+          "PQ_LIB_DIR=$pg\lib" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "$pg\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
       - name: Run unit & integration tests
         run: cargo test --all-targets --all-features --verbose
 
