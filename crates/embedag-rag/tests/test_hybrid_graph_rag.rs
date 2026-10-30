@@ -1,6 +1,5 @@
 use embedag_core::dag::MemoryDag;
 use embedag_core::model::{EdgePayload, ProvenanceKind};
-use embedag_core::traits::NodePayload;
 use embedag_rag::evidence::GroundedEvidencePackager;
 use embedag_rag::expansion::SubgraphExpander;
 use embedag_rag::index::{DenseVectorIndex, SparseLexicalIndex};
@@ -31,18 +30,12 @@ impl CatalogItem {
     }
 }
 
-impl NodePayload for CatalogItem {
-    type Key = String;
-    fn key(&self) -> &Self::Key {
-        &self.business_key
-    }
-    fn name(&self) -> &str {
-        &self.name
-    }
-    fn entity_level(&self) -> &str {
-        &self.level
-    }
-}
+embedag_core::impl_node_payload!(
+    CatalogItem,
+    key = |n| &n.business_key,
+    name = |n| &n.name,
+    level = |n| &n.level
+);
 
 fn create_edge(rel: &str, conf: f32, prov: ProvenanceKind) -> EdgePayload {
     EdgePayload::new(rel, conf, prov).expect("valid edge payload")

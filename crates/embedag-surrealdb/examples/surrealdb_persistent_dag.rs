@@ -2,7 +2,6 @@
 
 use embedag_core::dag::MemoryDag;
 use embedag_core::model::{EdgePayload, ProvenanceKind};
-use embedag_core::traits::NodePayload;
 use embedag_surrealdb::SurrealDbEngine;
 use serde::{Deserialize, Serialize};
 
@@ -13,28 +12,18 @@ struct OrgUnit {
     unit_type: String,
 }
 
-impl NodePayload for OrgUnit {
-    type Key = String;
-
-    fn key(&self) -> &Self::Key {
-        &self.code
-    }
-
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn entity_level(&self) -> &str {
-        &self.unit_type
-    }
-
-    fn attributes(&self) -> serde_json::Value {
+embedag_core::impl_node_payload!(
+    OrgUnit,
+    key = |n| &n.code,
+    name = |n| &n.name,
+    level = |n| &n.unit_type,
+    attributes = |n| {
         serde_json::json!({
-            "name": self.name,
-            "unit_type": self.unit_type,
+            "name": n.name,
+            "unit_type": n.unit_type,
         })
     }
-}
+);
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

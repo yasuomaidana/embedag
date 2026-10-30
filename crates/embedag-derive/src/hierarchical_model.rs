@@ -239,6 +239,32 @@ pub fn derive_hierarchical_model_impl(input: DeriveInput) -> Result<TokenStream>
         non_id_indices.len() + 1
     );
 
+    let columns = Columns {
+        idents: &field_idents,
+        sql_types: &field_sql_types,
+        non_id_idents: &non_id_idents,
+        non_id_sql_types: &non_id_sql_types,
+        id_ident: &id_ident,
+    };
+    let sqlite_methods = crud_methods(
+        &Backend {
+            label: "SQLite",
+            suffix: "sqlite",
+            conn: quote!(diesel::SqliteConnection),
+            sql: [&sqlite_insert_sql, &sqlite_delete_sql, &sqlite_update_sql],
+        },
+        &columns,
+    );
+    let pg_methods = crud_methods(
+        &Backend {
+            label: "PostgreSQL",
+            suffix: "pg",
+            conn: quote!(diesel::pg::PgConnection),
+            sql: [&pg_insert_sql, &pg_delete_sql, &pg_update_sql],
+        },
+        &columns,
+    );
+
     let expanded = quote! {
         impl embedag_diesel::cte::HierarchicalModel for #struct_name {
             fn table_name() -> &'static str {
@@ -305,73 +331,9 @@ pub fn derive_hierarchical_model_impl(input: DeriveInput) -> Result<TokenStream>
                 <Self as embedag_diesel::cte::HierarchicalModel>::table_context()
             }
 
-            /// Type-safe Diesel parameterized insert for SQLite.
-            pub fn insert_sqlite(&self, conn: &mut diesel::SqliteConnection) -> diesel::QueryResult<usize> {
-                let query = diesel::sql_query(#sqlite_insert_sql)
-                    #( .bind::<#field_sql_types, _>(&self.#field_idents) )*;
-                diesel::RunQueryDsl::execute(query, conn)
-            }
+            #sqlite_methods
 
-            /// Type-safe Diesel batch insert for SQLite within a transaction.
-            pub fn insert_batch_sqlite(records: &[Self], conn: &mut diesel::SqliteConnection) -> diesel::QueryResult<usize> {
-                use diesel::Connection;
-                conn.transaction(|conn| {
-                    let mut count = 0;
-                    for rec in records {
-                        count += rec.insert_sqlite(conn)?;
-                    }
-                    Ok(count)
-                })
-            }
-
-            /// Type-safe Diesel parameterized delete by ID for SQLite.
-            pub fn delete_by_id_sqlite(conn: &mut diesel::SqliteConnection, id: &str) -> diesel::QueryResult<usize> {
-                let query = diesel::sql_query(#sqlite_delete_sql)
-                    .bind::<diesel::sql_types::Text, _>(id);
-                diesel::RunQueryDsl::execute(query, conn)
-            }
-
-            /// Type-safe Diesel parameterized update by ID for SQLite.
-            pub fn update_sqlite(&self, conn: &mut diesel::SqliteConnection) -> diesel::QueryResult<usize> {
-                let query = diesel::sql_query(#sqlite_update_sql)
-                    #( .bind::<#non_id_sql_types, _>(&self.#non_id_idents) )*
-                    .bind::<diesel::sql_types::Text, _>(&self.#id_ident);
-                diesel::RunQueryDsl::execute(query, conn)
-            }
-
-            /// Type-safe Diesel parameterized insert for PostgreSQL.
-            pub fn insert_pg(&self, conn: &mut diesel::pg::PgConnection) -> diesel::QueryResult<usize> {
-                let query = diesel::sql_query(#pg_insert_sql)
-                    #( .bind::<#field_sql_types, _>(&self.#field_idents) )*;
-                diesel::RunQueryDsl::execute(query, conn)
-            }
-
-            /// Type-safe Diesel batch insert for PostgreSQL within a transaction.
-            pub fn insert_batch_pg(records: &[Self], conn: &mut diesel::pg::PgConnection) -> diesel::QueryResult<usize> {
-                use diesel::Connection;
-                conn.transaction(|conn| {
-                    let mut count = 0;
-                    for rec in records {
-                        count += rec.insert_pg(conn)?;
-                    }
-                    Ok(count)
-                })
-            }
-
-            /// Type-safe Diesel parameterized delete by ID for PostgreSQL.
-            pub fn delete_by_id_pg(conn: &mut diesel::pg::PgConnection, id: &str) -> diesel::QueryResult<usize> {
-                let query = diesel::sql_query(#pg_delete_sql)
-                    .bind::<diesel::sql_types::Text, _>(id);
-                diesel::RunQueryDsl::execute(query, conn)
-            }
-
-            /// Type-safe Diesel parameterized update by ID for PostgreSQL.
-            pub fn update_pg(&self, conn: &mut diesel::pg::PgConnection) -> diesel::QueryResult<usize> {
-                let query = diesel::sql_query(#pg_update_sql)
-                    #( .bind::<#non_id_sql_types, _>(&self.#non_id_idents) )*
-                    .bind::<diesel::sql_types::Text, _>(&self.#id_ident);
-                diesel::RunQueryDsl::execute(query, conn)
-            }
+            #pg_methods
 
             /// Type-safe Diesel async parameterized insert for PostgreSQL via `diesel-async`.
             pub async fn insert_pg_async(&self, conn: &mut diesel_async::AsyncPgConnection) -> diesel::QueryResult<usize> {
@@ -407,6 +369,87 @@ pub fn derive_hierarchical_model_impl(input: DeriveInput) -> Result<TokenStream>
     };
 
     Ok(expanded)
+}
+
+/// One database backend whose CRUD methods the derive generates.
+struct Backend<'a> {
+    /// Name used in the generated docs.
+    label: &'a str,
+    /// Suffix of the generated method names.
+    suffix: &'a str,
+    /// The Diesel connection type.
+    conn: TokenStream,
+    /// The insert, delete-by-id and update-by-id statements.
+    sql: [&'a str; 3],
+}
+
+/// The columns of the model, as the generated binds need them.
+struct Columns<'a> {
+    idents: &'a [&'a Ident],
+    sql_types: &'a [TokenStream],
+    non_id_idents: &'a [&'a Ident],
+    non_id_sql_types: &'a [&'a TokenStream],
+    id_ident: &'a Ident,
+}
+
+/// The insert, batch insert, delete and update methods of one backend.
+fn crud_methods(backend: &Backend, columns: &Columns) -> TokenStream {
+    let Backend {
+        label,
+        suffix,
+        conn: conn_ty,
+        sql: [insert_sql, delete_sql, update_sql],
+    } = backend;
+    let Columns {
+        idents,
+        sql_types,
+        non_id_idents,
+        non_id_sql_types,
+        id_ident,
+    } = columns;
+    let insert = quote::format_ident!("insert_{}", suffix);
+    let insert_batch = quote::format_ident!("insert_batch_{}", suffix);
+    let delete = quote::format_ident!("delete_by_id_{}", suffix);
+    let update = quote::format_ident!("update_{}", suffix);
+    let insert_doc = format!(" Type-safe Diesel parameterized insert for {label}.");
+    let batch_doc = format!(" Type-safe Diesel batch insert for {label} within a transaction.");
+    let delete_doc = format!(" Type-safe Diesel parameterized delete by ID for {label}.");
+    let update_doc = format!(" Type-safe Diesel parameterized update by ID for {label}.");
+    quote! {
+        #[doc = #insert_doc]
+        pub fn #insert(&self, conn: &mut #conn_ty) -> diesel::QueryResult<usize> {
+            let query = diesel::sql_query(#insert_sql)
+                #( .bind::<#sql_types, _>(&self.#idents) )*;
+            diesel::RunQueryDsl::execute(query, conn)
+        }
+
+        #[doc = #batch_doc]
+        pub fn #insert_batch(records: &[Self], conn: &mut #conn_ty) -> diesel::QueryResult<usize> {
+            use diesel::Connection;
+            conn.transaction(|conn| {
+                let mut count = 0;
+                for rec in records {
+                    count += rec.#insert(conn)?;
+                }
+                Ok(count)
+            })
+        }
+
+        #[doc = #delete_doc]
+        pub fn #delete(conn: &mut #conn_ty, id: &str) -> diesel::QueryResult<usize> {
+            let query = diesel::sql_query(#delete_sql)
+                .bind::<diesel::sql_types::Text, _>(id);
+            diesel::RunQueryDsl::execute(query, conn)
+        }
+
+        #[doc = #update_doc]
+        pub fn #update(&self, conn: &mut #conn_ty) -> diesel::QueryResult<usize> {
+            let query = diesel::sql_query(#update_sql)
+                #( .bind::<#non_id_sql_types, _>(&self.#non_id_idents) )*
+                .bind::<diesel::sql_types::Text, _>(&self.#id_ident);
+            diesel::RunQueryDsl::execute(query, conn)
+        }
+    }
 }
 
 // TODO: Review and ensure all types are mapped correctly.

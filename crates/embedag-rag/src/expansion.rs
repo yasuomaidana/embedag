@@ -218,36 +218,7 @@ impl SubgraphExpander {
 mod tests {
     use super::*;
     use embedag_core::model::EdgePayload;
-
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    struct ProductNode {
-        id: String,
-        name: String,
-        level: String,
-    }
-
-    impl ProductNode {
-        fn new(id: &str, name: &str, level: &str) -> Self {
-            Self {
-                id: id.into(),
-                name: name.into(),
-                level: level.into(),
-            }
-        }
-    }
-
-    impl NodePayload for ProductNode {
-        type Key = String;
-        fn key(&self) -> &Self::Key {
-            &self.id
-        }
-        fn name(&self) -> &str {
-            &self.name
-        }
-        fn entity_level(&self) -> &str {
-            &self.level
-        }
-    }
+    use embedag_core::testing::TestNode;
 
     fn edge(rel: &str) -> EdgePayload {
         EdgePayload::new(rel, 1.0, ProvenanceKind::DeterministicRule).unwrap()
@@ -260,11 +231,11 @@ mod tests {
         // Hierarchy: Dept (L1) -> Brand (L2) -> SKU_A (L3)
         //                                   \-> SKU_B (L3, sibling)
         // SKU_A -> Variant_A1 (L4, child)
-        let dept = ProductNode::new("dept", "Confectionery", "Department");
-        let brand = ProductNode::new("brand", "Carlos V", "Brand");
-        let sku_a = ProductNode::new("sku_a", "Carlos V Dark 50g", "SKU");
-        let sku_b = ProductNode::new("sku_b", "Carlos V Milk 50g", "SKU");
-        let variant = ProductNode::new("variant", "Carlos V Dark 50g 10-Pack", "Bundle");
+        let dept = TestNode::new("dept", "Confectionery", "Department");
+        let brand = TestNode::new("brand", "Carlos V", "Brand");
+        let sku_a = TestNode::new("sku_a", "Carlos V Dark 50g", "SKU");
+        let sku_b = TestNode::new("sku_b", "Carlos V Milk 50g", "SKU");
+        let variant = TestNode::new("variant", "Carlos V Dark 50g 10-Pack", "Bundle");
 
         dag.upsert_node(dept);
         dag.upsert_node(brand);

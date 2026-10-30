@@ -108,18 +108,12 @@ pub struct MultimodalIndustrialAsset {
     pub inspection_blob: MultimodalBlob,
 }
 
-impl NodePayload for MultimodalIndustrialAsset {
-    type Key = String;
-    fn key(&self) -> &Self::Key {
-        &self.asset_code
-    }
-    fn name(&self) -> &str {
-        &self.asset_name
-    }
-    fn entity_level(&self) -> &str {
-        &self.entity_level
-    }
-}
+embedag_core::impl_node_payload!(
+    MultimodalIndustrialAsset,
+    key = |n| &n.asset_code,
+    name = |n| &n.asset_name,
+    level = |n| &n.entity_level
+);
 
 #[tokio::test]
 async fn test_inference_and_multitype_e2e_pipeline() {

@@ -178,21 +178,12 @@ mod tests {
         label: String,
     }
 
-    impl NodePayload for DummyNode {
-        type Key = String;
-
-        fn key(&self) -> &Self::Key {
-            &self.key
-        }
-
-        fn name(&self) -> &str {
-            &self.label
-        }
-
-        fn entity_level(&self) -> &str {
-            "item"
-        }
-    }
+    embedag_core::impl_node_payload!(
+        DummyNode,
+        key = |n| &n.key,
+        name = |n| &n.label,
+        level = |_| "item"
+    );
 
     #[test]
     fn test_diffing_idempotency() {

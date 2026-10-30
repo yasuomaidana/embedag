@@ -20,70 +20,13 @@ pub struct GraphExporter;
 impl GraphExporter {
     /// Serializes the DAG into a valid Mermaid flowchart string (`graph TD`).
     pub fn to_mermaid<T: NodePayload>(dag: &MemoryDag<T>) -> String {
-        let mut out = String::from("graph TD\n");
-        let inner = dag.inner();
-
-        // Node definitions
-        let mut idx_to_mermaid_id: HashMap<usize, String> = HashMap::new();
-        for idx in inner.node_indices() {
-            if let Some(payload) = inner.node_weight(idx) {
-                let m_id = format!("n{}", idx.index());
-                let raw_label = format!(
-                    "{}: {} ({})",
-                    payload.key(),
-                    payload.name(),
-                    payload.entity_level()
-                );
-                let escaped_label = raw_label.replace('"', "#quot;");
-                out.push_str(&format!("    {}[\"{}\"]\n", m_id, escaped_label));
-                idx_to_mermaid_id.insert(idx.index(), m_id);
-            }
-        }
-
-        // Edge definitions
-        for edge in inner.edge_references() {
-            let src_id = &idx_to_mermaid_id[&edge.source().index()];
-            let tgt_id = &idx_to_mermaid_id[&edge.target().index()];
-            let weight = edge.weight();
-            let label = format!("{} ({:.2})", weight.relationship, weight.confidence);
-            out.push_str(&format!("    {} -->|\"{}\"| {}\n", src_id, label, tgt_id));
-        }
-
-        out
+        render(dag, String::from("graph TD\n"), &MERMAID)
     }
 
     /// Serializes the DAG into a valid Graphviz DOT language string (`digraph G`).
     pub fn to_dot<T: NodePayload>(dag: &MemoryDag<T>) -> String {
-        let mut out =
-            String::from("digraph G {\n    rankdir=TB;\n    node [shape=box, style=rounded];\n");
-        let inner = dag.inner();
-
-        let mut idx_to_dot_id: HashMap<usize, String> = HashMap::new();
-        for idx in inner.node_indices() {
-            if let Some(payload) = inner.node_weight(idx) {
-                let d_id = format!("node_{}", idx.index());
-                let raw_label = format!(
-                    "{}\\{}\\[{}]",
-                    payload.key(),
-                    payload.name(),
-                    payload.entity_level()
-                );
-                let escaped = raw_label.replace('"', "\\\"");
-                out.push_str(&format!("    {} [label=\"{}\"];\n", d_id, escaped));
-                idx_to_dot_id.insert(idx.index(), d_id);
-            }
-        }
-
-        for edge in inner.edge_references() {
-            let src = &idx_to_dot_id[&edge.source().index()];
-            let tgt = &idx_to_dot_id[&edge.target().index()];
-            let weight = edge.weight();
-            let label = format!("{} ({:.2})", weight.relationship, weight.confidence);
-            out.push_str(&format!("    {} -> {} [label=\"{}\"];\n", src, tgt, label));
-        }
-
-        out.push_str("}\n");
-        out
+        let header = "digraph G {\n    rankdir=TB;\n    node [shape=box, style=rounded];\n";
+        render(dag, String::from(header), &DOT) + "}\n"
     }
 
     /// Serializes the DAG into a valid GraphML XML format string.
@@ -224,6 +167,120 @@ impl GraphExporter {
     }
 }
 
+/// How a line-per-node, line-per-edge notation spells a node id, label, node and edge.
+struct Notation {
+    /// Prefix of a node's exported id; the node index follows.
+    id_prefix: &'static str,
+    /// The unescaped label of a node from its key, name and level.
+    label: fn(&str, &str, &str) -> String,
+    /// The label with the notation's quote character escaped.
+    escape: fn(&str) -> String,
+    /// The line declaring a node from its id and escaped label.
+    node: fn(&str, &str) -> String,
+    /// The line for an edge from its source id, target id and label.
+    edge: fn(&str, &str, &str) -> String,
+}
+
+const MERMAID: Notation = Notation {
+    id_prefix: "n",
+    label: mermaid_label,
+    escape: mermaid_escape,
+    node: mermaid_node,
+    edge: mermaid_edge,
+};
+
+fn mermaid_label(key: &str, name: &str, level: &str) -> String {
+    format!("{key}: {name} ({level})")
+}
+
+fn mermaid_escape(label: &str) -> String {
+    label.replace('"', "#quot;")
+}
+
+fn mermaid_node(id: &str, label: &str) -> String {
+    format!("    {id}[\"{label}\"]\n")
+}
+
+fn mermaid_edge(src: &str, tgt: &str, label: &str) -> String {
+    format!("    {src} -->|\"{label}\"| {tgt}\n")
+}
+
+const DOT: Notation = Notation {
+    id_prefix: "node_",
+    label: dot_label,
+    escape: dot_escape,
+    node: dot_node,
+    edge: dot_edge,
+};
+
+fn dot_label(key: &str, name: &str, level: &str) -> String {
+    format!("{key}\\{name}\\[{level}]")
+}
+
+fn dot_escape(label: &str) -> String {
+    label.replace('"', "\\\"")
+}
+
+fn dot_node(id: &str, label: &str) -> String {
+    format!("    {id} [label=\"{label}\"];\n")
+}
+
+fn dot_edge(src: &str, tgt: &str, label: &str) -> String {
+    format!("    {src} -> {tgt} [label=\"{label}\"];\n")
+}
+
+/// Appends every node and edge of `dag` to `out` in `notation`.
+fn render<T: NodePayload>(dag: &MemoryDag<T>, mut out: String, notation: &Notation) -> String {
+    let ids = write_nodes(dag, &mut out, notation.id_prefix, |id, payload| {
+        let label = (notation.label)(
+            &payload.key().to_string(),
+            payload.name(),
+            payload.entity_level(),
+        );
+        (notation.node)(id, &(notation.escape)(&label))
+    });
+    write_edges(dag, &ids, &mut out, notation.edge);
+    out
+}
+
+/// Appends `line(id, payload)` for every node, naming each `{prefix}{index}`, and returns the
+/// exported id of each node index.
+fn write_nodes<T: NodePayload>(
+    dag: &MemoryDag<T>,
+    out: &mut String,
+    prefix: &str,
+    line: impl Fn(&str, &T) -> String,
+) -> HashMap<usize, String> {
+    let inner = dag.inner();
+    let mut ids = HashMap::new();
+    for idx in inner.node_indices() {
+        if let Some(payload) = inner.node_weight(idx) {
+            let id = format!("{prefix}{}", idx.index());
+            out.push_str(&line(&id, payload));
+            ids.insert(idx.index(), id);
+        }
+    }
+    ids
+}
+
+/// Appends `line(source id, target id, "relationship (confidence)")` for every edge.
+fn write_edges<T: NodePayload>(
+    dag: &MemoryDag<T>,
+    ids: &HashMap<usize, String>,
+    out: &mut String,
+    line: impl Fn(&str, &str, &str) -> String,
+) {
+    for edge in dag.inner().edge_references() {
+        let weight = edge.weight();
+        let label = format!("{} ({:.2})", weight.relationship, weight.confidence);
+        out.push_str(&line(
+            &ids[&edge.source().index()],
+            &ids[&edge.target().index()],
+            &label,
+        ));
+    }
+}
+
 fn quick_xml_escape(raw: &str) -> String {
     raw.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -236,43 +293,14 @@ fn quick_xml_escape(raw: &str) -> String {
 mod tests {
     use super::*;
     use crate::model::{EdgePayload, ProvenanceKind};
+    use crate::testing::TestNode;
     use rstest::{fixture, rstest};
 
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    struct MockItem {
-        id: String,
-        label: String,
-        tier: String,
-    }
-
-    impl MockItem {
-        fn new(id: &str, label: &str, tier: &str) -> Self {
-            Self {
-                id: id.into(),
-                label: label.into(),
-                tier: tier.into(),
-            }
-        }
-    }
-
-    impl NodePayload for MockItem {
-        type Key = String;
-        fn key(&self) -> &Self::Key {
-            &self.id
-        }
-        fn name(&self) -> &str {
-            &self.label
-        }
-        fn entity_level(&self) -> &str {
-            &self.tier
-        }
-    }
-
     #[fixture]
-    fn sample_dag() -> MemoryDag<MockItem> {
+    fn sample_dag() -> MemoryDag<TestNode> {
         let mut dag = MemoryDag::new();
-        let parent = MockItem::new("CAT-1", "Dairy", "Category");
-        let child = MockItem::new("SKU-99", "Whole Milk 1L", "Product");
+        let parent = TestNode::new("CAT-1", "Dairy", "Category");
+        let child = TestNode::new("SKU-99", "Whole Milk 1L", "Product");
 
         dag.upsert_node(parent);
         dag.upsert_node(child);
@@ -284,39 +312,45 @@ mod tests {
     }
 
     #[rstest]
-    fn test_mermaid_export_syntax(sample_dag: MemoryDag<MockItem>) {
-        let mermaid = GraphExporter::to_mermaid(&sample_dag);
-
-        assert!(mermaid.starts_with("graph TD\n"));
-        assert!(mermaid.contains("CAT-1: Dairy (Category)"));
-        assert!(mermaid.contains("SKU-99: Whole Milk 1L (Product)"));
-        assert!(mermaid.contains("-->|\"PARENT_OF (1.00)\"|"));
+    #[case::mermaid(GraphExporter::to_mermaid, &[
+        "graph TD\n",
+        "CAT-1: Dairy (Category)",
+        "SKU-99: Whole Milk 1L (Product)",
+        "-->|\"PARENT_OF (1.00)\"|",
+    ])]
+    #[case::dot(GraphExporter::to_dot, &[
+        "digraph G {\n",
+        "CAT-1\\Dairy\\[Category]",
+        "SKU-99\\Whole Milk 1L\\[Product]",
+        "label=\"PARENT_OF (1.00)\"",
+        "}\n",
+    ])]
+    #[case::graphml(GraphExporter::to_graphml, &[
+        "<graphml xmlns=",
+        "<data key=\"key\">CAT-1</data>",
+        "<data key=\"name\">Whole Milk 1L</data>",
+        "<data key=\"relationship\">PARENT_OF</data>",
+        "</graphml>",
+    ])]
+    #[case::rdf_star_turtle(GraphExporter::to_rdf_star_turtle, &[
+        "@prefix embedag: <https://embedag.dev/ns#> .",
+        "node:CAT-1 a embedag:Category ;",
+        "rdfs:label \"Dairy\" ;",
+        "<< node:CAT-1 embedag:PARENT_OF node:SKU-99 >> embedag:confidence \"1.0000\"^^xsd:float",
+    ])]
+    fn text_exports_carry_nodes_and_edges(
+        sample_dag: MemoryDag<TestNode>,
+        #[case] export: fn(&MemoryDag<TestNode>) -> String,
+        #[case] expected: &[&str],
+    ) {
+        let text = export(&sample_dag);
+        for part in expected {
+            assert!(text.contains(part), "missing {part:?} in:\n{text}");
+        }
     }
 
     #[rstest]
-    fn test_dot_export_syntax(sample_dag: MemoryDag<MockItem>) {
-        let dot = GraphExporter::to_dot(&sample_dag);
-
-        assert!(dot.starts_with("digraph G {\n"));
-        assert!(dot.contains("CAT-1\\Dairy\\[Category]"));
-        assert!(dot.contains("SKU-99\\Whole Milk 1L\\[Product]"));
-        assert!(dot.contains("label=\"PARENT_OF (1.00)\""));
-        assert!(dot.ends_with("}\n"));
-    }
-
-    #[rstest]
-    fn test_graphml_serialization(sample_dag: MemoryDag<MockItem>) {
-        let xml = GraphExporter::to_graphml(&sample_dag);
-
-        assert!(xml.contains("<graphml xmlns="));
-        assert!(xml.contains("<data key=\"key\">CAT-1</data>"));
-        assert!(xml.contains("<data key=\"name\">Whole Milk 1L</data>"));
-        assert!(xml.contains("<data key=\"relationship\">PARENT_OF</data>"));
-        assert!(xml.contains("</graphml>"));
-    }
-
-    #[rstest]
-    fn test_json_ld_serialization(sample_dag: MemoryDag<MockItem>) {
+    fn test_json_ld_serialization(sample_dag: MemoryDag<TestNode>) {
         let json_ld = GraphExporter::to_json_ld(&sample_dag);
 
         assert_eq!(json_ld["@context"]["@vocab"], "https://schema.org/");
@@ -327,15 +361,5 @@ mod tests {
         assert_eq!(cat_item["name"], "Dairy");
         assert_eq!(cat_item["@type"], "Category");
         assert_eq!(cat_item["relationships"][0]["@type"], "PARENT_OF");
-    }
-
-    #[rstest]
-    fn test_rdf_star_turtle_serialization(sample_dag: MemoryDag<MockItem>) {
-        let ttl = GraphExporter::to_rdf_star_turtle(&sample_dag);
-
-        assert!(ttl.contains("@prefix embedag: <https://embedag.dev/ns#> ."));
-        assert!(ttl.contains("node:CAT-1 a embedag:Category ;"));
-        assert!(ttl.contains("rdfs:label \"Dairy\" ;"));
-        assert!(ttl.contains("<< node:CAT-1 embedag:PARENT_OF node:SKU-99 >> embedag:confidence \"1.0000\"^^xsd:float"));
     }
 }

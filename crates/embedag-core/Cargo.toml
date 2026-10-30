@@ -10,6 +10,8 @@ repository.workspace = true
 default = ["std", "h3o"]
 std = []
 h3o = ["dep:h3o"]
+# Shared test fixtures (`embedag_core::testing`) for the tests of other crates.
+testing = []
 
 [dependencies]
 blake3 = { workspace = true }

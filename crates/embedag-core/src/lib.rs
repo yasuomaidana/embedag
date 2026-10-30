@@ -16,6 +16,7 @@
 //! - [`model`]: Core value types including edges, classification targets, and media blobs.
 //! - [`mutation`]: Typestate mutation plans and atomic graph modification directives.
 //! - [`resolve`]: Deterministic DAG dependency resolution, topological sorting, levels, reverse dependencies, and critical paths.
+//! - `testing`: a plain node payload for tests (feature `testing`).
 //! - [`traits`]: Contracts for graph ingestion ([`AsGraphContext`]), node payloads ([`NodePayload`]), and capability storage ports.
 
 #![warn(missing_docs)]
@@ -25,12 +26,15 @@ pub mod dag_iter;
 pub mod encoder;
 pub mod error;
 pub mod export;
+mod macros;
 pub mod merkle;
 pub mod migration;
 pub mod model;
 pub mod mutation;
 pub mod pagination;
 pub mod resolve;
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
 pub mod traits;
 
 // Re-exports for clean prelude access

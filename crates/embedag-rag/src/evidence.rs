@@ -143,43 +143,14 @@ mod tests {
     use super::*;
     use crate::expansion::SubgraphExpander;
     use embedag_core::model::{EdgePayload, ProvenanceKind};
-
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    struct ProductNode {
-        id: String,
-        name: String,
-        level: String,
-    }
-
-    impl ProductNode {
-        fn new(id: &str, name: &str, level: &str) -> Self {
-            Self {
-                id: id.into(),
-                name: name.into(),
-                level: level.into(),
-            }
-        }
-    }
-
-    impl NodePayload for ProductNode {
-        type Key = String;
-        fn key(&self) -> &Self::Key {
-            &self.id
-        }
-        fn name(&self) -> &str {
-            &self.name
-        }
-        fn entity_level(&self) -> &str {
-            &self.level
-        }
-    }
+    use embedag_core::testing::TestNode;
 
     #[test]
     fn test_evidence_packaging_format() {
         let mut dag = MemoryDag::new();
 
-        let brand = ProductNode::new("BRAND-01", "Carlos V", "Brand");
-        let sku = ProductNode::new("SKU-100", "Carlos V Dark Chocolate 50g", "SKU");
+        let brand = TestNode::new("BRAND-01", "Carlos V", "Brand");
+        let sku = TestNode::new("SKU-100", "Carlos V Dark Chocolate 50g", "SKU");
 
         dag.upsert_node(brand);
         dag.upsert_node(sku);

@@ -49,6 +49,28 @@ impl<T: NodePayload> Default for MemoryDag<T> {
     }
 }
 
+/// Defines, in a `MemoryDag` impl, the unbounded and depth-bounded iterator methods of each
+/// traversal direction.
+macro_rules! traversal_methods {
+    ($(
+        $(#[$unbounded_doc:meta])* $unbounded:ident,
+        $(#[$bounded_doc:meta])* $bounded:ident,
+        $iter:ident, $dir:ident;
+    )*) => {$(
+        $(#[$unbounded_doc])*
+        #[must_use]
+        pub fn $unbounded<'a>(&'a self, start_key: &T::Key) -> $iter<'a, T> {
+            self.traversal(start_key, Direction::$dir, None)
+        }
+
+        $(#[$bounded_doc])*
+        #[must_use]
+        pub fn $bounded<'a>(&'a self, start_key: &T::Key, max_depth: usize) -> $iter<'a, T> {
+            self.traversal(start_key, Direction::$dir, Some(max_depth))
+        }
+    )*};
+}
+
 impl<T: NodePayload> MemoryDag<T> {
     /// Creates a new, empty in-memory DAG at revision 0.
     #[must_use]
@@ -343,25 +365,44 @@ impl<T: NodePayload> MemoryDag<T> {
     /// Retrieves direct parents of a given node key.
     #[must_use]
     pub fn parents_of(&self, key: &T::Key) -> Vec<&T> {
-        let Some(&idx) = self.key_to_index.get(key) else {
-            return Vec::new();
-        };
-        self.graph
-            .neighbors_directed(idx, Direction::Incoming)
-            .filter_map(|p_idx| self.graph.node_weight(p_idx))
-            .collect()
+        self.neighbours_of(key, Direction::Incoming)
     }
 
     /// Retrieves direct children of a given node key.
     #[must_use]
     pub fn children_of(&self, key: &T::Key) -> Vec<&T> {
+        self.neighbours_of(key, Direction::Outgoing)
+    }
+
+    /// The payloads one edge away from `key` in direction `dir`.
+    fn neighbours_of(&self, key: &T::Key, dir: Direction) -> Vec<&T> {
         let Some(&idx) = self.key_to_index.get(key) else {
             return Vec::new();
         };
         self.graph
-            .neighbors_directed(idx, Direction::Outgoing)
-            .filter_map(|c_idx| self.graph.node_weight(c_idx))
+            .neighbors_directed(idx, dir)
+            .filter_map(|n_idx| self.graph.node_weight(n_idx))
             .collect()
+    }
+
+    /// The payloads of the nodes with no edge in direction `dir`.
+    fn nodes_without(&self, dir: Direction) -> Vec<&T> {
+        self.graph
+            .node_indices()
+            .filter(|&idx| self.graph.neighbors_directed(idx, dir).next().is_none())
+            .filter_map(|idx| self.graph.node_weight(idx))
+            .collect()
+    }
+
+    /// A traversal from the node `key` names, along `dir`, bounded by `max_depth` when given.
+    fn traversal(
+        &self,
+        key: &T::Key,
+        dir: Direction,
+        max_depth: Option<usize>,
+    ) -> TraversalIter<'_, T> {
+        let idx = self.key_to_index.get(key).copied();
+        TraversalIter::new(&self.graph, idx, dir, max_depth)
     }
 
     /// Returns the node indices of all immediate parents of `idx`.
@@ -419,40 +460,17 @@ impl<T: NodePayload> MemoryDag<T> {
         descendants
     }
 
-    /// Returns a pull-based streaming iterator over transitive ancestors in BFS order.
-    #[must_use]
-    pub fn ancestors_iter<'a>(&'a self, start_key: &T::Key) -> AncestorsIter<'a, T> {
-        let idx = self.key_to_index.get(start_key).copied();
-        AncestorsIter::new(&self.graph, idx, Direction::Incoming, None)
-    }
-
-    /// Returns a pull-based streaming iterator over transitive ancestors bounded by `max_depth`.
-    #[must_use]
-    pub fn ancestors_iter_bounded<'a>(
-        &'a self,
-        start_key: &T::Key,
-        max_depth: usize,
-    ) -> AncestorsIter<'a, T> {
-        let idx = self.key_to_index.get(start_key).copied();
-        AncestorsIter::new(&self.graph, idx, Direction::Incoming, Some(max_depth))
-    }
-
-    /// Returns a pull-based streaming iterator over transitive descendants in BFS order.
-    #[must_use]
-    pub fn descendants_iter<'a>(&'a self, start_key: &T::Key) -> DescendantsIter<'a, T> {
-        let idx = self.key_to_index.get(start_key).copied();
-        DescendantsIter::new(&self.graph, idx, Direction::Outgoing, None)
-    }
-
-    /// Returns a pull-based streaming iterator over transitive descendants bounded by `max_depth`.
-    #[must_use]
-    pub fn descendants_iter_bounded<'a>(
-        &'a self,
-        start_key: &T::Key,
-        max_depth: usize,
-    ) -> DescendantsIter<'a, T> {
-        let idx = self.key_to_index.get(start_key).copied();
-        DescendantsIter::new(&self.graph, idx, Direction::Outgoing, Some(max_depth))
+    traversal_methods! {
+        /// Returns a pull-based streaming iterator over transitive ancestors in BFS order.
+        ancestors_iter,
+        /// Returns a pull-based streaming iterator over transitive ancestors bounded by `max_depth`.
+        ancestors_iter_bounded,
+        AncestorsIter, Incoming;
+        /// Returns a pull-based streaming iterator over transitive descendants in BFS order.
+        descendants_iter,
+        /// Returns a pull-based streaming iterator over transitive descendants bounded by `max_depth`.
+        descendants_iter_bounded,
+        DescendantsIter, Outgoing;
     }
 
     /// Returns a paginated slice of adjacent neighbors for a node.
@@ -512,31 +530,13 @@ impl<T: NodePayload> MemoryDag<T> {
     /// Returns all root nodes in the DAG (nodes with in-degree 0).
     #[must_use]
     pub fn roots(&self) -> Vec<&T> {
-        self.graph
-            .node_indices()
-            .filter(|&idx| {
-                self.graph
-                    .neighbors_directed(idx, Direction::Incoming)
-                    .next()
-                    .is_none()
-            })
-            .filter_map(|idx| self.graph.node_weight(idx))
-            .collect()
+        self.nodes_without(Direction::Incoming)
     }
 
     /// Returns all leaf nodes in the DAG (nodes with out-degree 0).
     #[must_use]
     pub fn leaves(&self) -> Vec<&T> {
-        self.graph
-            .node_indices()
-            .filter(|&idx| {
-                self.graph
-                    .neighbors_directed(idx, Direction::Outgoing)
-                    .next()
-                    .is_none()
-            })
-            .filter_map(|idx| self.graph.node_weight(idx))
-            .collect()
+        self.nodes_without(Direction::Outgoing)
     }
 
     /// Returns a shared reference to the underlying [`DiGraph`].
@@ -581,39 +581,7 @@ impl<T: NodePayload> MemoryDag<T> {
 mod tests {
     use super::*;
     use crate::model::ProvenanceKind;
-
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    struct MockNode {
-        id: String,
-        label: String,
-        level: String,
-    }
-
-    impl MockNode {
-        fn new(id: &str, label: &str, level: &str) -> Self {
-            Self {
-                id: id.to_string(),
-                label: label.to_string(),
-                level: level.to_string(),
-            }
-        }
-    }
-
-    impl NodePayload for MockNode {
-        type Key = String;
-
-        fn key(&self) -> &Self::Key {
-            &self.id
-        }
-
-        fn name(&self) -> &str {
-            &self.label
-        }
-
-        fn entity_level(&self) -> &str {
-            &self.level
-        }
-    }
+    use crate::testing::TestNode;
 
     fn test_edge(rel: &str) -> EdgePayload {
         EdgePayload::new(rel, 1.0, ProvenanceKind::DeterministicRule).unwrap()
@@ -626,7 +594,7 @@ mod tests {
         assert_eq!(dag.node_count(), 0);
         assert_eq!(dag.revision(), 0);
 
-        let node = MockNode::new("SKU-100", "Organic Apple", "Product");
+        let node = TestNode::new("SKU-100", "Organic Apple", "Product");
         let idx = dag.upsert_node(node.clone());
 
         assert_eq!(dag.node_count(), 1);
@@ -646,10 +614,10 @@ mod tests {
     #[test]
     fn test_upsert_updates_payload_without_duplicate_index() {
         let mut dag = MemoryDag::new();
-        let initial = MockNode::new("SKU-100", "Organic Apple", "Product");
+        let initial = TestNode::new("SKU-100", "Organic Apple", "Product");
         let idx1 = dag.upsert_node(initial);
 
-        let updated = MockNode::new("SKU-100", "Fuji Organic Apple", "Product");
+        let updated = TestNode::new("SKU-100", "Fuji Organic Apple", "Product");
         let idx2 = dag.upsert_node(updated);
 
         assert_eq!(idx1, idx2, "index must remain stable across updates");
@@ -663,9 +631,9 @@ mod tests {
     #[test]
     fn test_multi_parent_edge_insertion() {
         let mut dag = MemoryDag::new();
-        let cat_food = MockNode::new("CAT-FOOD", "Food & Beverage", "Category");
-        let cat_organic = MockNode::new("CAT-ORGANIC", "Certified Organic", "Taxonomy");
-        let prod_apple = MockNode::new("PROD-APPLE", "Honeycrisp Apple", "Product");
+        let cat_food = TestNode::new("CAT-FOOD", "Food & Beverage", "Category");
+        let cat_organic = TestNode::new("CAT-ORGANIC", "Certified Organic", "Taxonomy");
+        let prod_apple = TestNode::new("PROD-APPLE", "Honeycrisp Apple", "Product");
 
         dag.upsert_node(cat_food);
         dag.upsert_node(cat_organic);
@@ -704,7 +672,7 @@ mod tests {
     #[test]
     fn test_add_edge_by_keys_missing_nodes() {
         let mut dag = MemoryDag::new();
-        let cat = MockNode::new("CAT-1", "Root Category", "Category");
+        let cat = TestNode::new("CAT-1", "Root Category", "Category");
         dag.upsert_node(cat);
 
         let err_missing_child = dag.add_edge_by_keys(
@@ -731,10 +699,10 @@ mod tests {
     #[test]
     fn test_streaming_traversal_iterators_and_early_termination() {
         let mut dag = MemoryDag::new();
-        let a = MockNode::new("A", "Root", "L0");
-        let b = MockNode::new("B", "Left", "L1");
-        let c = MockNode::new("C", "Right", "L1");
-        let d = MockNode::new("D", "Bottom", "L2");
+        let a = TestNode::new("A", "Root", "L0");
+        let b = TestNode::new("B", "Left", "L1");
+        let c = TestNode::new("C", "Right", "L1");
+        let d = TestNode::new("D", "Bottom", "L2");
 
         dag.upsert_node(a);
         dag.upsert_node(b);
@@ -766,12 +734,12 @@ mod tests {
     #[test]
     fn test_paginate_neighbors() {
         let mut dag = MemoryDag::new();
-        let root = MockNode::new("ROOT", "Root Category", "L0");
+        let root = TestNode::new("ROOT", "Root Category", "L0");
         dag.upsert_node(root);
 
         for i in 1..=10 {
             let id = format!("CHILD-{}", i);
-            let child = MockNode::new(&id, &id, "L1");
+            let child = TestNode::new(&id, &id, "L1");
             dag.upsert_node(child);
             let rel = if i % 2 == 0 { "even" } else { "odd" };
             dag.add_edge_by_keys(&"ROOT".to_string(), &id, test_edge(rel))
@@ -810,10 +778,10 @@ mod tests {
         let mut dag = MemoryDag::new();
         // A -> B -> D
         // A -> C -> D (Diamond)
-        let a = MockNode::new("A", "Root", "L0");
-        let b = MockNode::new("B", "Left", "L1");
-        let c = MockNode::new("C", "Right", "L1");
-        let d = MockNode::new("D", "Bottom", "L2");
+        let a = TestNode::new("A", "Root", "L0");
+        let b = TestNode::new("B", "Left", "L1");
+        let c = TestNode::new("C", "Right", "L1");
+        let d = TestNode::new("D", "Bottom", "L2");
 
         dag.upsert_node(a);
         dag.upsert_node(b);
@@ -856,8 +824,8 @@ mod tests {
     #[test]
     fn test_direct_cycle_detection() {
         let mut dag = MemoryDag::new();
-        dag.upsert_node(MockNode::new("A", "A", "L0"));
-        dag.upsert_node(MockNode::new("B", "B", "L0"));
+        dag.upsert_node(TestNode::new("A", "A", "L0"));
+        dag.upsert_node(TestNode::new("B", "B", "L0"));
 
         dag.add_edge_by_keys(&"A".to_string(), &"B".to_string(), test_edge("rel"))
             .unwrap();
@@ -873,9 +841,9 @@ mod tests {
     #[test]
     fn test_indirect_cycle_detection() {
         let mut dag = MemoryDag::new();
-        dag.upsert_node(MockNode::new("A", "A", "L0"));
-        dag.upsert_node(MockNode::new("B", "B", "L0"));
-        dag.upsert_node(MockNode::new("C", "C", "L0"));
+        dag.upsert_node(TestNode::new("A", "A", "L0"));
+        dag.upsert_node(TestNode::new("B", "B", "L0"));
+        dag.upsert_node(TestNode::new("C", "C", "L0"));
 
         dag.add_edge_by_keys(&"A".to_string(), &"B".to_string(), test_edge("rel"))
             .unwrap();
@@ -892,7 +860,7 @@ mod tests {
     #[test]
     fn test_self_loop_detection() {
         let mut dag = MemoryDag::new();
-        dag.upsert_node(MockNode::new("A", "A", "L0"));
+        dag.upsert_node(TestNode::new("A", "A", "L0"));
 
         assert!(dag.would_create_cycle(&"A".to_string(), &"A".to_string()));
         let res = dag.add_edge_by_keys_guarded(
@@ -907,10 +875,10 @@ mod tests {
     fn test_multi_parent_acyclic_valid() {
         let mut dag = MemoryDag::new();
         // Diamond: A -> B -> D, A -> C -> D
-        dag.upsert_node(MockNode::new("A", "A", "L0"));
-        dag.upsert_node(MockNode::new("B", "B", "L1"));
-        dag.upsert_node(MockNode::new("C", "C", "L1"));
-        dag.upsert_node(MockNode::new("D", "D", "L2"));
+        dag.upsert_node(TestNode::new("A", "A", "L0"));
+        dag.upsert_node(TestNode::new("B", "B", "L1"));
+        dag.upsert_node(TestNode::new("C", "C", "L1"));
+        dag.upsert_node(TestNode::new("D", "D", "L2"));
 
         assert!(!dag.would_create_cycle(&"A".to_string(), &"B".to_string()));
         dag.add_edge_by_keys_guarded(&"A".to_string(), &"B".to_string(), test_edge("rel"))
@@ -935,8 +903,8 @@ mod tests {
     #[test]
     fn test_validate_acyclic_detects_existing_cycle() {
         let mut dag = MemoryDag::new();
-        let a = dag.upsert_node(MockNode::new("A", "A", "L0"));
-        let b = dag.upsert_node(MockNode::new("B", "B", "L0"));
+        let a = dag.upsert_node(TestNode::new("A", "A", "L0"));
+        let b = dag.upsert_node(TestNode::new("B", "B", "L0"));
 
         // Force cycle via unguarded add_edge
         dag.add_edge(a, b, test_edge("forward"));
@@ -952,8 +920,8 @@ mod tests {
     #[test]
     fn test_remove_edge_by_keys() {
         let mut dag = MemoryDag::new();
-        dag.upsert_node(MockNode::new("A", "A", "L0"));
-        dag.upsert_node(MockNode::new("B", "B", "L0"));
+        dag.upsert_node(TestNode::new("A", "A", "L0"));
+        dag.upsert_node(TestNode::new("B", "B", "L0"));
 
         dag.add_edge_by_keys(&"A".to_string(), &"B".to_string(), test_edge("rel1"))
             .unwrap();
@@ -973,8 +941,8 @@ mod tests {
     #[test]
     fn test_memory_dag_visual_export_convenience() {
         let mut dag = MemoryDag::new();
-        dag.upsert_node(MockNode::new("A", "Alpha", "L0"));
-        dag.upsert_node(MockNode::new("B", "Beta", "L1"));
+        dag.upsert_node(TestNode::new("A", "Alpha", "L0"));
+        dag.upsert_node(TestNode::new("B", "Beta", "L1"));
         dag.add_edge_by_keys(&"A".to_string(), &"B".to_string(), test_edge("contains"))
             .unwrap();
 

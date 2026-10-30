@@ -175,25 +175,7 @@ impl<T: NodePayload> MutationPlan<T, Unverified> {
         let current_rev = dag.revision();
 
         for directive in &self.directives {
-            match directive {
-                MutationDirective::UpsertNode(node) => {
-                    shadow.upsert_node(node.clone());
-                }
-                MutationDirective::AddEdge {
-                    parent,
-                    child,
-                    edge,
-                } => {
-                    shadow.add_edge_by_keys(parent, child, edge.clone())?;
-                }
-                MutationDirective::RemoveEdge {
-                    parent,
-                    child,
-                    relationship,
-                } => {
-                    shadow.remove_edge_by_keys(parent, child, relationship.as_deref());
-                }
-            }
+            apply_directive(&mut shadow, directive)?;
         }
 
         shadow.validate_acyclic()?;
@@ -343,25 +325,7 @@ impl<T: NodePayload> MutationPlan<T, CycleValidated> {
         }
 
         for directive in &self.directives {
-            match directive {
-                MutationDirective::UpsertNode(node) => {
-                    dag.upsert_node(node.clone());
-                }
-                MutationDirective::AddEdge {
-                    parent,
-                    child,
-                    edge,
-                } => {
-                    dag.add_edge_by_keys(parent, child, edge.clone())?;
-                }
-                MutationDirective::RemoveEdge {
-                    parent,
-                    child,
-                    relationship,
-                } => {
-                    dag.remove_edge_by_keys(parent, child, relationship.as_deref());
-                }
-            }
+            apply_directive(dag, directive)?;
         }
 
         Ok(MutationPlan {
@@ -398,10 +362,38 @@ impl<T: NodePayload, State> MutationPlan<T, State> {
     }
 }
 
+/// Applies one directive to `dag`.
+fn apply_directive<T: NodePayload>(
+    dag: &mut MemoryDag<T>,
+    directive: &MutationDirective<T>,
+) -> Result<(), DagError> {
+    match directive {
+        MutationDirective::UpsertNode(node) => {
+            dag.upsert_node(node.clone());
+        }
+        MutationDirective::AddEdge {
+            parent,
+            child,
+            edge,
+        } => {
+            dag.add_edge_by_keys(parent, child, edge.clone())?;
+        }
+        MutationDirective::RemoveEdge {
+            parent,
+            child,
+            relationship,
+        } => {
+            dag.remove_edge_by_keys(parent, child, relationship.as_deref());
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::model::ProvenanceKind;
+    use rstest::{fixture, rstest};
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct MockItem {
@@ -418,98 +410,89 @@ mod tests {
         }
     }
 
-    impl NodePayload for MockItem {
-        type Key = String;
-
-        fn key(&self) -> &Self::Key {
-            &self.id
-        }
-
-        fn name(&self) -> &str {
-            &self.label
-        }
-
-        fn entity_level(&self) -> &str {
-            "Item"
-        }
-    }
+    crate::impl_node_payload!(
+        MockItem,
+        key = |n| &n.id,
+        name = |n| &n.label,
+        level = |_| "Item"
+    );
 
     fn test_edge(rel: &str) -> EdgePayload {
         EdgePayload::new(rel, 1.0, ProvenanceKind::DeterministicRule).unwrap()
     }
 
-    #[test]
-    fn test_differential_cycle_validation_success_and_failure() {
+    /// A -> B.
+    #[fixture]
+    fn chain() -> MemoryDag<MockItem> {
         let mut dag = MemoryDag::new();
         dag.upsert_node(MockItem::new("A", "Node A"));
         dag.upsert_node(MockItem::new("B", "Node B"));
         dag.add_edge_by_keys(&"A".to_string(), &"B".to_string(), test_edge("rel"))
             .unwrap();
-
-        // Valid plan: Add C, connect B -> C
-        let plan_valid = MutationPlan::new()
-            .upsert_node(MockItem::new("C", "Node C"))
-            .add_edge("B".to_string(), "C".to_string(), test_edge("rel"));
-
-        let validated = plan_valid
-            .validate_cycles_differential(&dag)
-            .expect("acyclic extension must pass");
-        assert_eq!(validated.len(), 2);
-
-        // Direct cyclic plan: Connect B -> A (closes A -> B -> A)
-        let plan_cyclic =
-            MutationPlan::new().add_edge("B".to_string(), "A".to_string(), test_edge("rev"));
-        let err = plan_cyclic.validate_cycles_differential(&dag).unwrap_err();
-        assert!(matches!(err, DagError::CycleDetected { .. }));
-
-        // Indirect multi-edge cycle in batch: B -> C -> D -> B
-        let plan_batch_cycle = MutationPlan::new()
-            .upsert_node(MockItem::new("C", "Node C"))
-            .upsert_node(MockItem::new("D", "Node D"))
-            .add_edge("B".to_string(), "C".to_string(), test_edge("rel"))
-            .add_edge("C".to_string(), "D".to_string(), test_edge("rel"))
-            .add_edge("D".to_string(), "B".to_string(), test_edge("rev"));
-        let err_batch = plan_batch_cycle
-            .validate_cycles_differential(&dag)
-            .unwrap_err();
-        assert!(matches!(err_batch, DagError::CycleDetected { .. }));
-
-        // Diamond acyclic plan (valid convergence)
-        let plan_diamond = MutationPlan::new()
-            .upsert_node(MockItem::new("C", "Node C"))
-            .upsert_node(MockItem::new("D", "Node D"))
-            .add_edge("A".to_string(), "C".to_string(), test_edge("rel"))
-            .add_edge("B".to_string(), "D".to_string(), test_edge("rel"))
-            .add_edge("C".to_string(), "D".to_string(), test_edge("rel"));
-        let val_diamond = plan_diamond
-            .validate_cycles_differential(&dag)
-            .expect("diamond is acyclic");
-        assert_eq!(val_diamond.len(), 5);
+        dag
     }
 
-    #[test]
-    fn test_plan_validation_success_and_failure() {
-        let mut dag = MemoryDag::new();
-        dag.upsert_node(MockItem::new("A", "Node A"));
-        dag.upsert_node(MockItem::new("B", "Node B"));
-        dag.add_edge_by_keys(&"A".to_string(), &"B".to_string(), test_edge("rel"))
-            .unwrap();
+    type Validate =
+        fn(MutationPlan<MockItem, Unverified>, &MemoryDag<MockItem>) -> Result<usize, DagError>;
 
+    fn plain(
+        plan: MutationPlan<MockItem, Unverified>,
+        dag: &MemoryDag<MockItem>,
+    ) -> Result<usize, DagError> {
+        plan.validate_cycles(dag).map(|v| v.len())
+    }
+
+    fn differential(
+        plan: MutationPlan<MockItem, Unverified>,
+        dag: &MemoryDag<MockItem>,
+    ) -> Result<usize, DagError> {
+        plan.validate_cycles_differential(dag).map(|v| v.len())
+    }
+
+    #[rstest]
+    fn both_validations_accept_an_extension_and_reject_a_cycle(
+        chain: MemoryDag<MockItem>,
+        #[values(plain, differential)] validate: Validate,
+    ) {
         // Valid plan: Add C, connect B -> C
         let plan_valid = MutationPlan::new()
             .upsert_node(MockItem::new("C", "Node C"))
             .add_edge("B".to_string(), "C".to_string(), test_edge("rel"));
-
-        let validated = plan_valid
-            .validate_cycles(&dag)
-            .expect("acyclic extension must pass");
-        assert_eq!(validated.len(), 2);
+        assert_eq!(
+            validate(plan_valid, &chain).expect("acyclic extension must pass"),
+            2
+        );
 
         // Cyclic plan: Connect B -> A (closes A -> B -> A)
         let plan_cyclic =
             MutationPlan::new().add_edge("B".to_string(), "A".to_string(), test_edge("rev"));
-        let err = plan_cyclic.validate_cycles(&dag).unwrap_err();
+        let err = validate(plan_cyclic, &chain).unwrap_err();
         assert!(matches!(err, DagError::CycleDetected { .. }));
+    }
+
+    /// Adds C and D to the chain and connects the `edges` between existing and new nodes; the plan
+    /// either holds `Some(nodes)` after validation or closes a cycle (`None`).
+    #[rstest]
+    #[case::batch_cycle(&[("B", "C"), ("C", "D"), ("D", "B")], None)]
+    #[case::diamond(&[("A", "C"), ("B", "D"), ("C", "D")], Some(5))]
+    fn differential_validation_handles_batches_and_diamonds(
+        chain: MemoryDag<MockItem>,
+        #[case] edges: &[(&str, &str)],
+        #[case] expected: Option<usize>,
+    ) {
+        let plan = edges.iter().fold(
+            MutationPlan::new()
+                .upsert_node(MockItem::new("C", "Node C"))
+                .upsert_node(MockItem::new("D", "Node D")),
+            |plan, (parent, child)| {
+                plan.add_edge(parent.to_string(), child.to_string(), test_edge("rel"))
+            },
+        );
+        match (differential(plan, &chain), expected) {
+            (Ok(len), Some(want)) => assert_eq!(len, want),
+            (Err(DagError::CycleDetected { .. }), None) => {}
+            (other, _) => panic!("unexpected validation result: {other:?}"),
+        }
     }
 
     #[test]

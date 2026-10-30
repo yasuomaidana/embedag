@@ -9,6 +9,73 @@ use crate::dag::MemoryDag;
 use crate::error::DagError;
 use crate::traits::NodePayload;
 
+/// Nodes ready to be visited, ordered by display key then index.
+type Ready = BTreeMap<(String, usize), NodeIndex>;
+
+/// The bookkeeping of a Kahn sweep: unvisited parents per node and each node's display key.
+struct Sweep {
+    in_degree: HashMap<NodeIndex, usize>,
+    display_keys: HashMap<NodeIndex, String>,
+}
+
+impl Sweep {
+    /// Starts a sweep of a non-empty `dag`; the returned set holds its roots.
+    fn start<T: NodePayload>(dag: &MemoryDag<T>) -> (Self, Ready) {
+        let node_count = dag.node_count();
+        let mut in_degree = HashMap::with_capacity(node_count);
+        let mut display_keys = HashMap::with_capacity(node_count);
+        let mut ready = Ready::new();
+        for idx in dag.inner().node_indices() {
+            let deg = dag.parent_indices(idx).len();
+            in_degree.insert(idx, deg);
+            if let Some(payload) = dag.node_by_index(idx) {
+                let disp = payload.key().to_string();
+                if deg == 0 {
+                    ready.insert((disp.clone(), idx.index()), idx);
+                }
+                display_keys.insert(idx, disp);
+            }
+        }
+        (
+            Self {
+                in_degree,
+                display_keys,
+            },
+            ready,
+        )
+    }
+
+    /// Marks `idx` visited: each child whose parents are all visited joins `ready`.
+    fn visit<T: NodePayload>(&mut self, dag: &MemoryDag<T>, idx: NodeIndex, ready: &mut Ready) {
+        for child_idx in dag.child_indices(idx) {
+            if let Some(deg) = self.in_degree.get_mut(&child_idx) {
+                *deg -= 1;
+                if *deg == 0
+                    && let Some(disp) = self.display_keys.get(&child_idx)
+                {
+                    ready.insert((disp.clone(), child_idx.index()), child_idx);
+                }
+            }
+        }
+    }
+
+    /// The error for a sweep that left nodes unvisited: the validation error, else the cycle.
+    fn cycle_error<T: NodePayload>(self, dag: &MemoryDag<T>) -> DagError {
+        if let Err(e) = dag.validate_acyclic() {
+            return e;
+        }
+        let mut cycle_nodes: Vec<usize> = self
+            .in_degree
+            .into_iter()
+            .filter_map(|(idx, deg)| if deg > 0 { Some(idx.index()) } else { None })
+            .collect();
+        cycle_nodes.sort_unstable();
+        DagError::CycleDetected {
+            node_indices: cycle_nodes,
+        }
+    }
+}
+
 /// Computes a deterministic topological ordering of all nodes in `dag` using Kahn's algorithm.
 ///
 /// Edges follow the [`MemoryDag`] convention (`parent -> child`), so every parent appears
@@ -24,49 +91,17 @@ pub fn toposort<T: NodePayload>(dag: &MemoryDag<T>) -> Result<Vec<T::Key>, DagEr
         return Ok(Vec::new());
     }
 
-    let mut in_degree: HashMap<NodeIndex, usize> = HashMap::with_capacity(node_count);
-    let mut display_keys: HashMap<NodeIndex, String> = HashMap::with_capacity(node_count);
-    let mut ready: BTreeMap<(String, usize), NodeIndex> = BTreeMap::new();
-
-    for idx in dag.inner().node_indices() {
-        let deg = dag.parent_indices(idx).len();
-        in_degree.insert(idx, deg);
-        if let Some(payload) = dag.node_by_index(idx) {
-            let disp = payload.key().to_string();
-            if deg == 0 {
-                ready.insert((disp.clone(), idx.index()), idx);
-            }
-            display_keys.insert(idx, disp);
-        }
-    }
-
+    let (mut sweep, mut ready) = Sweep::start(dag);
     let mut order = Vec::with_capacity(node_count);
     while let Some((_sort_key, idx)) = ready.pop_first() {
         if let Some(payload) = dag.node_by_index(idx) {
             order.push(payload.key().clone());
         }
-        for child_idx in dag.child_indices(idx) {
-            if let Some(deg) = in_degree.get_mut(&child_idx) {
-                *deg -= 1;
-                if *deg == 0
-                    && let Some(disp) = display_keys.get(&child_idx)
-                {
-                    ready.insert((disp.clone(), child_idx.index()), child_idx);
-                }
-            }
-        }
+        sweep.visit(dag, idx, &mut ready);
     }
 
     if order.len() != node_count {
-        dag.validate_acyclic()?;
-        let mut cycle_nodes: Vec<usize> = in_degree
-            .into_iter()
-            .filter_map(|(idx, deg)| if deg > 0 { Some(idx.index()) } else { None })
-            .collect();
-        cycle_nodes.sort_unstable();
-        return Err(DagError::CycleDetected {
-            node_indices: cycle_nodes,
-        });
+        return Err(sweep.cycle_error(dag));
     }
 
     Ok(order)
@@ -86,27 +121,12 @@ pub fn levels<T: NodePayload>(dag: &MemoryDag<T>) -> Result<Vec<Vec<T::Key>>, Da
         return Ok(Vec::new());
     }
 
-    let mut in_degree: HashMap<NodeIndex, usize> = HashMap::with_capacity(node_count);
-    let mut display_keys: HashMap<NodeIndex, String> = HashMap::with_capacity(node_count);
-    let mut current_ready: BTreeMap<(String, usize), NodeIndex> = BTreeMap::new();
-
-    for idx in dag.inner().node_indices() {
-        let deg = dag.parent_indices(idx).len();
-        in_degree.insert(idx, deg);
-        if let Some(payload) = dag.node_by_index(idx) {
-            let disp = payload.key().to_string();
-            if deg == 0 {
-                current_ready.insert((disp.clone(), idx.index()), idx);
-            }
-            display_keys.insert(idx, disp);
-        }
-    }
-
+    let (mut sweep, mut current_ready) = Sweep::start(dag);
     let mut result = Vec::new();
     let mut visited = 0usize;
 
     while !current_ready.is_empty() {
-        let mut next_ready: BTreeMap<(String, usize), NodeIndex> = BTreeMap::new();
+        let mut next_ready = Ready::new();
         let mut level_keys = Vec::with_capacity(current_ready.len());
 
         for (_sort_key, idx) in current_ready {
@@ -114,16 +134,7 @@ pub fn levels<T: NodePayload>(dag: &MemoryDag<T>) -> Result<Vec<Vec<T::Key>>, Da
             if let Some(payload) = dag.node_by_index(idx) {
                 level_keys.push(payload.key().clone());
             }
-            for child_idx in dag.child_indices(idx) {
-                if let Some(deg) = in_degree.get_mut(&child_idx) {
-                    *deg -= 1;
-                    if *deg == 0
-                        && let Some(disp) = display_keys.get(&child_idx)
-                    {
-                        next_ready.insert((disp.clone(), child_idx.index()), child_idx);
-                    }
-                }
-            }
+            sweep.visit(dag, idx, &mut next_ready);
         }
 
         result.push(level_keys);
@@ -131,15 +142,7 @@ pub fn levels<T: NodePayload>(dag: &MemoryDag<T>) -> Result<Vec<Vec<T::Key>>, Da
     }
 
     if visited != node_count {
-        dag.validate_acyclic()?;
-        let mut cycle_nodes: Vec<usize> = in_degree
-            .into_iter()
-            .filter_map(|(idx, deg)| if deg > 0 { Some(idx.index()) } else { None })
-            .collect();
-        cycle_nodes.sort_unstable();
-        return Err(DagError::CycleDetected {
-            node_indices: cycle_nodes,
-        });
+        return Err(sweep.cycle_error(dag));
     }
 
     Ok(result)
@@ -312,21 +315,12 @@ mod tests {
         }
     }
 
-    impl NodePayload for TaskUnit {
-        type Key = String;
-
-        fn key(&self) -> &Self::Key {
-            &self.id
-        }
-
-        fn name(&self) -> &str {
-            &self.id
-        }
-
-        fn entity_level(&self) -> &str {
-            "Task"
-        }
-    }
+    crate::impl_node_payload!(
+        TaskUnit,
+        key = |n| &n.id,
+        name = |n| &n.id,
+        level = |_| "Task"
+    );
 
     fn dep_edge() -> EdgePayload {
         EdgePayload::new("depends_on", 1.0, ProvenanceKind::DeterministicRule).unwrap()

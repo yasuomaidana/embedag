@@ -22,6 +22,7 @@ uuid = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
+embedag-core = { workspace = true, features = ["testing"] }
 tempfile = { workspace = true }
 testcontainers = { workspace = true }
 testcontainers-modules = { workspace = true }

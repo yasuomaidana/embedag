@@ -19,53 +19,53 @@ struct ParsedFields {
     tokens_field: Option<Ident>,
 }
 
+/// Records `field` in `slot`, which only one field may fill through `#[graph(attr)]`.
+fn set_once(
+    slot: &mut Option<Ident>,
+    field: &Ident,
+    meta: &syn::meta::ParseNestedMeta,
+    attr: &str,
+) -> syn::Result<()> {
+    if slot.is_some() {
+        return Err(syn::Error::new(
+            meta.path.span(),
+            format!("Only one field may be annotated with #[graph({attr})]"),
+        ));
+    }
+    *slot = Some(field.clone());
+    Ok(())
+}
+
+/// `field` with its name: the `= "name"` of the attribute, else the field's own name.
+fn named(meta: &syn::meta::ParseNestedMeta, field: &Ident) -> syn::Result<(Ident, String)> {
+    let mut custom_name = None;
+    if meta.input.peek(syn::Token![=]) {
+        let lit: syn::LitStr = meta.value()?.parse()?;
+        custom_name = Some(lit.value());
+    }
+    Ok((
+        field.clone(),
+        custom_name.unwrap_or_else(|| field.to_string()),
+    ))
+}
+
 fn parse_single_attr(
     meta: &syn::meta::ParseNestedMeta,
     field_ident: &Ident,
     parsed: &mut ParsedFields,
 ) -> syn::Result<()> {
     if meta.path.is_ident("key") {
-        if parsed.key_field.is_some() {
-            return Err(syn::Error::new(
-                meta.path.span(),
-                "Only one field may be annotated with #[graph(key)]",
-            ));
-        }
-        parsed.key_field = Some(field_ident.clone());
+        set_once(&mut parsed.key_field, field_ident, meta, "key")?;
     } else if meta.path.is_ident("text") {
         parsed.text_fields.push(field_ident.clone());
     } else if meta.path.is_ident("scalar") {
-        let mut custom_name = None;
-        if meta.input.peek(syn::Token![=]) {
-            let lit: syn::LitStr = meta.value()?.parse()?;
-            custom_name = Some(lit.value());
-        }
-        let name = custom_name.unwrap_or_else(|| field_ident.to_string());
-        parsed.scalar_fields.push((field_ident.clone(), name));
+        parsed.scalar_fields.push(named(meta, field_ident)?);
     } else if meta.path.is_ident("time") || meta.path.is_ident("temporal") {
-        if parsed.time_field.is_some() {
-            return Err(syn::Error::new(
-                meta.path.span(),
-                "Only one field may be annotated with #[graph(time)]",
-            ));
-        }
-        parsed.time_field = Some(field_ident.clone());
+        set_once(&mut parsed.time_field, field_ident, meta, "time")?;
     } else if meta.path.is_ident("geo") || meta.path.is_ident("geospatial") {
-        if parsed.geo_field.is_some() {
-            return Err(syn::Error::new(
-                meta.path.span(),
-                "Only one field may be annotated with #[graph(geo)]",
-            ));
-        }
-        parsed.geo_field = Some(field_ident.clone());
+        set_once(&mut parsed.geo_field, field_ident, meta, "geo")?;
     } else if meta.path.is_ident("tag") {
-        let mut custom_name = None;
-        if meta.input.peek(syn::Token![=]) {
-            let lit: syn::LitStr = meta.value()?.parse()?;
-            custom_name = Some(lit.value());
-        }
-        let name = custom_name.unwrap_or_else(|| field_ident.to_string());
-        parsed.tag_fields.push((field_ident.clone(), name));
+        parsed.tag_fields.push(named(meta, field_ident)?);
     } else if meta.path.is_ident("blob") || meta.path.is_ident("blobs") {
         parsed.blob_fields.push(field_ident.clone());
     } else if meta.path.is_ident("tokens") || meta.path.is_ident("sparse") {

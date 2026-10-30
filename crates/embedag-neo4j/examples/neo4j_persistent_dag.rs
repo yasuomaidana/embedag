@@ -2,7 +2,6 @@
 
 use embedag_core::dag::MemoryDag;
 use embedag_core::model::{EdgePayload, ProvenanceKind};
-use embedag_core::traits::NodePayload;
 use embedag_neo4j::Neo4jEngine;
 use serde::{Deserialize, Serialize};
 
@@ -13,28 +12,18 @@ struct SkillNode {
     domain: String,
 }
 
-impl NodePayload for SkillNode {
-    type Key = String;
-
-    fn key(&self) -> &Self::Key {
-        &self.skill_id
-    }
-
-    fn name(&self) -> &str {
-        &self.title
-    }
-
-    fn entity_level(&self) -> &str {
-        &self.domain
-    }
-
-    fn attributes(&self) -> serde_json::Value {
+embedag_core::impl_node_payload!(
+    SkillNode,
+    key = |n| &n.skill_id,
+    name = |n| &n.title,
+    level = |n| &n.domain,
+    attributes = |n| {
         serde_json::json!({
-            "title": self.title,
-            "domain": self.domain,
+            "title": n.title,
+            "domain": n.domain,
         })
     }
-}
+);
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

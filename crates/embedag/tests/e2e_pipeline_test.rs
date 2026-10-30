@@ -16,18 +16,12 @@ struct GroceryItem {
     pub level: String,
 }
 
-impl NodePayload for GroceryItem {
-    type Key = String;
-    fn key(&self) -> &Self::Key {
-        &self.sku
-    }
-    fn name(&self) -> &str {
-        &self.title
-    }
-    fn entity_level(&self) -> &str {
-        &self.level
-    }
-}
+embedag_core::impl_node_payload!(
+    GroceryItem,
+    key = |n| &n.sku,
+    name = |n| &n.title,
+    level = |n| &n.level
+);
 
 #[tokio::test]
 async fn test_end_to_end_pipeline() {

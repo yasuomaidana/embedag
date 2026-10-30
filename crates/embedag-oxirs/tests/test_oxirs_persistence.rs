@@ -2,7 +2,7 @@ use embedag_core::dag::MemoryDag;
 use embedag_core::model::{EdgePayload, ProvenanceKind};
 use embedag_core::mutation::MutationDirective;
 use embedag_core::traits::{
-    NodePayload, ReadOnlyGraphRepository, TransactionalGraphRepository, VectorSearchRepository,
+    ReadOnlyGraphRepository, TransactionalGraphRepository, VectorSearchRepository,
 };
 use embedag_oxirs::{OxiRsTdbConfig, OxiRsTdbEngine, SyncPolicy};
 use serde::{Deserialize, Serialize};
@@ -28,25 +28,13 @@ impl TestCategory {
     }
 }
 
-impl NodePayload for TestCategory {
-    type Key = String;
-
-    fn key(&self) -> &Self::Key {
-        &self.id
-    }
-
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn entity_level(&self) -> &str {
-        &self.level
-    }
-
-    fn attributes(&self) -> serde_json::Value {
-        serde_json::to_value(&self.attributes).unwrap_or(serde_json::Value::Null)
-    }
-}
+embedag_core::impl_node_payload!(
+    TestCategory,
+    key = |n| &n.id,
+    name = |n| &n.name,
+    level = |n| &n.level,
+    attributes = |n| { serde_json::to_value(&n.attributes).unwrap_or(serde_json::Value::Null) }
+);
 
 #[tokio::test]
 async fn test_in_memory_basic_operations() {
