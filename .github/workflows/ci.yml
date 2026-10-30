@@ -2,9 +2,9 @@ name: Rust CI/CD
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "develop" ]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "develop" ]
   workflow_dispatch:
 
 env:
@@ -26,6 +26,38 @@ jobs:
 
       - name: Check code formatting
         run: cargo fmt --all --check
+
+  quality:
+    name: Quality gates (production lines, repeated code, rstest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache loom-gate
+        id: loom-gate-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/loom-gate
+          key: loom-gate-${{ runner.os }}-develop-v1
+
+      - name: Install loom-gate
+        if: steps.loom-gate-cache.outputs.cache-hit != 'true'
+        env:
+          RUSTFLAGS: ""
+        run: cargo install --locked --git https://github.com/yasuomaidana/dendrite-rag-rs --branch develop loom-gate
+
+      - name: No file over its production-line limit
+        run: loom-gate loc --format github
+
+      - name: No repeated code
+        run: loom-gate clones --format github
+
+      - name: Tests use the rstest crate
+        run: loom-gate rstest --format github
 
   lint:
     name: Linter & Static Analysis (clippy)

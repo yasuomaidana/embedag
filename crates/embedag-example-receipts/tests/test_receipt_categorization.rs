@@ -1,16 +1,20 @@
 use embedag_example_receipts::{InvoiceItem, ReceiptCategoryNode, ReceiptGraphPipeline};
 use embedag_llm::async_trait;
-use embedag_llm::provider::{LlmError, LlmProvider, ModelMetadata, OxillamaProvider};
+mod common;
+
+use common::{AnyProvider, Backend};
+use embedag_llm::provider::{LlmError, LlmProvider, ModelMetadata};
 use embedag_llm::schema::{ExtractionDirective, ExtractionEnvelope};
+use rstest::rstest;
 use serde_json::Value;
 
 /// Test mock provider encapsulating receipt-specific domain inference strictly within tests.
-struct TestReceiptOxillamaProvider {
-    inner: OxillamaProvider,
+struct TestReceiptProvider {
+    inner: AnyProvider,
 }
 
 #[async_trait]
-impl LlmProvider for TestReceiptOxillamaProvider {
+impl LlmProvider for TestReceiptProvider {
     async fn generate_structured(&self, prompt: &str, _schema: &Value) -> Result<Value, LlmError> {
         let directive = if prompt.contains("Horizon Organic Whole Milk") {
             ExtractionDirective::CreateRootNode {
@@ -49,8 +53,7 @@ impl LlmProvider for TestReceiptOxillamaProvider {
         };
 
         let envelope = ExtractionEnvelope {
-            chain_of_thought: "Pure Rust oxillama token sampling completed (test simulated)."
-                .to_string(),
+            chain_of_thought: "Test simulated reasoning for retail receipts.".to_string(),
             directive,
         };
         Ok(serde_json::to_value(&envelope)?)
@@ -61,10 +64,13 @@ impl LlmProvider for TestReceiptOxillamaProvider {
     }
 }
 
+#[rstest]
 #[tokio::test]
-async fn test_oxillama_dynamic_graph_generation_and_deduplication() {
-    let provider = TestReceiptOxillamaProvider {
-        inner: OxillamaProvider::new("llama-3-8b-instruct", "q4_k_m"),
+async fn test_dynamic_graph_generation_and_deduplication(
+    #[values(Backend::Candle, Backend::Oxillama)] backend: Backend,
+) {
+    let provider = TestReceiptProvider {
+        inner: backend.provider(),
     };
     let mut pipeline = ReceiptGraphPipeline::new(provider);
 

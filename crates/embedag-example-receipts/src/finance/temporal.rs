@@ -49,11 +49,4 @@ pub fn is_near_holiday(dt: &DateTime<Utc>) -> bool {
     (m == 12 && d >= 20) || (m == 11 && (24..=30).contains(&d))
 }
 
-pub fn sanitize_slug(raw: &str) -> String {
-    raw.to_lowercase()
-        .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { '_' })
-        .collect::<String>()
-        .trim_matches('_')
-        .to_string()
-}
+pub use crate::sanitize_id as sanitize_slug;
