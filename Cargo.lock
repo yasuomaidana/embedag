@@ -92,7 +92,7 @@ dependencies = [
  "crossbeam-deque",
  "crossbeam-utils",
  "num_cpus",
- "parking_lot",
+ "parking_lot 0.12.5",
  "thiserror 2.0.21",
 ]
 
@@ -1589,9 +1589,9 @@ dependencies = [
  "cfg-if",
  "crossbeam-utils",
  "hashbrown 0.14.5",
- "lock_api",
+ "lock_api 0.4.14",
  "once_cell",
- "parking_lot_core",
+ "parking_lot_core 0.9.12",
 ]
 
 [[package]]
@@ -2201,7 +2201,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "rstest",
- "syn 2.0.119",
+ "syn 3.0.9",
 ]
 
 [[package]]
@@ -2286,7 +2286,7 @@ dependencies = [
  "async-trait",
  "embedag-core",
  "neo4rs",
- "parking_lot",
+ "parking_lot 0.13.0",
  "petgraph",
  "rstest",
  "serde",
@@ -2306,7 +2306,7 @@ dependencies = [
  "async-trait",
  "embedag-core",
  "oxirs-core",
- "parking_lot",
+ "parking_lot 0.13.0",
  "petgraph",
  "rstest",
  "serde",
@@ -2335,7 +2335,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "embedag-core",
- "parking_lot",
+ "parking_lot 0.13.0",
  "petgraph",
  "rstest",
  "serde",
@@ -4026,9 +4026,9 @@ dependencies = [
 
 [[package]]
 name = "jsonschema"
-version = "0.58.6"
+version = "0.60.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f622c574a29fb3034a0a90645afee194dfedc75fc124228801b6e77041075bd1"
+checksum = "a42a11b47492e6a2cc76e9c7bcc8077776cb31dac444e0795d7f61bcc6441c08"
 dependencies = [
  "ahash",
  "bytecount",
@@ -4057,23 +4057,24 @@ dependencies = [
 
 [[package]]
 name = "jsonschema-regex"
-version = "0.58.6"
+version = "0.60.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a968fffd387b2ab005bf00c1851f5d26e90df05b6f7ad609ed0d620033cca5e7"
+checksum = "107aeb6ff14b8deb5610096a8ce5c554ec89806b521147eaeb3cae05b07edb7a"
 dependencies = [
  "regex-syntax",
 ]
 
 [[package]]
 name = "jsonschema-value"
-version = "0.58.6"
+version = "0.60.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39b7670345e5ce87371339d13705dbb9276b7e3e934bbe1efa2c6734a1f65a96"
+checksum = "e281d6b177bb4834f2ffd6f92aa0443cffe29c996b251c8d94eb6f456186feba"
 dependencies = [
  "ahash",
  "bytecount",
  "fraction",
  "getrandom 0.3.4",
+ "memchr",
  "num-cmp",
  "num-traits",
  "serde_json",
@@ -4194,7 +4195,7 @@ dependencies = [
  "libsql-sqlite3-parser",
  "libsql-sys",
  "libsql_replication",
- "parking_lot",
+ "parking_lot 0.12.5",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -4293,7 +4294,7 @@ dependencies = [
  "cbc",
  "libsql-rusqlite",
  "libsql-sys",
- "parking_lot",
+ "parking_lot 0.12.5",
  "prost 0.12.6",
  "serde",
  "thiserror 1.0.69",
@@ -4308,9 +4309,9 @@ dependencies = [
 
 [[package]]
 name = "libsqlite3-sys"
-version = "0.30.1"
+version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e99fb7a497b1e3339bc746195567ed8d3e24945ecd636e3619d20b9de9e9149"
+checksum = "b1f111c8c41e7c61a49cd34e44c7619462967221a6443b0ec299e0ac30cfb9b1"
 dependencies = [
  "cc",
  "pkg-config",
@@ -4396,6 +4397,15 @@ name = "lock_api"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "224399e74b87b5f3557511d98dff8b14089b3dadafcab6bb93eab67d3aace965"
+dependencies = [
+ "scopeguard",
+]
+
+[[package]]
+name = "lock_api"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "65d91b22da179613dcf4d6ec8349563f52a363f6849e03b00dd0a185ec4a59af"
 dependencies = [
  "scopeguard",
 ]
@@ -4934,7 +4944,7 @@ dependencies = [
  "hyper 1.12.0",
  "itertools 0.14.0",
  "md-5 0.10.6",
- "parking_lot",
+ "parking_lot 0.12.5",
  "percent-encoding",
  "quick-xml 0.39.4",
  "rand 0.10.3",
@@ -5331,7 +5341,7 @@ dependencies = [
  "oxrdfxml",
  "oxsdatatypes",
  "oxttl",
- "parking_lot",
+ "parking_lot 0.12.5",
  "quick-xml 0.41.0",
  "quote",
  "rayon",
@@ -5600,8 +5610,18 @@ version = "0.12.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93857453250e3077bd71ff98b6a65ea6621a19bb0f559a85248955ac12c45a1a"
 dependencies = [
- "lock_api",
- "parking_lot_core",
+ "lock_api 0.4.14",
+ "parking_lot_core 0.9.12",
+]
+
+[[package]]
+name = "parking_lot"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a9cf937ca4e1d0b7578784559063422fc39ae7c5a00f02471f2614d5486fd226"
+dependencies = [
+ "lock_api 0.5.0",
+ "parking_lot_core 0.10.0",
 ]
 
 [[package]]
@@ -5612,7 +5632,19 @@ checksum = "2621685985a2ebf1c516881c026032ac7deafcda1a2c9b7850dc81e3dfcb64c1"
 dependencies = [
  "cfg-if",
  "libc",
- "redox_syscall",
+ "redox_syscall 0.5.18",
+ "smallvec",
+ "windows-link 0.2.1",
+]
+
+[[package]]
+name = "parking_lot_core"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9cfff060068cc18aa7815010fcaf80c68c7fb9e85fc7f5c0f9bf142c21d19826"
+dependencies = [
+ "libc",
+ "redox_syscall 0.9.5",
  "smallvec",
  "windows-link 0.2.1",
 ]
@@ -6310,7 +6342,7 @@ dependencies = [
  "ahash",
  "equivalent",
  "hashbrown 0.16.1",
- "parking_lot",
+ "parking_lot 0.12.5",
 ]
 
 [[package]]
@@ -6592,6 +6624,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "redox_syscall"
+version = "0.9.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "580c875845b41ecb1564ad1ae4703044cef774145e3d7a94dc2b3fa7c97868fd"
+dependencies = [
+ "bitflags 2.13.2",
+]
+
+[[package]]
 name = "ref-cast"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6613,9 +6654,9 @@ dependencies = [
 
 [[package]]
 name = "referencing"
-version = "0.58.6"
+version = "0.60.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "558f3855529c0a7e78a48e409fa653456e55f1b167eab4109c16a255b7727e3f"
+checksum = "f42818036d3b37cda6bd4c494543158a36e431cb717015ef7c93acc6ba214d3b"
 dependencies = [
  "ahash",
  "fluent-uri",
@@ -6623,7 +6664,7 @@ dependencies = [
  "hashbrown 0.17.1",
  "itoa",
  "micromap",
- "parking_lot",
+ "parking_lot 0.12.5",
  "percent-encoding",
  "serde_json",
 ]
@@ -7364,7 +7405,7 @@ dependencies = [
  "oxiarc-lz4 0.4.2",
  "oxiarc-zstd 0.4.2",
  "oxicode",
- "parking_lot",
+ "parking_lot 0.12.5",
  "rand 0.10.3",
  "rand_chacha 0.10.0",
  "rand_distr 0.6.0",
@@ -7806,7 +7847,7 @@ version = "0.9.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3763264f6b73151db08c50ff20d7d8a0b8796e021cdea7ceedad07b80155fa0e"
 dependencies = [
- "lock_api",
+ "lock_api 0.4.14",
 ]
 
 [[package]]
@@ -7892,7 +7933,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ffa8a5dbe8b3f0bbe29d4c3225daafaeead63afdc1b65fc4c01a1384166038e6"
 dependencies = [
  "new_debug_unreachable",
- "parking_lot",
+ "parking_lot 0.12.5",
  "phf_shared 0.14.0",
  "precomputed-hash",
 ]
@@ -8100,7 +8141,7 @@ dependencies = [
  "chrono",
  "futures",
  "hashbrown 0.16.1",
- "parking_lot",
+ "parking_lot 0.12.5",
  "phf 0.13.1",
  "rust_decimal",
  "surrealdb-types",
@@ -8142,7 +8183,7 @@ dependencies = [
  "mime",
  "num_cpus",
  "object_store",
- "parking_lot",
+ "parking_lot 0.12.5",
  "path-clean",
  "pbkdf2",
  "pin-project-lite",
@@ -8204,7 +8245,7 @@ dependencies = [
  "blake3",
  "bytes",
  "chrono",
- "parking_lot",
+ "parking_lot 0.12.5",
  "quick_cache",
  "rand 0.9.5",
  "revision",
@@ -8352,7 +8393,7 @@ dependencies = [
  "lindera",
  "ndarray",
  "ndarray-stats",
- "parking_lot",
+ "parking_lot 0.12.5",
  "quick_cache",
  "rand 0.9.5",
  "reblessive",
@@ -8656,7 +8697,7 @@ dependencies = [
  "crossbeam-skiplist",
  "lz4",
  "papaya",
- "parking_lot",
+ "parking_lot 0.12.5",
  "serde",
  "smallvec",
  "thiserror 2.0.21",
@@ -9034,7 +9075,7 @@ dependencies = [
  "bytes",
  "libc",
  "mio",
- "parking_lot",
+ "parking_lot 0.12.5",
  "pin-project-lite",
  "signal-hook-registry",
  "socket2 0.6.5",
@@ -9076,7 +9117,7 @@ dependencies = [
  "futures-channel",
  "futures-util",
  "log",
- "parking_lot",
+ "parking_lot 0.12.5",
  "percent-encoding",
  "phf 0.13.1",
  "pin-project-lite",
@@ -9898,7 +9939,7 @@ checksum = "1c598d6b99ea013e35844697fc4670d08339d5cda15588f193c6beedd12f644b"
 dependencies = [
  "futures",
  "js-sys",
- "parking_lot",
+ "parking_lot 0.12.5",
  "pin-utils",
  "wasm-bindgen",
 ]

@@ -1,0 +1,28 @@
+# Advisories no change in this repository can fix: the vulnerable versions are required by the
+# latest release of an upstream crate. Tracked in https://github.com/yasuomaidana/embedag/issues/2
+# (EMBEDAG-81). Any other advisory still fails `cargo audit`; drop an entry as soon as a
+# dependency update removes its crate from Cargo.lock.
+
+[advisories]
+ignore = [
+    # h2 0.3, rustls 0.22, rustls-webpki 0.102: libsql 0.9 via diesel-libsql 0.1.4.
+    "RUSTSEC-2026-0258",
+    "RUSTSEC-2026-0346",
+    "RUSTSEC-2026-0349",
+    "RUSTSEC-2026-0049",
+    "RUSTSEC-2026-0098",
+    "RUSTSEC-2026-0099",
+    "RUSTSEC-2026-0104",
+    "RUSTSEC-2026-0382",
+    # zip 8.6: candle-core 0.11.0.
+    "RUSTSEC-2026-0367",
+    "RUSTSEC-2026-0368",
+    "RUSTSEC-2026-0369",
+    # quick-xml 0.37 (oxirs-core via oxrdfxml) and 0.39 (surrealdb-core via object_store).
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
+    # crypto-bigint 0.5: oxirs-core via oxitls 0.2.
+    "RUSTSEC-2026-0387",
+    # rsa 0.9: oxitls; no fixed release exists.
+    "RUSTSEC-2023-0071",
+]
