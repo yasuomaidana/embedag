@@ -93,19 +93,15 @@ jobs:
       - name: Analyze Cyclomatic & Cognitive Complexity
         run: |
           mkdir -p metrics-out
-          rust-code-analysis-cli --metrics -p src/ -O json -o metrics-out/metrics.json
+          rust-code-analysis-cli --metrics -p crates -I "*.rs" -O json -o metrics-out
           echo "### Code Complexity Metrics Summary" >> $GITHUB_STEP_SUMMARY
-          if command -v jq >/dev/null 2>&1; then
-            echo '```json' >> $GITHUB_STEP_SUMMARY
-            jq '.' metrics-out/metrics.json | head -n 40 >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          fi
+          echo "$(find metrics-out -name '*.json' | wc -l) source files analysed" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload Complexity Metrics Artifact
         uses: actions/upload-artifact@v4
         with:
           name: complexity-metrics
-          path: metrics-out/metrics.json
+          path: metrics-out
 
   test-matrix:
     name: Build & Test Matrix (${{ matrix.os }}, Rust ${{ matrix.rust }})
@@ -126,6 +122,13 @@ jobs:
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
+
+      - name: Install libpq (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install libpq
+          echo "LIBRARY_PATH=$(brew --prefix libpq)/lib" >> "$GITHUB_ENV"
+          echo "PQ_LIB_DIR=$(brew --prefix libpq)/lib" >> "$GITHUB_ENV"
 
       - name: Run unit & integration tests
         run: cargo test --all-targets --all-features --verbose
