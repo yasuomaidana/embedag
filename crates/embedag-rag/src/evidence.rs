@@ -1,11 +1,40 @@
-use crate::expansion::{ExpandedSubgraph, SeedRelationship};
+use crate::expansion::{ExpandedEdge, ExpandedSubgraph, SeedRelationship};
 use embedag_core::dag::MemoryDag;
 use embedag_core::traits::NodePayload;
 use std::collections::HashSet;
+use std::fmt::Display;
 
 /// Synthesizes and packages grounded evidence contexts with citation anchors for LLM consumption.
 #[derive(Debug, Default, Clone)]
 pub struct GroundedEvidencePackager;
+
+/// Lists the linked nodes of `edges` under `heading`; `linked` picks the node on the other side.
+/// Nothing is written when there are no edges.
+fn write_links<'a, K: Display + 'a>(
+    out: &mut String,
+    heading: &str,
+    edges: impl Iterator<Item = &'a ExpandedEdge<K>>,
+    linked: impl Fn(&ExpandedEdge<K>) -> &K,
+) {
+    let edges: Vec<_> = edges.collect();
+    if edges.is_empty() {
+        return;
+    }
+    out.push_str(heading);
+    for edge in edges {
+        let prov_tag = if edge.provenance.is_deterministic() && edge.confidence >= 1.0 {
+            "EXTRACTED (1.0)"
+        } else {
+            "INFERRED (< 1.0)"
+        };
+        out.push_str(&format!(
+            "  * [Node: {}] via {} [{}]\n",
+            linked(edge),
+            edge.relationship,
+            prov_tag
+        ));
+    }
+}
 
 impl GroundedEvidencePackager {
     pub fn new() -> Self {
@@ -61,47 +90,15 @@ impl GroundedEvidencePackager {
                 ));
                 out.push_str(&format!("- Name: {}\n", payload.name()));
 
-                // Connected incoming edges (parents)
-                let parent_edges: Vec<_> = subgraph
-                    .edges
-                    .iter()
-                    .filter(|e| e.child_key == node.key)
-                    .collect();
-                if !parent_edges.is_empty() {
-                    out.push_str("- Parents / Ancestors:\n");
-                    for pe in parent_edges {
-                        let prov_tag = if pe.provenance.is_deterministic() && pe.confidence >= 1.0 {
-                            "EXTRACTED (1.0)"
-                        } else {
-                            "INFERRED (< 1.0)"
-                        };
-                        out.push_str(&format!(
-                            "  * [Node: {}] via {} [{}]\n",
-                            pe.parent_key, pe.relationship, prov_tag
-                        ));
-                    }
-                }
-
-                // Connected outgoing edges (children)
-                let child_edges: Vec<_> = subgraph
-                    .edges
-                    .iter()
-                    .filter(|e| e.parent_key == node.key)
-                    .collect();
-                if !child_edges.is_empty() {
-                    out.push_str("- Children / Descendants:\n");
-                    for ce in child_edges {
-                        let prov_tag = if ce.provenance.is_deterministic() && ce.confidence >= 1.0 {
-                            "EXTRACTED (1.0)"
-                        } else {
-                            "INFERRED (< 1.0)"
-                        };
-                        out.push_str(&format!(
-                            "  * [Node: {}] via {} [{}]\n",
-                            ce.child_key, ce.relationship, prov_tag
-                        ));
-                    }
-                }
+                // Connected incoming edges (parents), then outgoing edges (children)
+                let parents = subgraph.edges.iter().filter(|e| e.child_key == node.key);
+                write_links(&mut out, "- Parents / Ancestors:\n", parents, |e| {
+                    &e.parent_key
+                });
+                let children = subgraph.edges.iter().filter(|e| e.parent_key == node.key);
+                write_links(&mut out, "- Children / Descendants:\n", children, |e| {
+                    &e.child_key
+                });
             }
         }
 

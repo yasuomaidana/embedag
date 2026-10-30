@@ -17,10 +17,13 @@
 //! - [`mutation`]: Typestate mutation plans and atomic graph modification directives.
 //! - [`resolve`]: Deterministic DAG dependency resolution, topological sorting, levels, reverse dependencies, and critical paths.
 //! - `testing`: a plain node payload for tests (feature `testing`).
+//! - [`similarity`]: Cosine ranking over small in-memory embedding indexes.
 //! - [`traits`]: Contracts for graph ingestion ([`AsGraphContext`]), node payloads ([`NodePayload`]), and capability storage ports.
 
 #![warn(missing_docs)]
 
+#[doc(hidden)]
+pub use async_trait;
 pub mod dag;
 pub mod dag_iter;
 pub mod encoder;
@@ -33,6 +36,7 @@ pub mod model;
 pub mod mutation;
 pub mod pagination;
 pub mod resolve;
+pub mod similarity;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 pub mod traits;

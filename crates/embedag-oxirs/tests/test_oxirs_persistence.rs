@@ -1,47 +1,19 @@
 use embedag_core::dag::MemoryDag;
 use embedag_core::model::{EdgePayload, ProvenanceKind};
 use embedag_core::mutation::MutationDirective;
+use embedag_core::testing::TestNode;
 use embedag_core::traits::{
     ReadOnlyGraphRepository, TransactionalGraphRepository, VectorSearchRepository,
 };
 use embedag_oxirs::{OxiRsTdbConfig, OxiRsTdbEngine, SyncPolicy};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use tempfile::tempdir;
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-struct TestCategory {
-    id: String,
-    name: String,
-    level: String,
-    attributes: HashMap<String, String>,
-}
-
-impl TestCategory {
-    fn create(id: &str, name: &str, level: &str) -> Self {
-        Self {
-            id: id.to_string(),
-            name: name.to_string(),
-            level: level.to_string(),
-            attributes: HashMap::new(),
-        }
-    }
-}
-
-embedag_core::impl_node_payload!(
-    TestCategory,
-    key = |n| &n.id,
-    name = |n| &n.name,
-    level = |n| &n.level,
-    attributes = |n| { serde_json::to_value(&n.attributes).unwrap_or(serde_json::Value::Null) }
-);
 
 #[tokio::test]
 async fn test_in_memory_basic_operations() {
     let engine = OxiRsTdbEngine::in_memory().expect("in-memory engine must initialize");
 
-    let cat1 = TestCategory::create("CAT-1", "Dairy", "Department");
-    let cat2 = TestCategory::create("CAT-2", "Cheese", "Category");
+    let cat1 = TestNode::new("CAT-1", "Dairy", "Department");
+    let cat2 = TestNode::new("CAT-2", "Cheese", "Category");
 
     engine.insert_node(&cat1).expect("insert_node cat1");
     engine.insert_node(&cat2).expect("insert_node cat2");
@@ -55,16 +27,16 @@ async fn test_in_memory_basic_operations() {
     assert!(engine.len().expect("len") > 0);
 
     // Retrieve node
-    let retrieved: Option<TestCategory> = engine.get_node(&cat1.id).expect("get_node");
+    let retrieved: Option<TestNode> = engine.get_node(&cat1.id).expect("get_node");
     assert_eq!(retrieved, Some(cat1.clone()));
 
     // Retrieve children
-    let children: Vec<TestCategory> = engine.get_children(&cat1.id).expect("get_children");
+    let children: Vec<TestNode> = engine.get_children(&cat1.id).expect("get_children");
     assert_eq!(children.len(), 1);
     assert_eq!(children[0].id, "CAT-2");
 
     // Retrieve parents
-    let parents: Vec<TestCategory> = engine.get_parents(&cat2.id).expect("get_parents");
+    let parents: Vec<TestNode> = engine.get_parents(&cat2.id).expect("get_parents");
     assert_eq!(parents.len(), 1);
     assert_eq!(parents[0].id, "CAT-1");
 }
@@ -78,9 +50,9 @@ async fn test_persistent_disk_roundtrip_across_reopen() {
         .with_sync_policy(SyncPolicy::EveryN(1))
         .with_base_iri("urn:custom:knowledge:");
 
-    let cat_root = TestCategory::create("ROOT-1", "Groceries", "Department");
-    let cat_sub = TestCategory::create("SUB-10", "Beverages", "Aisle");
-    let cat_item = TestCategory::create("SKU-99", "Cold Brew 250ml", "Product");
+    let cat_root = TestNode::new("ROOT-1", "Groceries", "Department");
+    let cat_sub = TestNode::new("SUB-10", "Beverages", "Aisle");
+    let cat_item = TestNode::new("SKU-99", "Cold Brew 250ml", "Product");
 
     // Phase 1: Write and flush
     {
@@ -112,14 +84,14 @@ async fn test_persistent_disk_roundtrip_across_reopen() {
     {
         let reopened = OxiRsTdbEngine::open(config).expect("reopen persistent engine");
 
-        let item: Option<TestCategory> = reopened.get_node(&"SKU-99".to_string()).unwrap();
+        let item: Option<TestNode> = reopened.get_node(&"SKU-99".to_string()).unwrap();
         assert_eq!(item, Some(cat_item));
 
-        let sub_children: Vec<TestCategory> = reopened.get_children(&"SUB-10".to_string()).unwrap();
+        let sub_children: Vec<TestNode> = reopened.get_children(&"SUB-10".to_string()).unwrap();
         assert_eq!(sub_children.len(), 1);
         assert_eq!(sub_children[0].id, "SKU-99");
 
-        let sub_parents: Vec<TestCategory> = reopened.get_parents(&"SUB-10".to_string()).unwrap();
+        let sub_parents: Vec<TestNode> = reopened.get_parents(&"SUB-10".to_string()).unwrap();
         assert_eq!(sub_parents.len(), 1);
         assert_eq!(sub_parents[0].id, "ROOT-1");
     }
@@ -129,8 +101,8 @@ async fn test_persistent_disk_roundtrip_across_reopen() {
 async fn test_sparql_query_execution() {
     let engine = OxiRsTdbEngine::in_memory().unwrap();
 
-    let node1 = TestCategory::create("DEPT-1", "Produce", "Department");
-    let node2 = TestCategory::create("CAT-5", "Organic Apples", "Category");
+    let node1 = TestNode::new("DEPT-1", "Produce", "Department");
+    let node2 = TestNode::new("CAT-5", "Organic Apples", "Category");
 
     engine.insert_node(&node1).unwrap();
     engine.insert_node(&node2).unwrap();
@@ -159,9 +131,9 @@ async fn test_dag_export_and_load_roundtrip() {
 
     // Build memory DAG
     let mut original_dag = MemoryDag::new();
-    let n1 = TestCategory::create("N1", "Electronics", "Division");
-    let n2 = TestCategory::create("N2", "Audio", "Category");
-    let n3 = TestCategory::create("N3", "Headphones", "Subcategory");
+    let n1 = TestNode::new("N1", "Electronics", "Division");
+    let n2 = TestNode::new("N2", "Audio", "Category");
+    let n3 = TestNode::new("N3", "Headphones", "Subcategory");
 
     original_dag.upsert_node(n1);
     original_dag.upsert_node(n2);
@@ -182,7 +154,7 @@ async fn test_dag_export_and_load_roundtrip() {
     assert!(quad_count > 0);
 
     // Reconstruct MemoryDag from OxiRS store
-    let loaded_dag: MemoryDag<TestCategory> = engine.load_dag().expect("load dag");
+    let loaded_dag: MemoryDag<TestNode> = engine.load_dag().expect("load dag");
 
     assert_eq!(loaded_dag.node_count(), 3);
     assert_eq!(loaded_dag.edge_count(), 2);
@@ -201,8 +173,8 @@ async fn test_dag_export_and_load_roundtrip() {
 async fn test_repository_capability_traits() {
     let engine = OxiRsTdbEngine::in_memory().unwrap();
 
-    let node_a = TestCategory::create("A", "Alpha", "Level1");
-    let node_b = TestCategory::create("B", "Beta", "Level2");
+    let node_a = TestNode::new("A", "Alpha", "Level1");
+    let node_b = TestNode::new("B", "Beta", "Level2");
 
     let edge = EdgePayload::new("LINK", 0.85, ProvenanceKind::DeterministicRule).unwrap();
 
@@ -223,12 +195,12 @@ async fn test_repository_capability_traits() {
         .expect("apply_mutation_batch");
 
     // Test ReadOnlyGraphRepository trait methods
-    let fetched = ReadOnlyGraphRepository::<TestCategory>::get_node(&engine, &"A".to_string())
+    let fetched = ReadOnlyGraphRepository::<TestNode>::get_node(&engine, &"A".to_string())
         .await
         .unwrap();
     assert_eq!(fetched, Some(node_a));
 
-    let children = ReadOnlyGraphRepository::<TestCategory>::get_children(&engine, &"A".to_string())
+    let children = ReadOnlyGraphRepository::<TestNode>::get_children(&engine, &"A".to_string())
         .await
         .unwrap();
     assert_eq!(children.len(), 1);
@@ -238,13 +210,10 @@ async fn test_repository_capability_traits() {
     engine.index_embedding("A".to_string(), vec![1.0, 0.0, 0.0]);
     engine.index_embedding("B".to_string(), vec![0.0, 1.0, 0.0]);
 
-    let nearest = VectorSearchRepository::<TestCategory>::find_nearest_neighbors(
-        &engine,
-        &[0.9, 0.1, 0.0],
-        1,
-    )
-    .await
-    .unwrap();
+    let nearest =
+        VectorSearchRepository::<TestNode>::find_nearest_neighbors(&engine, &[0.9, 0.1, 0.0], 1)
+            .await
+            .unwrap();
     assert_eq!(nearest.len(), 1);
     assert_eq!(nearest[0].0.id, "A");
     assert!(nearest[0].1 > 0.8);
@@ -255,8 +224,8 @@ async fn test_mmap_snapshot_cold_start() {
     let tmp = tempdir().unwrap();
     let db_path = tmp.path().join("snapshot_db");
 
-    let cat1 = TestCategory::create("C1", "Hardware", "Category");
-    let cat2 = TestCategory::create("C2", "Fasteners", "Subcategory");
+    let cat1 = TestNode::new("C1", "Hardware", "Category");
+    let cat2 = TestNode::new("C2", "Fasteners", "Subcategory");
 
     // Phase 1: create persistent dataset and write snapshot
     {
@@ -278,10 +247,10 @@ async fn test_mmap_snapshot_cold_start() {
     // Phase 2: reopen store with snapshot present
     {
         let reopened = OxiRsTdbEngine::open_persistent(&db_path).unwrap();
-        let fetched: Option<TestCategory> = reopened.get_node(&"C1".to_string()).unwrap();
+        let fetched: Option<TestNode> = reopened.get_node(&"C1".to_string()).unwrap();
         assert_eq!(fetched, Some(cat1));
 
-        let children: Vec<TestCategory> = reopened.get_children(&"C1".to_string()).unwrap();
+        let children: Vec<TestNode> = reopened.get_children(&"C1".to_string()).unwrap();
         assert_eq!(children.len(), 1);
         assert_eq!(children[0].id, "C2");
     }

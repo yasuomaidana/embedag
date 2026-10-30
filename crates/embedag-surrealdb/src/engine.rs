@@ -6,9 +6,10 @@ use std::sync::Arc;
 
 use embedag_core::dag::MemoryDag;
 use embedag_core::model::{EdgePayload, ProvenanceKind};
+use embedag_core::mutation::dag_directives;
+use embedag_core::similarity::rank_by_cosine;
 use embedag_core::traits::NodePayload;
 use parking_lot::RwLock;
-use petgraph::visit::EdgeRef;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use surrealdb::Surreal;
 use surrealdb::engine::any::Any;
@@ -219,27 +220,7 @@ impl SurrealDbEngine {
         &self,
         child_key: &T::Key,
     ) -> Result<Vec<T>, SurrealDbStorageError> {
-        let child_str = child_key.to_string();
-        let query = format!(
-            "SELECT in_key, out_key, relationship, confidence, provenance FROM {} WHERE out_key = $child",
-            self.config.edge_table
-        );
-
-        let mut res = self.db.query(query).bind(("child", child_str)).await?;
-        let rows: Vec<EdgeLinkRow> = res.take(0)?;
-
-        let mut parents = Vec::new();
-        for row in rows {
-            let rec: Option<SurrealNodeRecord> = self
-                .db
-                .select((self.config.node_table.as_str(), row.in_key.as_str()))
-                .await?;
-            if let Some(r) = rec {
-                parents.push(r.to_node()?);
-            }
-        }
-
-        Ok(parents)
+        self.neighbours(child_key.to_string(), true).await
     }
 
     /// Fetches immediate children of a node identified by business key.
@@ -247,27 +228,37 @@ impl SurrealDbEngine {
         &self,
         parent_key: &T::Key,
     ) -> Result<Vec<T>, SurrealDbStorageError> {
-        let parent_str = parent_key.to_string();
+        self.neighbours(parent_key.to_string(), false).await
+    }
+
+    /// The nodes one edge away from `key`: its parents when `parents`, else its children.
+    async fn neighbours<T: NodePayload + DeserializeOwned>(
+        &self,
+        key: String,
+        parents: bool,
+    ) -> Result<Vec<T>, SurrealDbStorageError> {
+        let column = if parents { "out_key" } else { "in_key" };
         let query = format!(
-            "SELECT in_key, out_key, relationship, confidence, provenance FROM {} WHERE in_key = $parent",
+            "SELECT in_key, out_key, relationship, confidence, provenance FROM {} WHERE {column} = $key",
             self.config.edge_table
         );
 
-        let mut res = self.db.query(query).bind(("parent", parent_str)).await?;
+        let mut res = self.db.query(query).bind(("key", key)).await?;
         let rows: Vec<EdgeLinkRow> = res.take(0)?;
 
-        let mut children = Vec::new();
+        let mut found = Vec::new();
         for row in rows {
+            let other = if parents { &row.in_key } else { &row.out_key };
             let rec: Option<SurrealNodeRecord> = self
                 .db
-                .select((self.config.node_table.as_str(), row.out_key.as_str()))
+                .select((self.config.node_table.as_str(), other.as_str()))
                 .await?;
             if let Some(r) = rec {
-                children.push(r.to_node()?);
+                found.push(r.to_node()?);
             }
         }
 
-        Ok(children)
+        Ok(found)
     }
 
     /// Indexes a dense vector embedding for a node key.
@@ -281,37 +272,7 @@ impl SurrealDbEngine {
         query: &[f32],
         limit: usize,
     ) -> Result<Vec<(T, f32)>, SurrealDbStorageError> {
-        let scored = {
-            let index = self.vector_index.read();
-            let mut scored: Vec<(String, f32)> = Vec::with_capacity(index.len());
-
-            let q_norm = query.iter().map(|v| v * v).sum::<f32>().sqrt();
-            if q_norm == 0.0 {
-                return Ok(Vec::new());
-            }
-
-            for (key, vec) in index.iter() {
-                if vec.len() != query.len() {
-                    continue;
-                }
-                let dot = query
-                    .iter()
-                    .zip(vec.iter())
-                    .map(|(a, b)| a * b)
-                    .sum::<f32>();
-                let v_norm = vec.iter().map(|v| v * v).sum::<f32>().sqrt();
-                let score = if v_norm > 0.0 {
-                    dot / (q_norm * v_norm)
-                } else {
-                    0.0
-                };
-                scored.push((key.clone(), score));
-            }
-
-            scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-            scored.truncate(limit);
-            scored
-        };
+        let scored = rank_by_cosine(&self.vector_index.read(), query, limit);
 
         let mut results = Vec::with_capacity(scored.len());
         for (key_str, score) in scored {
@@ -332,19 +293,7 @@ impl SurrealDbEngine {
         &self,
         dag: &MemoryDag<T>,
     ) -> Result<(), SurrealDbStorageError> {
-        let inner = dag.inner();
-        for idx in inner.node_indices() {
-            self.insert_node(&inner[idx]).await?;
-        }
-
-        for edge_ref in inner.edge_references() {
-            let source_node = &inner[edge_ref.source()];
-            let target_node = &inner[edge_ref.target()];
-            self.insert_edge(source_node.key(), target_node.key(), edge_ref.weight())
-                .await?;
-        }
-
-        Ok(())
+        self.apply_directives(&dag_directives(dag)).await
     }
 
     /// Loads graph contents from SurrealDB into a fresh [`MemoryDag<T>`].

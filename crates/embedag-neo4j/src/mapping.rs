@@ -1,6 +1,5 @@
 //! Data structures and mapping between embedag domain contracts and Neo4j node/edge properties.
 
-use embedag_core::model::{EdgePayload, ProvenanceKind};
 use embedag_core::traits::NodePayload;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
@@ -61,34 +60,8 @@ impl Neo4jNodeRecord {
     }
 }
 
-/// Property representation of a Neo4j graph relationship.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Neo4jEdgeRecord {
-    /// Relationship type label (e.g. `CONTAINS`, `SUB_CATEGORY`).
-    pub relationship: String,
-    /// Traversal confidence score.
-    pub confidence: f32,
-    /// Provenance origin label.
-    pub provenance: String,
-    /// Creation timestamp in RFC 3339.
-    pub created_at: String,
-}
-
-impl Neo4jEdgeRecord {
-    /// Converts an [`EdgePayload`] into relationship properties for Cypher queries.
-    pub fn from_edge(edge: &EdgePayload) -> Self {
-        let provenance_str = match &edge.provenance {
-            ProvenanceKind::DeterministicRule => "deterministic_rule".to_string(),
-            ProvenanceKind::DenseSimilarityMatch => "dense_similarity_match".to_string(),
-            ProvenanceKind::LlmConstrainedInference => "llm_constrained_inference".to_string(),
-            ProvenanceKind::HumanVerified => "human_verified".to_string(),
-        };
-
-        Self {
-            relationship: edge.relationship.clone(),
-            confidence: edge.confidence,
-            provenance: provenance_str,
-            created_at: edge.created_at.to_rfc3339(),
-        }
-    }
+embedag_core::edge_record! {
+    /// Property representation of a Neo4j graph relationship.
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct Neo4jEdgeRecord;
 }

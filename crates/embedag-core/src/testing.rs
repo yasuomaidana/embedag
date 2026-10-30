@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// A node with a string key, a display name and an entity level.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TestNode {
     /// Business key.
     pub id: String,

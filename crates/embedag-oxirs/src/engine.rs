@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use embedag_core::dag::MemoryDag;
 use embedag_core::model::{EdgePayload, ProvenanceKind};
+use embedag_core::similarity::rank_by_cosine;
 use embedag_core::traits::NodePayload;
 use oxirs_core::model::{Object, Predicate, Quad, Subject};
 use oxirs_core::rdf_store::{OxirsQueryResults, RdfStore, Store};
@@ -329,34 +330,7 @@ impl OxiRsTdbEngine {
         query: &[f32],
         limit: usize,
     ) -> Result<Vec<(T, f32)>, OxiRsStorageError> {
-        let index = self.vector_index.read();
-        let mut scored: Vec<(String, f32)> = Vec::with_capacity(index.len());
-
-        let q_norm = query.iter().map(|v| v * v).sum::<f32>().sqrt();
-        if q_norm == 0.0 {
-            return Ok(Vec::new());
-        }
-
-        for (key, vec) in index.iter() {
-            if vec.len() != query.len() {
-                continue;
-            }
-            let dot = query
-                .iter()
-                .zip(vec.iter())
-                .map(|(a, b)| a * b)
-                .sum::<f32>();
-            let v_norm = vec.iter().map(|v| v * v).sum::<f32>().sqrt();
-            let score = if v_norm > 0.0 {
-                dot / (q_norm * v_norm)
-            } else {
-                0.0
-            };
-            scored.push((key.clone(), score));
-        }
-
-        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        scored.truncate(limit);
+        let scored = rank_by_cosine(&self.vector_index.read(), query, limit);
 
         let mut results = Vec::with_capacity(scored.len());
         for (key_str, score) in scored {

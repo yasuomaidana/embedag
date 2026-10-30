@@ -40,12 +40,4 @@ pub enum OxiRsStorageError {
     Io(#[from] std::io::Error),
 }
 
-impl From<OxiRsStorageError> for DagError {
-    fn from(err: OxiRsStorageError) -> Self {
-        match err {
-            OxiRsStorageError::Dag(e) => e,
-            OxiRsStorageError::NodeNotFound(key) => DagError::NodeNotFound { key },
-            other => DagError::StorageError(other.to_string()),
-        }
-    }
-}
+embedag_core::impl_storage_error_into_dag!(OxiRsStorageError);

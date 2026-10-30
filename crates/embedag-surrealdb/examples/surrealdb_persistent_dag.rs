@@ -16,13 +16,7 @@ embedag_core::impl_node_payload!(
     OrgUnit,
     key = |n| &n.code,
     name = |n| &n.name,
-    level = |n| &n.unit_type,
-    attributes = |n| {
-        serde_json::json!({
-            "name": n.name,
-            "unit_type": n.unit_type,
-        })
-    }
+    level = |n| &n.unit_type
 );
 
 #[tokio::main]

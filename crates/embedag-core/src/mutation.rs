@@ -10,6 +10,7 @@ use crate::dag::MemoryDag;
 use crate::error::DagError;
 use crate::model::EdgePayload;
 use crate::traits::NodePayload;
+use petgraph::visit::EdgeRef;
 
 /// Typestate indicating a mutation plan has not yet been verified against graph cycle invariants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -360,6 +361,23 @@ impl<T: NodePayload, State> MutationPlan<T, State> {
     pub fn validated_revision(&self) -> Option<u64> {
         self.validated_revision
     }
+}
+
+/// The directives that recreate `dag` in an empty store: every node, then every edge.
+#[must_use]
+pub fn dag_directives<T: NodePayload>(dag: &MemoryDag<T>) -> Vec<MutationDirective<T>> {
+    let inner = dag.inner();
+    let nodes = inner
+        .node_indices()
+        .map(|idx| MutationDirective::UpsertNode(inner[idx].clone()));
+    let edges = inner
+        .edge_references()
+        .map(|edge| MutationDirective::AddEdge {
+            parent: inner[edge.source()].key().clone(),
+            child: inner[edge.target()].key().clone(),
+            edge: edge.weight().clone(),
+        });
+    nodes.chain(edges).collect()
 }
 
 /// Applies one directive to `dag`.

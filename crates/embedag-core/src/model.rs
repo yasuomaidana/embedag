@@ -32,6 +32,17 @@ pub enum ProvenanceKind {
 }
 
 impl ProvenanceKind {
+    /// The `snake_case` label stores and wire formats use for this provenance.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::DeterministicRule => "deterministic_rule",
+            Self::DenseSimilarityMatch => "dense_similarity_match",
+            Self::LlmConstrainedInference => "llm_constrained_inference",
+            Self::HumanVerified => "human_verified",
+        }
+    }
+
     /// Returns `true` for algorithmic/human provenance that does not depend on a probabilistic model.
     #[must_use]
     pub const fn is_deterministic(self) -> bool {
