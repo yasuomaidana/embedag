@@ -8,6 +8,7 @@ use embedag_diesel::ops::{
 use uuid::Uuid;
 
 #[tokio::test]
+#[ignore = "starts a Postgres container: runs in the persistence-testcontainers and coverage jobs"]
 async fn test_transaction_rollback_on_constraint_violation() {
     let harness = PostgresHarness::start()
         .await
@@ -74,6 +75,7 @@ async fn test_transaction_rollback_on_constraint_violation() {
 }
 
 #[tokio::test]
+#[ignore = "starts a Postgres container: runs in the persistence-testcontainers and coverage jobs"]
 async fn test_batch_upsert_performance() {
     let harness = PostgresHarness::start()
         .await
@@ -135,6 +137,7 @@ async fn test_batch_upsert_performance() {
 }
 
 #[tokio::test]
+#[ignore = "starts a Postgres container: runs in the persistence-testcontainers and coverage jobs"]
 async fn test_dynamic_mutation_lifecycle_commit() {
     let harness = PostgresHarness::start()
         .await

@@ -27,6 +27,7 @@ fn test_sqlite_user_migrations() {
 }
 
 #[tokio::test]
+#[ignore = "starts a Postgres container: runs in the persistence-testcontainers and coverage jobs"]
 async fn test_postgres_pgvector_container_migration() {
     let harness = PostgresHarness::start()
         .await

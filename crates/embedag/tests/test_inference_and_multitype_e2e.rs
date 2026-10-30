@@ -134,6 +134,7 @@ fn asset_node(
 }
 
 #[tokio::test]
+#[ignore = "starts a Postgres container: runs in the persistence-testcontainers and coverage jobs"]
 async fn test_inference_and_multitype_e2e_pipeline() {
     // =========================================================================
     // SECTION 1: Validate Multi-Type Struct & Domain Trait Implementations

@@ -5,6 +5,7 @@ use embedag_diesel::ops::{batch_upsert_edges, batch_upsert_nodes, cycle_records,
 use embedag_diesel::traversal::RecursiveTraversalBuilder;
 
 #[tokio::test]
+#[ignore = "starts a Postgres container: runs in the persistence-testcontainers and coverage jobs"]
 async fn test_recursive_ancestor_traversal() {
     let harness = PostgresHarness::start().await.expect("start harness");
     let client = harness.connect().await.expect("connect client");
@@ -63,6 +64,7 @@ async fn test_recursive_ancestor_traversal() {
 }
 
 #[tokio::test]
+#[ignore = "starts a Postgres container: runs in the persistence-testcontainers and coverage jobs"]
 async fn test_sql_cycle_guardrail() {
     let harness = PostgresHarness::start().await.expect("start harness");
     let client = harness.connect().await.expect("connect client");

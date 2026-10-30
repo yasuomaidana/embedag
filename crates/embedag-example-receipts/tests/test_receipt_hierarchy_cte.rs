@@ -223,6 +223,7 @@ fn test_diamond_dag_deduplication_with_recursive_not_all() {
 }
 
 #[tokio::test]
+#[ignore = "starts a Postgres container: runs in the persistence-testcontainers and coverage jobs"]
 async fn test_developer_custom_migration_and_invoice_categorization_cte_postgres() {
     use diesel_async::{AsyncConnection, AsyncPgConnection};
     use embedag_diesel::harness::PostgresHarness;

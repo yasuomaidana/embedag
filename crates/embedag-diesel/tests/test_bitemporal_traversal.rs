@@ -7,6 +7,7 @@ use embedag_diesel::traversal::RecursiveTraversalBuilder;
 use uuid::Uuid;
 
 #[tokio::test]
+#[ignore = "starts a Postgres container: runs in the persistence-testcontainers and coverage jobs"]
 async fn test_point_in_time_dag_traversal() {
     let harness = PostgresHarness::start()
         .await

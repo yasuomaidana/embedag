@@ -24,6 +24,7 @@ embedag_core::impl_node_payload!(
 );
 
 #[tokio::test]
+#[ignore = "starts a Postgres container: runs in the persistence-testcontainers and coverage jobs"]
 async fn test_end_to_end_pipeline() {
     // 1. Initialize Testcontainers ephemeral PostgreSQL + pgvector container
     let harness = PostgresHarness::start()

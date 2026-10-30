@@ -163,7 +163,7 @@ jobs:
           docker info
 
       - name: Run Mandatory Persistence Integration Tests via Testcontainers
-        run: cargo test --all-targets --all-features --verbose
+        run: cargo test --all-targets --all-features --verbose -- --include-ignored
 
   coverage:
     name: Code Coverage (cargo-llvm-cov)
@@ -185,8 +185,8 @@ jobs:
 
       - name: Generate Code Coverage Report (LCOV & Summary)
         run: |
-          cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
-          cargo llvm-cov --all-features --workspace --summary-only
+          cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info -- --include-ignored
+          cargo llvm-cov --all-features --workspace --summary-only -- --include-ignored
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
