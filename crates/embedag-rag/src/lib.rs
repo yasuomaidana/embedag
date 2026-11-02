@@ -19,3 +19,8 @@ pub use expansion::{
 pub use index::{DenseVectorIndex, IndexError, LexicalDocument, SparseLexicalIndex};
 pub use oxirag_engine::{OxiRagEngine, RagError};
 pub use rrf::{RrfCandidate, RrfRanker};
+
+/// Compiles the Rust examples of the crate README as doctests, so they cannot drift from the code.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;

@@ -16,3 +16,8 @@ pub use engine::OxiRsTdbEngine;
 pub use error::OxiRsStorageError;
 pub use mapping::{SchemaVocab, make_graph_name, make_node_iri};
 pub use oxirs_core::rdf_store::{OxirsQueryResults, QueryResults};
+
+/// Compiles the Rust examples of the crate README as doctests, so they cannot drift from the code.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
