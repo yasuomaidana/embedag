@@ -4,6 +4,9 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ## [Unreleased]
 
+### Added
+- CI: `.github/workflows/complexity.yml` cross-checks function complexity with clippy `cognitive_complexity` and `lizard`; report only while EMBEDAG-86 is open (EMBEDAG-85).
+
 ## [0.1.0]
 
 First release. Milestones 1 to 8 of the development plan are complete; Milestone 9 is partly done.
