@@ -1,6 +1,6 @@
 # Project Status & Ticket Log
 
-**Progress:** 55/71 completed (77%) — **Milestones 1–8 COMPLETE**; Milestone 9 (dependency resolution & code-graph APIs) in progress; Milestone 10 (embeddings, vector search & classification primitives) planned
+**Progress:** 56/71 completed (79%) — **Milestones 1–8 COMPLETE**; Milestone 9 (dependency resolution & code-graph APIs) in progress; Milestone 10 (embeddings, vector search & classification primitives) planned
 **Current Focus:** All milestone development tickets completed (`Milestone 7` delivered: `embedag-surrealdb` & `embedag-neo4j`)
 
 ---
@@ -85,7 +85,7 @@ Slim, dependency-light graph APIs for dependency schedulers, change detectors an
 - [ ] Ticket 9.2.2: Work-item prioritisation — downstream unblock weights with distance decay plus critical-path scheduling over item/milestone DAGs (`embedag-core`)
 - [ ] Ticket 9.3.1: Merkle journal verification — recompute and compare Merkle roots of append-only state journals, with a canonical wire format for trees (`embedag-core`)
 - [ ] Ticket 9.4.1: Leiden community clustering and god-node (high in-degree) index for code-knowledge graphs (`embedag-rag`)
-- [ ] Ticket 9.5.1: Public SCC detection & condensation API for possibly-cyclic graphs (cyclic input → condensed DAG + component membership) (`embedag-core`)
+- [x] Ticket 9.5.1: Public SCC detection & condensation API for possibly-cyclic graphs (cyclic input → condensed DAG + component membership) (`embedag-core`)
 
 ### Milestone 10: Text Embeddings, Vector Search & Classification Primitives
 - [x] Ticket 10.0.1: Local inference priority: GPU-capable candle first, Ollama-compatible HTTP next, oxillama last (CPU-only prefill) (`embedag-llm`)

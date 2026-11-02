@@ -12,6 +12,7 @@ First release. Milestones 1 to 8 of the development plan are complete; Milestone
 - `embedag-core`: domain contracts, the `MemoryDag` arena with cycle guards and typestate mutation plans, deterministic scalar, temporal and H3 geospatial encoders with a hybrid distance metric, an `embedag_core::testing` fixture module.
 - `embedag::dag`: toposort, levels, reverse dependencies and critical path, and `embedag::dag::merkle` BLAKE3 Merkle delta trees (Milestone 9, ticket 9.1.1), consumed by dendrite-core-rs and dendrite-rag-rs with features `core` and `matcher`.
 - `embedag-matcher`: structural AST similarity and similarity graphs.
+- `embedag-core`: Iterative Tarjan strongly connected components (`strongly_connected_components`) and acyclic condensation API (`condense`, `Condensation`) for plain index graphs, re-exported under `embedag::dag` (Ticket 9.5.1).
 - `embedag-derive`: `AsGraphContext`, `GraphTarget` and `HierarchicalModel` derives.
 - `embedag-llm`: schema and GBNF derivation, constrained extraction, candle (GPU first), Ollama-compatible HTTP and oxillama inference, waterfall resolution, delta synthesizer.
 - `embedag-diesel`: PostgreSQL (pgvector), SQLite and Turso / libSQL persistence, recursive-CTE traversals, dynamic graph mutations.
@@ -27,7 +28,7 @@ First release. Milestones 1 to 8 of the development plan are complete; Milestone
 - Compatible dependency bumps (libsqlite3-sys, syn 3, parking_lot, jsonschema, diesel, tokio-postgres, pgvector, proptest, tempfile).
 
 ### Not in this release
-- Milestone 9 open tickets: multi-root dependency manifests, work-item prioritisation, Merkle journal verification, Leiden clustering with a god-node index, public SCC condensation.
+- Milestone 9 open tickets: multi-root dependency manifests, work-item prioritisation, Merkle journal verification, Leiden clustering with a god-node index.
 - Milestone 10 (text embeddings, vector search, classification primitives) is specified only.
 - Rust test coverage is not gated yet (tracked in the Dendrite project as DEN-1060).
 

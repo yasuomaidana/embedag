@@ -26,7 +26,7 @@ embedag = { git = "https://github.com/yasuomaidana/embedag", default-features = 
 
 | Path | Feature | Re-exports |
 |---|---|---|
-| `embedag::dag` | `core` | `MemoryDag`, `DagError`, `toposort`, `levels`, `reverse_deps`, `critical_path` |
+| `embedag::dag` | `core` | `MemoryDag`, `DagError`, `toposort`, `levels`, `reverse_deps`, `critical_path`, `condense`, `strongly_connected_components`, `Condensation` |
 | `embedag::dag::merkle` | `core` | `MerkleNode`, `Delta`, `diff` |
 | `embedag::matcher` | `matcher` | `Tree`, `AstMatcher`, `Matcher`, `SimilarityGraph` |
 
@@ -49,19 +49,30 @@ Typical uses:
 
 Cycle errors list the participating nodes, so callers can report the offending dependency loop.
 
-## 4. Merkle trees and structural deltas (`embedag_core::merkle`)
+## 4. Strongly connected components & condensation (`embedag_core::scc`)
 
-### 4.1 Hashing
+While `MemoryDag` models strictly acyclic workflows, real-world dependency inputs (e.g. package graphs, circular imports, or legacy schemas) may contain cycles. The SCC module operates on raw index graphs `(node_count, edges)` to detect cycles and condense them into a strict DAG.
+
+| Function | Result | Algorithm | Guarantees |
+|---|---|---|---|
+| `strongly_connected_components(node_count, edges)` | `Result<Vec<Vec<usize>>, DagError>` | Iterative Tarjan | No recursion (safe on 100k+ node chains); components returned in reverse topological order of condensation (a component comes after everything it points to); nodes in each component sorted ascending; ties broken by node index. |
+| `condense(node_count, edges)` | `Result<Condensation, DagError>` | Iterative Tarjan + Kahn topological sort | Condensation graph with components as super-nodes; `membership[node]` maps to component index; condensation `edges` deduplicated, sorted, without self-loops; `order` gives a topological sort of components (sources first); strictly acyclic. |
+
+If an edge references a node index `>= node_count`, both functions return `Err(DagError::NodeIndexOutOfBounds { index, node_count })`.
+
+## 5. Merkle trees and structural deltas (`embedag_core::merkle`)
+
+### 5.1 Hashing
 - **Leaf:** `blake3("l" ‖ key ‖ content)`
 - **Branch:** `blake3("b" ‖ key ‖ (child.key ‖ child.hash)*)`, with children sorted by key
 
 The prefixes keep leaves and branches from colliding. Sorting makes the root hash independent of insertion order. These byte layouts are the canonical wire format: any other implementation verifying embedag trees must reproduce them exactly.
 
-### 4.2 Construction
+### 5.2 Construction
 - `MerkleNode::leaf(key, content)` and `MerkleNode::branch(key, children)` build trees explicitly.
 - `MerkleNode::from_paths(root, [(path, bytes)])` builds a directory tree from `a/b/c.rs`-style relative paths. Empty path segments are ignored, and the result does not depend on iteration order. Callers that already have per-file digests can pass the digest as `bytes`, which avoids holding file contents in memory.
 
-### 4.3 Diff
+### 5.3 Diff
 `diff(&old, &new) -> Delta { added, removed, changed }`. Paths are `/`-joined keys from the root.
 
 Equal hashes prune whole subtrees, so the cost is proportional to the *changed* part of the tree, not its size. `changed` covers both content changes and leaf↔branch kind changes. `Delta::is_empty()` is the fast "nothing changed" check. An internal counting variant records how many nodes were visited, so the crate's tests assert the pruning.
@@ -72,18 +83,17 @@ Typical uses:
 - state-journal verification: compare the recorded root with the recomputed root,
 - synchronisation: exchange roots, then descend only into differing subtrees.
 
-## 5. Structural similarity (`embedag-matcher`)
+## 6. Structural similarity (`embedag-matcher`)
 
 - **`Tree`:** a language-agnostic labelled syntax tree. Any parser's output can be converted into it.
 - **`AstMatcher`** (implements `Matcher`): structural similarity in `[0, 1]` as the weighted Jaccard index over the multisets of subtree structural hashes. Each subtree of at least `min_subtree` nodes contributes its hash, weighted by its size. Hashes cover shape, not labels, so renamed identifiers still score `1.0`, while structurally different trees score near `0.0`.
 - **`SimilarityGraph::build(items, matcher, threshold)`:** an undirected weighted graph (`petgraph::UnGraph`) of the pairs scoring at least `threshold`. `neighbors(id)` lists similar items, and `clusters()` returns connected components: groups of duplicated or near-duplicated code.
 
-## 6. Guarantees
+## 7. Guarantees
 
 - No I/O, no global state, no async runtime in this surface.
 - All outputs are deterministic and stable across releases within a major version. A change to hashing layouts or tie-breaking is a breaking change.
 - Planned extensions to this surface (DEV_STATUS Milestone 9):
-  - SCC detection and condensation for possibly-cyclic input,
   - multi-root dependency manifests,
   - priority weights with distance decay,
   - Merkle journal verification,

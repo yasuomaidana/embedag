@@ -39,12 +39,13 @@
 #[cfg(feature = "core")]
 pub use embedag_core as core;
 
-/// Dependency-graph API: DAG arena, deterministic resolution, and Merkle deltas.
+/// Dependency-graph API: DAG arena, deterministic resolution, strongly connected components, and Merkle deltas.
 #[cfg(feature = "core")]
 pub mod dag {
     pub use embedag_core::dag::*;
     pub use embedag_core::error::DagError;
     pub use embedag_core::resolve::{critical_path, levels, reverse_deps, toposort};
+    pub use embedag_core::scc::{Condensation, condense, strongly_connected_components};
     /// Content-addressed Merkle trees for change detection.
     pub mod merkle {
         pub use embedag_core::merkle::*;
@@ -83,6 +84,7 @@ pub use embedag_core::{
     error::DagError,
     model::{EdgePayload, GraphTarget, MultimodalBlob, ProvenanceKind},
     mutation::{Committed, CycleValidated, MutationDirective, MutationPlan, Unverified},
+    scc::Condensation,
     traits::{
         AsGraphContext, NodePayload, ReadOnlyGraphRepository, TransactionalGraphRepository,
         VectorSearchRepository,

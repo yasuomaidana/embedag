@@ -16,6 +16,7 @@
 //! - [`model`]: Core value types including edges, classification targets, and media blobs.
 //! - [`mutation`]: Typestate mutation plans and atomic graph modification directives.
 //! - [`resolve`]: Deterministic DAG dependency resolution, topological sorting, levels, reverse dependencies, and critical paths.
+//! - [`scc`]: Strongly connected components (iterative Tarjan) and acyclic condensation for index graphs.
 //! - `testing`: a plain node payload for tests (feature `testing`).
 //! - [`similarity`]: Cosine ranking over small in-memory embedding indexes.
 //! - [`traits`]: Contracts for graph ingestion ([`AsGraphContext`]), node payloads ([`NodePayload`]), and capability storage ports.
@@ -36,6 +37,7 @@ pub mod model;
 pub mod mutation;
 pub mod pagination;
 pub mod resolve;
+pub mod scc;
 pub mod similarity;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
@@ -58,6 +60,7 @@ pub use migration::{GraphMigration, MigrationStep};
 pub use model::{EdgePayload, FeatureMap, GraphTarget, MultimodalBlob, ProvenanceKind, TagMap};
 pub use mutation::{Committed, CycleValidated, MutationDirective, MutationPlan, Unverified};
 pub use pagination::{NeighborPage, NeighborPageRequest};
+pub use scc::{Condensation, condense, strongly_connected_components};
 pub use traits::{
     AsGraphContext, DynNodePayload, GraphRepository, NodePayload, ReadOnlyGraphRepository,
     TransactionalGraphRepository, VectorSearchRepository,
