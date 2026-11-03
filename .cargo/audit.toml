@@ -1,7 +1,8 @@
 # Advisories no change in this repository can fix: the vulnerable versions are required by the
 # latest release of an upstream crate. Tracked in https://github.com/yasuomaidana/embedag/issues/2
 # (EMBEDAG-81). Any other advisory still fails `cargo audit`; drop an entry as soon as a
-# dependency update removes its crate from Cargo.lock.
+# dependency update removes its crate from Cargo.lock; scripts/check-audit-ignores.sh (workflow
+# audit-ignores.yml) fails when one no longer applies.
 
 [advisories]
 ignore = [
@@ -14,10 +15,6 @@ ignore = [
     "RUSTSEC-2026-0099",
     "RUSTSEC-2026-0104",
     "RUSTSEC-2026-0382",
-    # zip 8.6: candle-core 0.11.0.
-    "RUSTSEC-2026-0367",
-    "RUSTSEC-2026-0368",
-    "RUSTSEC-2026-0369",
     # quick-xml 0.37 (oxirs-core via oxrdfxml) and 0.39 (surrealdb-core via object_store).
     "RUSTSEC-2026-0194",
     "RUSTSEC-2026-0195",
