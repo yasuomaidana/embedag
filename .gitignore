@@ -3,3 +3,4 @@
 graphify-out/
 # Per-machine Dendrite runtime state
 .dendrite/jobs/
+.dendrite/
