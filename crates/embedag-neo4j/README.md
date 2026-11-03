@@ -69,7 +69,7 @@ Within the workspace:
 - `embedag-neo4j` depends on [`embedag-core`](../embedag-core/README.md) (`MemoryDag`, `NodePayload`, `EdgePayload`, `MutationDirective`, `rank_by_cosine`, repository traits) and `neo4rs`.
 - [`embedag`](../embedag/README.md) re-exports `embedag-neo4j` under `embedag::neo4j` and `embedag::prelude` when the `neo4j` feature is enabled.
 
-Across the Dendrite repositories (`dendrite-core-rs`, `dendrite-git-rs`, `dendrite-rag-rs`, `dendrite-plane-rs`, and the Dendrite control plane), `embedag-neo4j` provides an OpenCypher/Bolt `GraphRepository<T>` implementation for deployments that back their knowledge graph with Neo4j or Memgraph.
+No Dendrite repository depends on this crate today.
 
 ## Build and test
 

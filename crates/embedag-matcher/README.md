@@ -69,10 +69,7 @@ fn main() {
 
 Within the workspace, `embedag-matcher` depends only on `embedag-core`, `petgraph`, `blake3`, and `thiserror`, and is re-exported by [`embedag`](../embedag/README.md) under the `matcher` feature (`embedag::matcher`).
 
-Across the Dendrite repositories:
-
-- `dendrite-git-rs` uses `embedag-matcher` (`Tree`, `AstMatcher`, `SimilarityGraph`) to detect structural code clones and cross-file AST similarity across commits and worktrees without coupling the matcher to a specific programming language.
-- `dendrite-rag-rs` and the Dendrite control plane can combine `SimilarityGraph` clusters with [`embedag-rag`](../embedag-rag/README.md) to surface structurally related code or configuration units during retrieval.
+No Dendrite repository depends on this crate today.
 
 ## Build and test
 

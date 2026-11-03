@@ -82,7 +82,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Within the workspace, `embedag-example-receipts` is a leaf example crate that exercises [`embedag-core`](../embedag-core/README.md), [`embedag-derive`](../embedag-derive/README.md), [`embedag-diesel`](../embedag-diesel/README.md), and [`embedag-llm`](../embedag-llm/README.md) together in end-to-end SQLite and Testcontainers PostgreSQL tests (`tests/finance_categorization_e2e.rs`, `tests/postgres_Categorization_e2e.rs`).
 
-It is not depended upon by any of the sibling Dendrite repositories (`dendrite-core-rs`, `dendrite-git-rs`, `dendrite-rag-rs`, `dendrite-plane-rs`, or the Dendrite control plane), but serves as the concrete reference for how downstream applications define domain models, derive macros, recursive CTE schemas, and LLM extraction pipelines with `embedag`.
+No Dendrite repository depends on this crate today.
 
 ## Build and test
 

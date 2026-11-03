@@ -85,12 +85,7 @@ fn main() -> Result<(), DagError> {
 
 Within the `embedag` workspace, this crate sits at the top of the dependency DAG and contains no logic of its own beyond re-exports and end-to-end integration tests (`crates/embedag/tests/e2e_pipeline.rs`).
 
-Across the Dendrite repositories (`dendrite-core-rs`, `dendrite-git-rs`, `dendrite-rag-rs`, `dendrite-plane-rs`, and the Dendrite control plane), downstream crates typically depend on targeted sub-crates (`embedag-core`, `embedag-matcher`, `embedag-rag`, `embedag-diesel`) rather than the `full` facade to keep dependency graphs minimal:
-
-- `dendrite-core-rs` and `dendrite-plane-rs` use `embedag-core` for dependency resolution (`resolve::toposort`, `levels`, `reverse_deps`, `critical_path`) and BLAKE3 Merkle diffing (`merkle::MerkleNode`, `merkle::diff`).
-- `dendrite-git-rs` uses `embedag-matcher` for language-agnostic AST similarity and `embedag-core::merkle` for tree-level structural diffs.
-- `dendrite-rag-rs` uses `embedag-rag` and `embedag-core` for reciprocal rank fusion, topological decay expansion, and Leiden clustering.
-- The Dendrite control plane uses `embedag-core`, `embedag-diesel`, `embedag-llm`, and `embedag-rag` for ticket/repository DAG validation, relational persistence, and Graph-RAG context assembly.
+Outside this workspace, `dendrite-rag-rs` (crate `loom-rag`) is the only Dendrite repository that depends on embedag today. It uses feature `core` for `embedag::dag::merkle` (`MerkleNode`, `diff`) in incremental change detection. The other Dendrite repositories do not depend on embedag yet; planned uses are listed in `DEV_STATUS.md` and the Dendrite tickets (for example the SCC API for dendrite-git-rs).
 
 ## Build and test
 

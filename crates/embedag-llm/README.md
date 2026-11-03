@@ -83,7 +83,7 @@ Within the workspace:
 - [`embedag-example-receipts`](../embedag-example-receipts/README.md) uses `embedag-llm` (`PromptFormatter`, `LlmProvider`, `CandleProvider`, `WaterfallPipeline`, `SemanticDeltaSynthesizer`, `ChangesetDiffEngine`) to categorize receipts and invoices into hierarchical taxonomies.
 - [`embedag`](../embedag/README.md) re-exports `embedag-llm` under `embedag::llm` and `embedag::prelude`.
 
-Across the Dendrite repositories (`dendrite-core-rs`, `dendrite-git-rs`, `dendrite-rag-rs`, `dendrite-plane-rs`, and the Dendrite control plane), `embedag-llm` supplies constrained JSON Schema/GBNF grammar compilation and waterfall entity resolution for control-plane ingestion workflows that map unstructured ticket or commit descriptions onto existing graph nodes.
+No Dendrite repository depends on this crate today.
 
 ## Build and test
 

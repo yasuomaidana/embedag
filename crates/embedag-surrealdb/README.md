@@ -70,7 +70,7 @@ Within the workspace:
 - `embedag-surrealdb` depends on [`embedag-core`](../embedag-core/README.md) (`MemoryDag`, `NodePayload`, `EdgePayload`, `MutationDirective`, `rank_by_cosine`, repository traits) and `surrealdb`.
 - [`embedag`](../embedag/README.md) re-exports `embedag-surrealdb` under `embedag::surrealdb` and `embedag::prelude` when the `surrealdb` feature is enabled.
 
-Across the Dendrite repositories (`dendrite-core-rs`, `dendrite-git-rs`, `dendrite-rag-rs`, `dendrite-plane-rs`, and the Dendrite control plane), `embedag-surrealdb` serves as an interchangeable `GraphRepository<T>` backend when a multi-model document/graph engine is preferred over SQL or RDF storage.
+No Dendrite repository depends on this crate today.
 
 ## Build and test
 

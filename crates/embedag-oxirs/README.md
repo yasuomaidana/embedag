@@ -69,7 +69,7 @@ Within the workspace:
 - `embedag-oxirs` depends on [`embedag-core`](../embedag-core/README.md) (`MemoryDag`, `NodePayload`, `EdgePayload`, `rank_by_cosine`, repository traits) and `oxirs-core`.
 - [`embedag`](../embedag/README.md) re-exports `embedag-oxirs` under `embedag::oxirs` and `embedag::prelude` when the `oxirs-tdb` feature is enabled.
 
-Across the Dendrite repositories (`dendrite-core-rs`, `dendrite-git-rs`, `dendrite-rag-rs`, `dendrite-plane-rs`, and the Dendrite control plane), `embedag-oxirs` provides a zero-daemon embedded RDF/SPARQL persistence option for exporting and querying knowledge graphs using standard W3C vocabularies.
+No Dendrite repository depends on this crate today.
 
 ## Build and test
 

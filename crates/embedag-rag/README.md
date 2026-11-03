@@ -82,10 +82,7 @@ Within the workspace:
 - `embedag-rag` depends on [`embedag-core`](../embedag-core/README.md) (`MemoryDag`, `NodePayload`, `EdgePayload`, `rank_by_cosine`) and `oxirag`.
 - [`embedag`](../embedag/README.md) re-exports `embedag-rag` under `embedag::rag` and `embedag::prelude`.
 
-Across the Dendrite repositories:
-
-- `dendrite-rag-rs` directly consumes `embedag-rag` (`ReciprocalRankFusion`, `SubgraphExpander`, `LeidenClusterer`, `EvidenceSynthesizer`, `HybridRagEngine`) for hybrid vector + lexical code/document retrieval and graph-expanded context assembly.
-- The Dendrite control plane uses `embedag-rag` to assemble provenance-backed context windows over ticket and architecture graphs.
+No Dendrite repository depends on this crate today.
 
 ## Build and test
 

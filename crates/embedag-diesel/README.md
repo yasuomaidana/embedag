@@ -89,7 +89,7 @@ Within the workspace:
 - [`embedag-example-receipts`](../embedag-example-receipts/README.md) uses `embedag-diesel` to persist and traverse receipt and financial category hierarchies across SQLite and PostgreSQL.
 - [`embedag`](../embedag/README.md) re-exports `embedag-diesel` under `embedag::diesel` and forwards the `turso` and `turso-async` feature flags.
 
-Across the Dendrite repositories (`dendrite-core-rs`, `dendrite-git-rs`, `dendrite-rag-rs`, `dendrite-plane-rs`, and the Dendrite control plane), `embedag-diesel` provides the relational persistence and recursive CTE traversal engine for control-plane hierarchies stored in SQLite, Turso / libSQL, or PostgreSQL.
+No Dendrite repository depends on this crate today.
 
 ## Build and test
 

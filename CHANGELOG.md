@@ -13,7 +13,7 @@ First release. Milestones 1 to 8 of the development plan are complete; Milestone
 
 ### Added
 - `embedag-core`: domain contracts, the `MemoryDag` arena with cycle guards and typestate mutation plans, deterministic scalar, temporal and H3 geospatial encoders with a hybrid distance metric, an `embedag_core::testing` fixture module.
-- `embedag::dag`: toposort, levels, reverse dependencies and critical path, and `embedag::dag::merkle` BLAKE3 Merkle delta trees (Milestone 9, ticket 9.1.1), consumed by dendrite-core-rs and dendrite-rag-rs with features `core` and `matcher`.
+- `embedag::dag`: toposort, levels, reverse dependencies and critical path, and `embedag::dag::merkle` BLAKE3 Merkle delta trees (Milestone 9, ticket 9.1.1), used today by dendrite-rag-rs, with feature `core`, for the Merkle delta trees.
 - `embedag-matcher`: structural AST similarity and similarity graphs.
 - `embedag-core`: Iterative Tarjan strongly connected components (`strongly_connected_components`) and acyclic condensation API (`condense`, `Condensation`) for plain index graphs, re-exported under `embedag::dag` (Ticket 9.5.1).
 - `embedag-derive`: `AsGraphContext`, `GraphTarget` and `HierarchicalModel` derives.

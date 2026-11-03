@@ -103,12 +103,7 @@ fn main() -> Result<(), DagError> {
 
 Every other crate in the `embedag` workspace (except the `embedag-derive` proc-macro crate) depends on `embedag-core` for `MemoryDag`, `NodePayload`, `EdgePayload`, `DagError`, and repository traits.
 
-In the broader Dendrite ecosystem:
-
-- `dendrite-core-rs` and `dendrite-plane-rs` use `embedag_core::resolve` (`toposort`, `levels`, `reverse_deps`, `critical_path`) to schedule multi-repo builds, compute change impact sets, and identify critical paths across task graphs.
-- `dendrite-git-rs` and `dendrite-core-rs` use `embedag_core::merkle` (`MerkleNode`, `diff`) for content-addressed worktree and manifest delta computation.
-- `dendrite-rag-rs` builds on `MemoryDag<T>` and `rank_by_cosine` for graph-backed retrieval.
-- The Dendrite control plane uses `MutationPlan` and `MemoryDag` to enforce cycle-free ticket and repository dependency graphs.
+Outside this workspace, `dendrite-rag-rs` (crate `loom-rag`) is the only Dendrite repository that depends on embedag today. It uses feature `core` for `embedag::dag::merkle` (`MerkleNode`, `diff`) in incremental change detection. The other Dendrite repositories do not depend on embedag yet; planned uses are listed in `DEV_STATUS.md` and the Dendrite tickets (for example the SCC API for dendrite-git-rs).
 
 ## Build and test
 

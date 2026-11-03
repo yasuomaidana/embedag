@@ -99,7 +99,7 @@ Within the workspace:
 - [`embedag-example-receipts`](../embedag-example-receipts/README.md) uses `#[derive(AsGraphContext)]`, `#[derive(GraphTarget)]`, and `#[derive(HierarchicalModel)]` across its receipt and multi-DAG finance taxonomy models.
 - [`embedag`](../embedag/README.md) re-exports all three derive macros under `embedag::derive` and `embedag::prelude`.
 
-Across the Dendrite repositories (`dendrite-core-rs`, `dendrite-git-rs`, `dendrite-rag-rs`, `dendrite-plane-rs`, and the Dendrite control plane), `embedag-derive` is used by control-plane and RAG domain models that project task, ticket, or document metadata into `GraphContext` or relational adjacency tables.
+No Dendrite repository depends on this crate today.
 
 ## Build and test
 
