@@ -30,7 +30,7 @@ Do not use `embedag-surrealdb` when you need SQL `WITH RECURSIVE` CTEs over exis
 
 ### Example
 
-```rust
+```rust,no_run
 use embedag_core::dag::MemoryDag;
 use embedag_core::model::{EdgePayload, ProvenanceKind};
 use embedag_surrealdb::SurrealDbEngine;
