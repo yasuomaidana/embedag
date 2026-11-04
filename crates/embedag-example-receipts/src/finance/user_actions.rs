@@ -29,9 +29,13 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
             // Add edge in DAG connecting old category to new category
             if let Ok(edge) = EdgePayload::new("SPECIALIZED_AS", 1.0, ProvenanceKind::HumanVerified)
             {
-                let _ =
-                    self.merchant_dag
-                        .add_edge_by_keys(&merchant.category_id, &new_cat_id, edge);
+                if self
+                    .merchant_dag
+                    .add_edge_by_keys(&merchant.category_id, &new_cat_id, edge)
+                    .is_err()
+                {
+                    return false;
+                }
             }
 
             merchant.category_id = new_cat_id;
@@ -66,9 +70,13 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
         });
 
         if let Ok(edge) = EdgePayload::new("SUB_CATEGORY_OF", 1.0, ProvenanceKind::HumanVerified) {
-            let _ = self
+            if self
                 .item_dag
-                .add_edge_by_keys(&parent_item_cat_key, &new_item_cat_key, edge);
+                .add_edge_by_keys(&parent_item_cat_key, &new_item_cat_key, edge)
+                .is_err()
+            {
+                return 0;
+            }
         }
 
         // Also add "Luxury" to purchase_dag if not present

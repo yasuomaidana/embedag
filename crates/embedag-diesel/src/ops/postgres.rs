@@ -4,6 +4,10 @@ use super::descriptor::*;
 use super::error::PersistenceError;
 use super::records::*;
 
+fn quoted_identifier(value: &str) -> String {
+    format!("\"{}\"", value.replace('"', "\"\""))
+}
+
 /// Executes an operation wrapped in an isolated SQL `SAVEPOINT`.
 /// Automatically rolls back to the savepoint on error without aborting the enclosing outer transaction.
 #[cfg(feature = "postgres-async")]
@@ -16,17 +20,18 @@ where
     F: FnOnce() -> Fut,
     Fut: std::future::Future<Output = Result<T, PersistenceError>>,
 {
-    tx.batch_execute(&format!("SAVEPOINT {savepoint_name};"))
+    let savepoint = quoted_identifier(savepoint_name);
+    tx.batch_execute(&format!("SAVEPOINT {savepoint};"))
         .await?;
 
     match operation().await {
         Ok(val) => {
-            tx.batch_execute(&format!("RELEASE SAVEPOINT {savepoint_name};"))
+            tx.batch_execute(&format!("RELEASE SAVEPOINT {savepoint};"))
                 .await?;
             Ok(val)
         }
         Err(e) => {
-            tx.batch_execute(&format!("ROLLBACK TO SAVEPOINT {savepoint_name};"))
+            tx.batch_execute(&format!("ROLLBACK TO SAVEPOINT {savepoint};"))
                 .await?;
             Err(e)
         }

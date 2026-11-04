@@ -2,6 +2,7 @@ use embedag_diesel::cte::HierarchicalNode;
 use embedag_example_receipts::finance::*;
 mod common;
 
+use chrono::{DateTime, Utc};
 use common::Backend;
 use rstest::rstest;
 use std::collections::HashMap;
@@ -18,6 +19,17 @@ fn variant(name: &str, units_count: u32, package_type: &str) -> ProductVariant {
         units_count,
         package_type: package_type.into(),
     }
+}
+
+#[test]
+fn test_parse_date_rejects_invalid_input() {
+    assert!(parse_date("not-a-date").is_none());
+    assert_eq!(
+        parse_date("2026-05-18").unwrap(),
+        DateTime::parse_from_rfc3339("2026-05-18T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc)
+    );
 }
 
 fn merchant(
@@ -63,7 +75,7 @@ async fn test_finance_invoice_categorization_llm_decided_and_time_dependency(
     let inv1 = FinanceInvoice::new(
         "INV-CANDLE-01",
         "m_metro_market",
-        parse_date("2026-05-18"),
+        parse_date("2026-05-18").unwrap(),
         vec![
             item(
                 "item_snickers_pack",
@@ -114,7 +126,7 @@ async fn test_finance_invoice_categorization_llm_decided_and_time_dependency(
     let inv2 = FinanceInvoice::new(
         "INV-CANDLE-02",
         "m_metro_market",
-        parse_date("2026-12-25"),
+        parse_date("2026-12-25").unwrap(),
         vec![item(
             "item_ferrero_box16",
             "Ferrero Rocher (Box of 16 Festive Edition)",
@@ -153,7 +165,7 @@ async fn test_finance_invoice_categorization_llm_decided_and_time_dependency(
     let inv3 = FinanceInvoice {
         invoice_id: "INV-CANDLE-03".into(),
         merchant_id: "m_metro_market".into(),
-        date: parse_date("2026-07-15"),
+        date: parse_date("2026-07-15").unwrap(),
         purchase_content: Some("today is John's birthday".into()),
         items: vec![item(
             "item_ferrero_bday",
@@ -262,7 +274,7 @@ async fn test_finance_invoice_categorization_custom_density_and_user_overrides(
     let inv = FinanceInvoice::new(
         "INV-CANDLE-DENSITY-01",
         "m_city_mart",
-        parse_date("2026-07-04"),
+        parse_date("2026-07-04").unwrap(),
         lines,
         total,
     );
@@ -370,7 +382,7 @@ async fn test_finance_invoice_walmart_vs_prada_tshirt_categorization(
     let walmart_invoice = FinanceInvoice::new(
         "INV-CANDLE-WALMART-01",
         "m_walmart",
-        parse_date("2026-06-15"),
+        parse_date("2026-06-15").unwrap(),
         vec![item(
             "item_tshirt_walmart",
             "Cotton Crewneck T-Shirt",
@@ -416,7 +428,7 @@ async fn test_finance_invoice_walmart_vs_prada_tshirt_categorization(
     let prada_invoice = FinanceInvoice::new(
         "INV-CANDLE-PRADA-01",
         "m_prada",
-        parse_date("2026-06-16"),
+        parse_date("2026-06-16").unwrap(),
         vec![item(
             "item_tshirt_prada",
             "Cotton Crewneck T-Shirt",
@@ -484,7 +496,7 @@ async fn test_finance_invoice_pure_llm_and_purchase_content_context(
     let inv_self = FinanceInvoice::new(
         "INV-SELF-BDAY",
         "m_boutique",
-        parse_date("2026-08-20"),
+        parse_date("2026-08-20").unwrap(),
         vec![InvoiceItem::new(
             "item_jacket",
             "Wool Tailored Jacket",
@@ -513,7 +525,7 @@ async fn test_finance_invoice_pure_llm_and_purchase_content_context(
     let inv_gift = FinanceInvoice::new(
         "INV-FRIEND-BDAY",
         "m_boutique",
-        parse_date("2026-08-21"),
+        parse_date("2026-08-21").unwrap(),
         vec![InvoiceItem::new(
             "item_scarf",
             "Silk Printed Scarf",

@@ -48,21 +48,21 @@ impl FinanceInvoice {
 pub type InvoiceTicket = FinanceInvoice;
 
 /// Helper function to parse an ISO-8601 or YYYY-MM-DD date string into DateTime<Utc>.
-pub fn parse_date(date_str: &str) -> DateTime<Utc> {
+pub fn parse_date(date_str: &str) -> Option<DateTime<Utc>> {
     if let Ok(dt) = date_str.parse::<DateTime<Utc>>() {
-        return dt;
+        return Some(dt);
     }
     let fmt_dt = "%Y-%m-%d %H:%M:%S";
     if let Ok(naive_dt) = NaiveDateTime::parse_from_str(date_str, fmt_dt) {
-        return DateTime::<Utc>::from_naive_utc_and_offset(naive_dt, Utc);
+        return Some(DateTime::<Utc>::from_naive_utc_and_offset(naive_dt, Utc));
     }
     let fmt_d = "%Y-%m-%d";
     if let Ok(naive_d) = NaiveDate::parse_from_str(date_str, fmt_d)
         && let Some(naive_dt) = naive_d.and_hms_opt(12, 0, 0)
     {
-        return DateTime::<Utc>::from_naive_utc_and_offset(naive_dt, Utc);
+        return Some(DateTime::<Utc>::from_naive_utc_and_offset(naive_dt, Utc));
     }
-    Utc::now()
+    None
 }
 
 /// Line item in a purchase ticket invoice (pure DTO, no pre-assigned semantic flags).

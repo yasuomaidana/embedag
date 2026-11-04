@@ -28,6 +28,10 @@ pub(super) struct CteSql {
     pub(super) body: String,
 }
 
+fn sql_literal(value: &str) -> String {
+    value.replace('\'', "''")
+}
+
 impl CteSql {
     /// The complete `WITH RECURSIVE` statement, for backends that run raw SQL.
     #[cfg(feature = "turso-async")]
@@ -70,7 +74,8 @@ pub(super) fn ancestors(
         seed: format!(
             "SELECT {id_col} AS curr_id, {parent_col} AS parent_ref, 0 AS depth, {name_col} AS curr_name \
              FROM {table} \
-             WHERE {id_col} = '{target_id}'"
+             WHERE {id_col} = '{}'",
+            sql_literal(target_id)
         ),
         step: format!(
             "SELECT {t_id}, {t_parent}, a.depth + 1, {t_name} \
@@ -120,7 +125,8 @@ pub(super) fn descendants(
         seed: format!(
             "SELECT {id_col} AS curr_id, 0 AS depth, {name_col} AS curr_name \
              FROM {table} \
-             WHERE {id_col} = '{root_id}'"
+             WHERE {id_col} = '{}'",
+            sql_literal(root_id)
         ),
         step: format!(
             "SELECT {t_id}, d.depth + 1, {t_name} \

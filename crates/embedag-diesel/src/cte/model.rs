@@ -48,6 +48,10 @@ macro_rules! pg_async_traversals {
 /// Trait implemented by models representing hierarchical tables (derived via `#[derive(HierarchicalModel)]`).
 ///
 /// Automatically generates type-safe Diesel CTE queries, column mappings, and step queries.
+fn sql_literal(value: &str) -> String {
+    value.replace('\'', "''")
+}
+
 pub trait HierarchicalModel {
     /// Name of the relational table.
     fn table_name() -> &'static str;
@@ -124,7 +128,7 @@ pub trait HierarchicalModel {
             Self::name_column(),
             Self::table_name(),
             Self::id_column(),
-            target_id
+            sql_literal(target_id)
         )
     }
 
@@ -153,7 +157,7 @@ pub trait HierarchicalModel {
             Self::name_column(),
             Self::table_name(),
             Self::id_column(),
-            root_id
+            sql_literal(root_id)
         )
     }
 }

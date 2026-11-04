@@ -3,6 +3,10 @@
 use super::error::PersistenceError;
 use super::records::*;
 
+fn quoted_identifier(value: &str) -> String {
+    format!("\"{}\"", value.replace('"', "\"\""))
+}
+
 /// Executes an operation wrapped in an isolated SQL `SAVEPOINT` on Turso / libSQL via `diesel-async`.
 /// Automatically rolls back to the savepoint on error without aborting the enclosing outer transaction.
 #[cfg(feature = "turso-async")]
@@ -20,19 +24,20 @@ where
     T: Send,
 {
     use diesel_async::SimpleAsyncConnection;
-    conn.batch_execute(&format!("SAVEPOINT {savepoint_name};"))
+    let savepoint = quoted_identifier(savepoint_name);
+    conn.batch_execute(&format!("SAVEPOINT {savepoint};"))
         .await
         .map_err(PersistenceError::Diesel)?;
 
     match operation(conn).await {
         Ok(val) => {
-            conn.batch_execute(&format!("RELEASE SAVEPOINT {savepoint_name};"))
+            conn.batch_execute(&format!("RELEASE SAVEPOINT {savepoint};"))
                 .await
                 .map_err(PersistenceError::Diesel)?;
             Ok(val)
         }
         Err(e) => {
-            conn.batch_execute(&format!("ROLLBACK TO SAVEPOINT {savepoint_name};"))
+            conn.batch_execute(&format!("ROLLBACK TO SAVEPOINT {savepoint};"))
                 .await
                 .map_err(PersistenceError::Diesel)?;
             Err(e)

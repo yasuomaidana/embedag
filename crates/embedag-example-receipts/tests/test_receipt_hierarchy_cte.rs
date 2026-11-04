@@ -85,7 +85,7 @@ fn test_developer_custom_migration_and_invoice_categorization_cte_sqlite() {
     let ticket = FinanceInvoice {
         invoice_id: "inv_101".into(),
         merchant_id: "FreshMarket".into(),
-        date: embedag_example_receipts::finance::parse_date("2026-10-12"),
+        date: embedag_example_receipts::finance::parse_date("2026-10-12").unwrap(),
         purchase_content: None,
         items: vec![
             InvoiceItem::new("item_1", "Organic Oat Milk", 3.99, 2, None),
@@ -251,7 +251,7 @@ async fn test_developer_custom_migration_and_invoice_categorization_cte_postgres
     let ticket = FinanceInvoice {
         invoice_id: "inv_pg_101".into(),
         merchant_id: "WholeOrganics".into(),
-        date: embedag_example_receipts::finance::parse_date("2026-10-12"),
+        date: embedag_example_receipts::finance::parse_date("2026-10-12").unwrap(),
         purchase_content: None,
         items: vec![
             InvoiceItem::new("item_1", "Fresh Whole Milk", 4.99, 1, None),
