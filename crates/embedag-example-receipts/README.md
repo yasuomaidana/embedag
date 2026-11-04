@@ -55,7 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let invoice = FinanceInvoice::new(
         "inv_001",
         "m_corner",
-        parse_date("2025-12-24"),
+        parse_date("2025-12-24").unwrap(),
         vec![InvoiceItem::new("item_1", "Ferrero Rocher Box", 18.0, 2, None)],
         36.0,
     )
