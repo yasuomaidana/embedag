@@ -3,6 +3,7 @@ use diesel::sqlite::SqliteConnection;
 
 use super::builder::CteHierarchyBuilder;
 use super::config::{HierarchicalTableConfig, HierarchyItem};
+use crate::quoting::sql_literal;
 
 /// Defines the SQLite traversal methods of [`HierarchicalModel`]: each runs the builder function of
 /// the same name with the model's table configuration.
@@ -48,10 +49,6 @@ macro_rules! pg_async_traversals {
 /// Trait implemented by models representing hierarchical tables (derived via `#[derive(HierarchicalModel)]`).
 ///
 /// Automatically generates type-safe Diesel CTE queries, column mappings, and step queries.
-fn sql_literal(value: &str) -> String {
-    value.replace('\'', "''")
-}
-
 pub trait HierarchicalModel {
     /// Name of the relational table.
     fn table_name() -> &'static str;

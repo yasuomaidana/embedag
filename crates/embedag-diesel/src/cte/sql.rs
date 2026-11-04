@@ -1,6 +1,7 @@
 //! The SQL text of the recursive CTE traversals, shared by every backend.
 
 use super::config::HierarchicalTableConfig;
+use crate::quoting::sql_literal;
 
 /// How a backend spells the keys it compares and returns: SQLite compares them as stored,
 /// PostgreSQL casts every key column to `text` first.
@@ -26,10 +27,6 @@ pub(super) struct CteSql {
     pub(super) seed: String,
     pub(super) step: String,
     pub(super) body: String,
-}
-
-fn sql_literal(value: &str) -> String {
-    value.replace('\'', "''")
 }
 
 impl CteSql {

@@ -2,10 +2,7 @@
 
 use super::error::PersistenceError;
 use super::records::*;
-
-fn quoted_identifier(value: &str) -> String {
-    format!("\"{}\"", value.replace('"', "\"\""))
-}
+use crate::quoting::quoted_identifier;
 
 /// Executes an operation wrapped in an isolated SQL `SAVEPOINT` on Turso / libSQL via `diesel-async`.
 /// Automatically rolls back to the savepoint on error without aborting the enclosing outer transaction.

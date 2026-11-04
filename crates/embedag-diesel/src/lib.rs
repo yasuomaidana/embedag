@@ -4,6 +4,7 @@ pub mod cte;
 pub mod harness;
 pub mod migrations;
 pub mod ops;
+mod quoting;
 pub mod traversal;
 
 pub use cte::{

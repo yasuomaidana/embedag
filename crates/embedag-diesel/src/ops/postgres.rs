@@ -3,10 +3,7 @@
 use super::descriptor::*;
 use super::error::PersistenceError;
 use super::records::*;
-
-fn quoted_identifier(value: &str) -> String {
-    format!("\"{}\"", value.replace('"', "\"\""))
-}
+use crate::quoting::quoted_identifier;
 
 /// Executes an operation wrapped in an isolated SQL `SAVEPOINT`.
 /// Automatically rolls back to the savepoint on error without aborting the enclosing outer transaction.
@@ -21,8 +18,7 @@ where
     Fut: std::future::Future<Output = Result<T, PersistenceError>>,
 {
     let savepoint = quoted_identifier(savepoint_name);
-    tx.batch_execute(&format!("SAVEPOINT {savepoint};"))
-        .await?;
+    tx.batch_execute(&format!("SAVEPOINT {savepoint};")).await?;
 
     match operation().await {
         Ok(val) => {
