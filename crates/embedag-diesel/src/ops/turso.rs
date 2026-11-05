@@ -186,61 +186,87 @@ async fn apply_directives_turso(
     conn: &mut crate::migrations::AsyncLibSqlConnection,
     mutations: &[MutationDirectiveRecord],
 ) -> Result<(), PersistenceError> {
-    use diesel_async::SimpleAsyncConnection;
     for mutation in mutations {
-        match mutation {
-            MutationDirectiveRecord::InsertNode(node) => {
-                batch_upsert_nodes_turso(conn, std::slice::from_ref(node)).await?;
-            }
-            MutationDirectiveRecord::AttachParent { .. } => {
-                if let Some(edge) = mutation.attached_edge() {
-                    batch_upsert_edges_turso(conn, &[edge]).await?;
-                }
-            }
-            MutationDirectiveRecord::UpdateNodePayload {
-                id,
-                updated_attributes,
-            } => {
-                let id_str = id.to_string();
-                let attr_str = updated_attributes.to_string().replace('\'', "''");
-                let now_str = chrono::Utc::now().to_rfc3339();
-                let merged =
-                    merged_attributes("semantic_nodes.attributes", &format!("'{attr_str}'"));
-                let sql = format!(
-                    "UPDATE semantic_nodes SET attributes = {merged}, updated_at = '{now_str}' WHERE id = '{id_str}';"
-                );
-                conn.batch_execute(&sql)
-                    .await
-                    .map_err(PersistenceError::Diesel)?;
-            }
-            MutationDirectiveRecord::RetargetEdge {
-                child_id,
-                old_parent_id,
-                new_parent_id,
-                relationship_type,
-                confidence,
-            } => {
-                let old_p = old_parent_id.to_string();
-                let ch = child_id.to_string();
-                let rel = relationship_type.replace('\'', "''");
-                let del_sql = format!(
-                    "DELETE FROM semantic_edges WHERE parent_id = '{old_p}' AND child_id = '{ch}' AND relationship_type = '{rel}';"
-                );
-                conn.batch_execute(&del_sql)
-                    .await
-                    .map_err(PersistenceError::Diesel)?;
+        apply_directive_turso(conn, mutation).await?;
+    }
+    Ok(())
+}
 
-                let edge = EdgeUpsertRecord {
-                    parent_id: *new_parent_id,
-                    child_id: *child_id,
-                    relationship_type: relationship_type.clone(),
-                    confidence: *confidence,
-                    provenance: "mutation_lifecycle_retarget".into(),
-                };
+/// Runs one directive.
+#[cfg(feature = "turso-async")]
+async fn apply_directive_turso(
+    conn: &mut crate::migrations::AsyncLibSqlConnection,
+    mutation: &MutationDirectiveRecord,
+) -> Result<(), PersistenceError> {
+    match mutation {
+        MutationDirectiveRecord::InsertNode(node) => {
+            batch_upsert_nodes_turso(conn, std::slice::from_ref(node)).await?;
+        }
+        MutationDirectiveRecord::AttachParent { .. } => {
+            if let Some(edge) = mutation.attached_edge() {
                 batch_upsert_edges_turso(conn, &[edge]).await?;
             }
         }
+        MutationDirectiveRecord::UpdateNodePayload {
+            id,
+            updated_attributes,
+        } => update_node_payload_turso(conn, id, updated_attributes).await?,
+        MutationDirectiveRecord::RetargetEdge {
+            child_id,
+            old_parent_id,
+            new_parent_id,
+            relationship_type,
+            confidence,
+        } => {
+            let old_edge = (old_parent_id, child_id, relationship_type.as_str());
+            let new_edge = EdgeUpsertRecord {
+                parent_id: *new_parent_id,
+                child_id: *child_id,
+                relationship_type: relationship_type.clone(),
+                confidence: *confidence,
+                provenance: "mutation_lifecycle_retarget".into(),
+            };
+            retarget_edge_turso(conn, old_edge, new_edge).await?;
+        }
     }
+    Ok(())
+}
 
+/// Merges `updated_attributes` into the attributes of node `id`, as PostgreSQL's `attributes || $1`.
+#[cfg(feature = "turso-async")]
+async fn update_node_payload_turso(
+    conn: &mut crate::migrations::AsyncLibSqlConnection,
+    id: &uuid::Uuid,
+    updated_attributes: &serde_json::Value,
+) -> Result<(), PersistenceError> {
+    use diesel_async::SimpleAsyncConnection;
+    let id_str = id.to_string();
+    let attr_str = updated_attributes.to_string().replace('\'', "''");
+    let now_str = chrono::Utc::now().to_rfc3339();
+    let merged = merged_attributes("semantic_nodes.attributes", &format!("'{attr_str}'"));
+    let sql = format!(
+        "UPDATE semantic_nodes SET attributes = {merged}, updated_at = '{now_str}' WHERE id = '{id_str}';"
+    );
+    conn.batch_execute(&sql)
+        .await
+        .map_err(PersistenceError::Diesel)
+}
+
+/// Replaces the edge `(old parent, child, relationship type)` by `new_edge`.
+#[cfg(feature = "turso-async")]
+async fn retarget_edge_turso(
+    conn: &mut crate::migrations::AsyncLibSqlConnection,
+    (old_parent_id, child_id, relationship_type): (&uuid::Uuid, &uuid::Uuid, &str),
+    new_edge: EdgeUpsertRecord,
+) -> Result<(), PersistenceError> {
+    use diesel_async::SimpleAsyncConnection;
+    let rel = relationship_type.replace('\'', "''");
+    let del_sql = format!(
+        "DELETE FROM semantic_edges WHERE parent_id = '{old_parent_id}' AND child_id = '{child_id}' AND relationship_type = '{rel}';"
+    );
+    conn.batch_execute(&del_sql)
+        .await
+        .map_err(PersistenceError::Diesel)?;
+    batch_upsert_edges_turso(conn, &[new_edge]).await?;
     Ok(())
 }
