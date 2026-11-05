@@ -13,6 +13,7 @@ use embedag_diesel::ops::{
 };
 use embedag_diesel::traversal::RecursiveTraversalBuilder;
 use futures_util::FutureExt;
+use rstest::{fixture, rstest};
 use uuid::Uuid;
 
 const SCHEMA_SQL: &str = r#"
@@ -506,6 +507,7 @@ async fn node_by_key(
     .expect("read node")
 }
 
+#[fixture]
 async fn migrated() -> (
     TursoHarness,
     embedag_diesel::migrations::AsyncLibSqlConnection,
@@ -520,9 +522,15 @@ async fn migrated() -> (
 
 /// A conflicting upsert and a payload update behave as on PostgreSQL: the entity level stays, the
 /// name is replaced, and the attributes are merged at the top level.
+#[rstest]
 #[tokio::test(flavor = "multi_thread")]
-async fn test_turso_upsert_merges_attributes_and_keeps_entity_level() {
-    let (_harness, mut conn) = migrated().await;
+async fn test_turso_upsert_merges_attributes_and_keeps_entity_level(
+    #[future(awt)] migrated: (
+        TursoHarness,
+        embedag_diesel::migrations::AsyncLibSqlConnection,
+    ),
+) {
+    let (_harness, mut conn) = migrated;
     let id = Uuid::new_v4();
     let first = NodeUpsertRecord {
         attributes: serde_json::json!({"keep": 1, "replace": {"a": 1}, "flag": true, "text": "it's"}),
@@ -568,9 +576,15 @@ async fn test_turso_upsert_merges_attributes_and_keeps_entity_level() {
 }
 
 /// A batch that fails part way leaves nothing behind.
+#[rstest]
 #[tokio::test(flavor = "multi_thread")]
-async fn test_turso_mutation_lifecycle_is_atomic() {
-    let (_harness, mut conn) = migrated().await;
+async fn test_turso_mutation_lifecycle_is_atomic(
+    #[future(awt)] migrated: (
+        TursoHarness,
+        embedag_diesel::migrations::AsyncLibSqlConnection,
+    ),
+) {
+    let (_harness, mut conn) = migrated;
     let taken = Uuid::new_v4();
     batch_upsert_nodes_turso(
         &mut conn,
@@ -613,9 +627,15 @@ async fn test_turso_mutation_lifecycle_is_atomic() {
 }
 
 /// After a rollback the savepoint is released, and the operation's error is what comes back.
+#[rstest]
 #[tokio::test(flavor = "multi_thread")]
-async fn test_turso_savepoint_is_released_after_rollback() {
-    let (_harness, mut conn) = migrated().await;
+async fn test_turso_savepoint_is_released_after_rollback(
+    #[future(awt)] migrated: (
+        TursoHarness,
+        embedag_diesel::migrations::AsyncLibSqlConnection,
+    ),
+) {
+    let (_harness, mut conn) = migrated;
     let res: Result<(), PersistenceError> =
         execute_with_savepoint_turso(&mut conn, "sp_gone", |c| {
             async move {
