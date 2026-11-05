@@ -9,6 +9,8 @@ pub struct NodeUpsertRecord {
     pub entity_level: String,
     pub name: String,
     pub attributes: serde_json::Value,
+    /// Not written by the relational upserts yet: the `embedding` column and the vector search that
+    /// reads it are still to come (see the crate README).
     pub embedding: Option<Vec<f32>>,
 }
 

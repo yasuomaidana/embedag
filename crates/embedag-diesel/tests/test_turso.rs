@@ -482,3 +482,164 @@ async fn test_turso_custom_adjacency_table_cte_traversal() {
     assert!(desc_names.contains(&"Desktops".to_string()));
     assert!(desc_names.contains(&"Ultrabooks".to_string()));
 }
+
+#[derive(diesel::QueryableByName)]
+struct NodeRow {
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    entity_level: String,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    name: String,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    attributes: String,
+}
+
+async fn node_by_key(
+    conn: &mut embedag_diesel::migrations::AsyncLibSqlConnection,
+    key: &str,
+) -> Vec<NodeRow> {
+    use diesel_async::RunQueryDsl;
+    diesel::sql_query(format!(
+        "SELECT entity_level, name, attributes FROM semantic_nodes WHERE business_key = '{key}'"
+    ))
+    .load::<NodeRow>(conn)
+    .await
+    .expect("read node")
+}
+
+async fn migrated() -> (
+    TursoHarness,
+    embedag_diesel::migrations::AsyncLibSqlConnection,
+) {
+    let harness = TursoHarness::in_memory();
+    let mut conn = harness.connect_async().await.expect("connect async");
+    run_turso_migration_async(&mut conn, SCHEMA_SQL)
+        .await
+        .expect("run migration");
+    (harness, conn)
+}
+
+/// A conflicting upsert and a payload update behave as on PostgreSQL: the entity level stays, the
+/// name is replaced, and the attributes are merged at the top level.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_turso_upsert_merges_attributes_and_keeps_entity_level() {
+    let (_harness, mut conn) = migrated().await;
+    let id = Uuid::new_v4();
+    let first = NodeUpsertRecord {
+        attributes: serde_json::json!({"keep": 1, "replace": {"a": 1}, "flag": true, "text": "it's"}),
+        ..NodeUpsertRecord::new(id, "K-MERGE", "category", "Old")
+    };
+    batch_upsert_nodes_turso(&mut conn, &[first]).await.unwrap();
+
+    let second = NodeUpsertRecord {
+        attributes: serde_json::json!({"replace": {"b": 2}, "added": null}),
+        ..NodeUpsertRecord::new(Uuid::new_v4(), "K-MERGE", "sku", "New")
+    };
+    batch_upsert_nodes_turso(&mut conn, &[second])
+        .await
+        .unwrap();
+
+    let rows = node_by_key(&mut conn, "K-MERGE").await;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        rows[0].entity_level, "category",
+        "the level of the stored node stays"
+    );
+    assert_eq!(rows[0].name, "New");
+    let merged: serde_json::Value = serde_json::from_str(&rows[0].attributes).unwrap();
+    assert_eq!(
+        merged,
+        serde_json::json!({"keep": 1, "replace": {"b": 2}, "flag": true, "text": "it's", "added": null})
+    );
+
+    apply_mutation_lifecycle_turso(
+        &mut conn,
+        &[MutationDirectiveRecord::UpdateNodePayload {
+            id,
+            updated_attributes: serde_json::json!({"keep": 2, "extra": "x"}),
+        }],
+    )
+    .await
+    .unwrap();
+    let rows = node_by_key(&mut conn, "K-MERGE").await;
+    let updated: serde_json::Value = serde_json::from_str(&rows[0].attributes).unwrap();
+    assert_eq!(updated["keep"], 2);
+    assert_eq!(updated["extra"], "x");
+    assert_eq!(updated["flag"], true, "members not in the update stay");
+}
+
+/// A batch that fails part way leaves nothing behind.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_turso_mutation_lifecycle_is_atomic() {
+    let (_harness, mut conn) = migrated().await;
+    let taken = Uuid::new_v4();
+    batch_upsert_nodes_turso(
+        &mut conn,
+        &[NodeUpsertRecord::new(taken, "K-TAKEN", "item", "Taken")],
+    )
+    .await
+    .unwrap();
+
+    let result = apply_mutation_lifecycle_turso(
+        &mut conn,
+        &[
+            MutationDirectiveRecord::InsertNode(NodeUpsertRecord::new(
+                Uuid::new_v4(),
+                "K-FIRST",
+                "item",
+                "First",
+            )),
+            // The same id under another business key breaks the primary key.
+            MutationDirectiveRecord::InsertNode(NodeUpsertRecord::new(
+                taken, "K-CLASH", "item", "Clash",
+            )),
+        ],
+    )
+    .await;
+
+    assert!(result.is_err(), "the second directive must fail");
+    assert!(
+        node_by_key(&mut conn, "K-FIRST").await.is_empty(),
+        "the first directive is rolled back with the batch"
+    );
+    // The connection is usable and the savepoint is gone.
+    use diesel_async::SimpleAsyncConnection;
+    conn.batch_execute("SELECT 1;").await.unwrap();
+    assert!(
+        conn.batch_execute("RELEASE SAVEPOINT \"apply_mutation_lifecycle\";")
+            .await
+            .is_err(),
+        "no savepoint is left open"
+    );
+}
+
+/// After a rollback the savepoint is released, and the operation's error is what comes back.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_turso_savepoint_is_released_after_rollback() {
+    let (_harness, mut conn) = migrated().await;
+    let res: Result<(), PersistenceError> =
+        execute_with_savepoint_turso(&mut conn, "sp_gone", |c| {
+            async move {
+                batch_upsert_nodes_turso(
+                    c,
+                    &[NodeUpsertRecord::new(
+                        Uuid::new_v4(),
+                        "K-DOOMED",
+                        "item",
+                        "Doomed",
+                    )],
+                )
+                .await?;
+                Err(PersistenceError::SavepointRolledBack("boom".into()))
+            }
+            .boxed()
+        })
+        .await;
+    assert!(matches!(res, Err(PersistenceError::SavepointRolledBack(m)) if m == "boom"));
+    assert!(node_by_key(&mut conn, "K-DOOMED").await.is_empty());
+    use diesel_async::SimpleAsyncConnection;
+    assert!(
+        conn.batch_execute("RELEASE SAVEPOINT \"sp_gone\";")
+            .await
+            .is_err()
+    );
+}

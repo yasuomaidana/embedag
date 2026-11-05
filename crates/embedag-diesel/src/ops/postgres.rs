@@ -7,6 +7,9 @@ use crate::quoting::quoted_identifier;
 
 /// Executes an operation wrapped in an isolated SQL `SAVEPOINT`.
 /// Automatically rolls back to the savepoint on error without aborting the enclosing outer transaction.
+/// The operation's own error is always the one returned: a failure of the rollback itself (a dropped
+/// connection, say) is ignored, because the connection is already unusable and that error would only
+/// hide the cause.
 #[cfg(feature = "postgres-async")]
 pub async fn execute_with_savepoint<F, Fut, T>(
     tx: &tokio_postgres::Transaction<'_>,
@@ -27,8 +30,12 @@ where
             Ok(val)
         }
         Err(e) => {
-            tx.batch_execute(&format!("ROLLBACK TO SAVEPOINT {savepoint};"))
-                .await?;
+            // `ROLLBACK TO` keeps the savepoint on the stack, so release it as well.
+            let _ = tx
+                .batch_execute(&format!(
+                    "ROLLBACK TO SAVEPOINT {savepoint}; RELEASE SAVEPOINT {savepoint};"
+                ))
+                .await;
             Err(e)
         }
     }

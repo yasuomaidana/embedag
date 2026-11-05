@@ -1,7 +1,7 @@
 //! The SQL text of the recursive CTE traversals, shared by every backend.
 
 use super::config::HierarchicalTableConfig;
-use crate::quoting::sql_literal;
+use crate::quoting::{identifier_path, sql_literal};
 
 /// How a backend spells the keys it compares and returns: SQLite compares them as stored,
 /// PostgreSQL casts every key column to `text` first.
@@ -50,6 +50,15 @@ pub(super) const ANCESTOR_COLUMNS: [&str; 4] = ["curr_id", "parent_ref", "depth"
 pub(super) const DESCENDANTS: &str = "descendants_cte";
 pub(super) const DESCENDANT_COLUMNS: [&str; 3] = ["curr_id", "depth", "curr_name"];
 
+/// The id, parent and name columns of `config`, quoted.
+fn columns(config: &HierarchicalTableConfig) -> (String, String, String) {
+    (
+        identifier_path(&config.id_column),
+        identifier_path(&config.parent_column),
+        identifier_path(&config.name_column),
+    )
+}
+
 /// Walks up from `target_id` through the parent column, `max_depth` levels at most.
 pub(super) fn ancestors(
     dialect: Dialect,
@@ -57,15 +66,16 @@ pub(super) fn ancestors(
     target_id: &str,
     max_depth: i32,
 ) -> CteSql {
-    let table = &config.table_name;
-    let id = dialect.key(&config.id_column);
-    let parent = dialect.key(&config.parent_column);
-    let name = dialect.key(&config.name_column);
+    let table = &identifier_path(&config.table_name);
+    let (raw_id, raw_parent, raw_name) = columns(config);
+    let id = dialect.key(&raw_id);
+    let parent = dialect.key(&raw_parent);
+    let name = dialect.key(&raw_name);
     let (id_col, parent_col, name_col) = (&id, &parent, &name);
     let (t_id, t_parent, t_name) = (
-        dialect.key(&format!("t.{}", config.id_column)),
-        dialect.key(&format!("t.{}", config.parent_column)),
-        dialect.key(&format!("t.{}", config.name_column)),
+        dialect.key(&format!("t.{raw_id}")),
+        dialect.key(&format!("t.{raw_parent}")),
+        dialect.key(&format!("t.{raw_name}")),
     );
     CteSql {
         seed: format!(
@@ -94,14 +104,10 @@ pub(super) fn descendants(
     root_id: &str,
     max_depth: i32,
 ) -> CteSql {
-    let table = &config.table_name;
-    let (raw_id, raw_parent, raw_name) = (
-        &config.id_column,
-        &config.parent_column,
-        &config.name_column,
-    );
-    let id_col = dialect.key(raw_id);
-    let name_col = dialect.key(raw_name);
+    let table = &identifier_path(&config.table_name);
+    let (raw_id, raw_parent, raw_name) = columns(config);
+    let id_col = dialect.key(&raw_id);
+    let name_col = dialect.key(&raw_name);
     let t_id = dialect.key(&format!("t.{raw_id}"));
     let t_name = dialect.key(&format!("t.{raw_name}"));
     let t_parent = dialect.key(&format!("t.{raw_parent}"));
