@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Fails when an advisory ignored in .cargo/audit.toml is no longer reported for Cargo.lock, so the ignore list can
 # only shrink: drop the entry it names. Issue #2 explains why the remaining ones are ignored.
+#
+# It also fails, with a different message, when `cargo audit` itself cannot run (advisory database fetch, network):
+# an audit that did not run says nothing about the ignores, so no ignore is called stale in that case.
 set -euo pipefail
 
 config=".cargo/audit.toml"
@@ -14,7 +17,24 @@ fi
 workdir=$(mktemp -d)
 trap 'rm -rf "$workdir"' EXIT
 cp Cargo.lock "$workdir/Cargo.lock"
-reported=$(cd "$workdir" && { cargo audit --json 2>/dev/null || true; } | grep -oE 'RUSTSEC-[0-9]{4}-[0-9]{4}' | sort -u || true)
+
+# `cargo audit` exits 1 when it reports vulnerabilities, so the exit status alone does not tell a finding from a
+# failure. A run that worked prints a JSON report with a `vulnerabilities` object; anything else did not run.
+if ! report=$(cd "$workdir" && cargo audit --json 2>"$workdir/stderr"); then
+  :
+fi
+if ! printf '%s' "$report" | jq -e '.vulnerabilities | type == "object"' >/dev/null 2>&1; then
+  echo "cargo audit did not produce a report, so the ignored advisories could not be checked:" >&2
+  cat "$workdir/stderr" >&2
+  exit 2
+fi
+
+# The advisories reported as vulnerabilities or as warnings (unmaintained, unsound). Advisories that only appear
+# under `related` of another one are not reported for this lockfile and do not count.
+reported=$(printf '%s' "$report" | jq -r '
+  [ (.vulnerabilities.list // [])[].advisory.id,
+    ((.warnings // {}) | to_entries[] | .value[] | .advisory.id // empty) ]
+  | unique | .[]')
 
 stale=$(comm -23 <(printf '%s\n' "$ignored") <(printf '%s\n' "$reported") || true)
 if [ -n "$stale" ]; then
