@@ -30,10 +30,6 @@ jobs:
   quality:
     name: Quality gates (production lines, repeated code, rstest)
     runs-on: ubuntu-latest
-    env:
-      # The dendrite-rag-rs revision loom-gate is built from. It is part of the cache key, so changing it
-      # installs the new build. dendrite-rag-rs has no release tag yet; EMBEDAG-99 moves this to v0.1.0.
-      LOOM_GATE_REF: 3a8b6d07f3235141b87e129699e855f2dac76325
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -46,13 +42,16 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/loom-gate
-          key: loom-gate-${{ runner.os }}-${{ env.LOOM_GATE_REF }}
+          # The dendrite-rag-rs revision loom-gate is built from appears in this key and in the install command below: change both
+          # together. It is written out (not an env variable) so `dendrite allostasis gate` can check that the revision exists.
+          # dendrite-rag-rs has no release tag yet; EMBEDAG-99 moves this to v0.1.0.
+          key: loom-gate-${{ runner.os }}-3a8b6d07f3235141b87e129699e855f2dac76325
 
       - name: Install loom-gate
         if: steps.loom-gate-cache.outputs.cache-hit != 'true'
         env:
           RUSTFLAGS: ""
-        run: cargo install --locked --git https://github.com/yasuomaidana/dendrite-rag-rs --rev "$LOOM_GATE_REF" loom-gate
+        run: cargo install --locked --git https://github.com/yasuomaidana/dendrite-rag-rs --rev 3a8b6d07f3235141b87e129699e855f2dac76325 loom-gate
 
       - name: No file over its production-line limit
         run: loom-gate loc --format github

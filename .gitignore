@@ -5,3 +5,6 @@ graphify-out/
 .dendrite/jobs/
 .dendrite/
 skills/system/
+
+# Written by the coverage job (cargo llvm-cov --lcov); never committed
+lcov.info
