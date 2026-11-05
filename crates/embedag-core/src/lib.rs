@@ -25,6 +25,8 @@
 
 #[doc(hidden)]
 pub use async_trait;
+#[doc(hidden)]
+pub use serde_json;
 pub mod dag;
 pub mod dag_iter;
 pub mod encoder;

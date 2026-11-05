@@ -10,16 +10,27 @@ use serde_json::Value;
 /// Matches standard keys ("name", "title", "label", "id", "key") and common affix patterns
 /// (`_name`, `_title`, `_label`, `_id`, `_key`) case-insensitively when heuristics are enabled.
 pub fn is_heuristic_entity_key(key: &str) -> bool {
+    heuristic_rank(key).is_some()
+}
+
+/// How strongly a key names an entity: `Some(0)` for descriptive keys (`name`, `title`, `label` and
+/// their affixed forms), `Some(1)` for identifiers (`id`, `key`, `*_id`, `*_key`), `None` otherwise.
+/// Descriptive keys win over identifiers, so `{"category_id": 7, "name": "Milk"}` reads as `Milk`.
+fn heuristic_rank(key: &str) -> Option<u8> {
     let lower = key.to_lowercase();
-    matches!(lower.as_str(), "name" | "title" | "label" | "id" | "key")
+    let descriptive = matches!(lower.as_str(), "name" | "title" | "label")
         || lower.ends_with("_name")
         || lower.ends_with("_title")
         || lower.ends_with("_label")
-        || lower.ends_with("_id")
-        || lower.ends_with("_key")
         || lower.starts_with("name_")
         || lower.starts_with("title_")
-        || lower.starts_with("label_")
+        || lower.starts_with("label_");
+    if descriptive {
+        return Some(0);
+    }
+    let identifier =
+        matches!(lower.as_str(), "id" | "key") || lower.ends_with("_id") || lower.ends_with("_key");
+    identifier.then_some(1)
 }
 
 /// Extracts the raw record payload string from a prompt containing the `### INCOMING RECORD\n` section.
@@ -176,11 +187,13 @@ impl EntityExtractor for EntityExtractorConfig {
 
                 // 2. Check suffix heuristics (*_name, *_title, *_label, *_id, *_key) if enabled
                 if self.enable_suffix_heuristics {
-                    for (k, val) in map {
-                        if is_heuristic_entity_key(k)
-                            && let Some(label) = scalar_label(val)
-                        {
-                            return Some(label);
+                    for rank in 0..=1 {
+                        for (k, val) in map {
+                            if heuristic_rank(k) == Some(rank)
+                                && let Some(label) = scalar_label(val)
+                            {
+                                return Some(label);
+                            }
                         }
                     }
                 }
@@ -381,6 +394,10 @@ mod tests {
     #[case::category_name(r#"{"category_name": "Dairy & Eggs"}"#, "Dairy & Eggs")]
     #[case::product_title(r#"{"product_title": "Mechanical Keyboard"}"#, "Mechanical Keyboard")]
     #[case::device_id(r#"{"device_id": "DEV-4091"}"#, "DEV-4091")]
+    // A descriptive key wins over an identifier, whatever the map order.
+    #[case::name_over_id(r#"{"category_id": 7, "name": "Milk"}"#, "Milk")]
+    #[case::title_over_key(r#"{"api_key": "k-1", "title": "Chief Architect"}"#, "Chief Architect")]
+    #[case::item_label_over_id(r#"{"a_id": 1, "item_label": "Fresh"}"#, "Fresh")]
     #[case::any_string(r#"{"arbitrary_key": "Something unique"}"#, "Something unique")]
     #[case::raw_slice("Raw Unformatted Entity", "Raw Unformatted Entity")]
     #[case::nothing_to_extract("", "Unidentified Entity")]
