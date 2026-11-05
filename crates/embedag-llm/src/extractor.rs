@@ -166,52 +166,52 @@ impl EntityExtractorConfig {
     }
 }
 
+impl EntityExtractorConfig {
+    /// The label of a JSON object: a configured priority key, else (when enabled) a heuristic key with
+    /// descriptive keys before identifiers, else (when enabled) any non-empty string.
+    fn extract_from_object(&self, map: &serde_json::Map<String, Value>) -> Option<String> {
+        let by_priority_key = self
+            .priority_keys
+            .iter()
+            .find_map(|key| map.get(key).and_then(scalar_label));
+        by_priority_key
+            .or_else(|| {
+                self.enable_suffix_heuristics
+                    .then(|| heuristic_label(map))
+                    .flatten()
+            })
+            .or_else(|| {
+                self.fallback_to_any_string
+                    .then(|| first_non_empty_string(map))
+                    .flatten()
+            })
+    }
+}
+
+/// The label under the best-ranked heuristic key (see [`heuristic_rank`]): `name`-like keys first, then
+/// `id`/`key`-like ones; within a rank, the first key in map order.
+fn heuristic_label(map: &serde_json::Map<String, Value>) -> Option<String> {
+    (0..=1).find_map(|rank| {
+        map.iter()
+            .filter(|(k, _)| heuristic_rank(k) == Some(rank))
+            .find_map(|(_, val)| scalar_label(val))
+    })
+}
+
+/// The first string member of `map` that is not blank, trimmed.
+fn first_non_empty_string(map: &serde_json::Map<String, Value>) -> Option<String> {
+    map.values()
+        .filter_map(Value::as_str)
+        .map(str::trim)
+        .find(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
 impl EntityExtractor for EntityExtractorConfig {
     fn extract_from_value(&self, value: &Value) -> Option<String> {
         match value {
-            Value::String(s) => {
-                let trimmed = s.trim();
-                if !trimmed.is_empty() {
-                    Some(trimmed.to_string())
-                } else {
-                    None
-                }
-            }
-            Value::Object(map) => {
-                // 1. Check user-configured priority keys first (100% developer control)
-                for key in &self.priority_keys {
-                    if let Some(label) = map.get(key).and_then(scalar_label) {
-                        return Some(label);
-                    }
-                }
-
-                // 2. Check suffix heuristics (*_name, *_title, *_label, *_id, *_key) if enabled
-                if self.enable_suffix_heuristics {
-                    for rank in 0..=1 {
-                        for (k, val) in map {
-                            if heuristic_rank(k) == Some(rank)
-                                && let Some(label) = scalar_label(val)
-                            {
-                                return Some(label);
-                            }
-                        }
-                    }
-                }
-
-                // 3. Fallback to any non-empty string in the object if enabled
-                if self.fallback_to_any_string {
-                    for (_k, val) in map {
-                        if let Some(s) = val.as_str() {
-                            let trimmed = s.trim();
-                            if !trimmed.is_empty() {
-                                return Some(trimmed.to_string());
-                            }
-                        }
-                    }
-                }
-
-                None
-            }
+            Value::String(s) => Some(s.trim()).filter(|t| !t.is_empty()).map(str::to_string),
+            Value::Object(map) => self.extract_from_object(map),
             Value::Number(n) => Some(n.to_string()),
             Value::Bool(b) => Some(b.to_string()),
             _ => None,
