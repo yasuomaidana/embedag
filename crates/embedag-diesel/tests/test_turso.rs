@@ -663,3 +663,46 @@ async fn test_turso_savepoint_is_released_after_rollback(
             .is_err()
     );
 }
+
+/// A batch larger than one round trip is written completely, in order, and counted.
+#[rstest]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_turso_large_batches_cross_round_trips(
+    #[future(awt)] migrated: (
+        TursoHarness,
+        embedag_diesel::migrations::AsyncLibSqlConnection,
+    ),
+) {
+    let (_harness, mut conn) = migrated;
+    let nodes: Vec<NodeUpsertRecord> = (0..450)
+        .map(|n| {
+            NodeUpsertRecord::new(
+                Uuid::new_v4(),
+                &format!("K-{n:04}"),
+                "item",
+                &format!("Node {n}"),
+            )
+        })
+        .collect();
+    assert_eq!(
+        batch_upsert_nodes_turso(&mut conn, &nodes).await.unwrap(),
+        450
+    );
+    for key in ["K-0000", "K-0199", "K-0200", "K-0399", "K-0400", "K-0449"] {
+        assert_eq!(
+            node_by_key(&mut conn, key).await.len(),
+            1,
+            "{key} is stored"
+        );
+    }
+
+    let edges: Vec<EdgeUpsertRecord> = nodes
+        .windows(2)
+        .map(|w| EdgeUpsertRecord::new(w[0].id, w[1].id, "NEXT", 0.5, "test"))
+        .collect();
+    assert_eq!(
+        batch_upsert_edges_turso(&mut conn, &edges).await.unwrap(),
+        449
+    );
+    assert_eq!(batch_upsert_nodes_turso(&mut conn, &[]).await.unwrap(), 0);
+}

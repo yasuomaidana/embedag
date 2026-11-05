@@ -70,6 +70,26 @@ async fn end_savepoint<T>(
     }
 }
 
+/// How many statements one round trip carries.
+#[cfg(feature = "turso-async")]
+const STATEMENTS_PER_ROUND_TRIP: usize = 200;
+
+/// Runs the statements in order, [`STATEMENTS_PER_ROUND_TRIP`] at a time, and returns how many ran.
+/// A failing statement stops the run; the ones before it stay applied, as when they ran one by one.
+#[cfg(feature = "turso-async")]
+async fn run_in_batches(
+    conn: &mut crate::migrations::AsyncLibSqlConnection,
+    statements: &[String],
+) -> Result<u64, PersistenceError> {
+    use diesel_async::SimpleAsyncConnection;
+    for chunk in statements.chunks(STATEMENTS_PER_ROUND_TRIP) {
+        conn.batch_execute(&chunk.join("\n"))
+            .await
+            .map_err(PersistenceError::Diesel)?;
+    }
+    Ok(statements.len() as u64)
+}
+
 /// The SQL of a JSON object holding the members of `existing` overwritten by the members of
 /// `incoming` (both JSON text expressions): the SQLite counterpart of PostgreSQL's `jsonb || jsonb`,
 /// a top-level merge in which a member of `incoming` replaces the whole member of `existing`.
@@ -99,12 +119,11 @@ pub async fn batch_upsert_nodes_turso(
     conn: &mut crate::migrations::AsyncLibSqlConnection,
     nodes: &[NodeUpsertRecord],
 ) -> Result<u64, PersistenceError> {
-    use diesel_async::SimpleAsyncConnection;
     if nodes.is_empty() {
         return Ok(0);
     }
 
-    let mut count = 0;
+    let mut statements = Vec::with_capacity(nodes.len());
     for node in nodes {
         let id_str = node.id.to_string();
         let attr_str = node.attributes.to_string().replace('\'', "''");
@@ -120,13 +139,10 @@ pub async fn batch_upsert_nodes_turso(
              name = excluded.name, attributes = {merged}, updated_at = excluded.updated_at;",
             merged = merged_attributes("semantic_nodes.attributes", "excluded.attributes"),
         );
-        conn.batch_execute(&sql)
-            .await
-            .map_err(PersistenceError::Diesel)?;
-        count += 1;
+        statements.push(sql);
     }
 
-    Ok(count)
+    run_in_batches(conn, &statements).await
 }
 
 /// Performs a batch upsert of edge records to Turso / libSQL via `diesel-async`.
@@ -135,12 +151,11 @@ pub async fn batch_upsert_edges_turso(
     conn: &mut crate::migrations::AsyncLibSqlConnection,
     edges: &[EdgeUpsertRecord],
 ) -> Result<u64, PersistenceError> {
-    use diesel_async::SimpleAsyncConnection;
     if edges.is_empty() {
         return Ok(0);
     }
 
-    let mut count = 0;
+    let mut statements = Vec::with_capacity(edges.len());
     for edge in edges {
         let parent_str = edge.parent_id.to_string();
         let child_str = edge.child_id.to_string();
@@ -155,13 +170,10 @@ pub async fn batch_upsert_edges_turso(
              ON CONFLICT (parent_id, child_id, relationship_type) DO UPDATE SET \
              confidence = excluded.confidence, provenance = excluded.provenance;"
         );
-        conn.batch_execute(&sql)
-            .await
-            .map_err(PersistenceError::Diesel)?;
-        count += 1;
+        statements.push(sql);
     }
 
-    Ok(count)
+    run_in_batches(conn, &statements).await
 }
 
 /// Executes a dynamic graph mutation lifecycle batch atomically on Turso / libSQL via `diesel-async`.

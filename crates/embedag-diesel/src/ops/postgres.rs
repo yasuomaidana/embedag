@@ -89,13 +89,17 @@ pg_upsert!(
     ]
 );
 
-/// Executes the upsert of `T` once per item and counts the executions.
+/// Executes the upsert of `T` once per item and counts the executions. The statement is prepared once,
+/// so each row costs one round trip that only binds its parameters.
 #[cfg(feature = "postgres-async")]
 async fn batch_upsert<T: PgUpsert>(
     client: &(impl tokio_postgres::GenericClient + ?Sized),
     items: &[T],
 ) -> Result<u64, PersistenceError> {
-    let stmt = T::statement();
+    if items.is_empty() {
+        return Ok(0);
+    }
+    let stmt = client.prepare(&T::statement()).await?;
     let mut count = 0;
     for item in items {
         let now = chrono::Utc::now();
