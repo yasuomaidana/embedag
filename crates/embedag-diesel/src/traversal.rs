@@ -26,6 +26,7 @@ pub type DescendantRow = LineageRow;
 
 impl LineageRow {
     /// Reads the five traversal columns of a PostgreSQL row.
+    #[cfg(feature = "postgres-async")]
     fn from_pg(row: tokio_postgres::Row) -> Self {
         Self {
             node_id: row.get(0),
@@ -87,6 +88,7 @@ macro_rules! semantic_traversals {
 
 /// Defines the PostgreSQL traversals that take a node id and a depth and run one of the
 /// `RecursiveTraversalBuilder` queries.
+#[cfg(feature = "postgres-async")]
 macro_rules! pg_lineages {
     ($(
         $(#[$meta:meta])*
@@ -148,6 +150,7 @@ impl RecursiveTraversalBuilder {
     }
 
     /// Runs a lineage query on PostgreSQL and reads its rows.
+    #[cfg(feature = "postgres-async")]
     async fn lineage(
         client: &tokio_postgres::Client,
         query: &str,
@@ -158,6 +161,7 @@ impl RecursiveTraversalBuilder {
     }
 
     /// Executes historical point-in-time multi-hop ancestor traversal on PostgreSQL in a single round-trip.
+    #[cfg(feature = "postgres-async")]
     pub async fn fetch_ancestors_as_of(
         client: &tokio_postgres::Client,
         target_id: Uuid,
@@ -168,6 +172,7 @@ impl RecursiveTraversalBuilder {
         Self::lineage(client, query, &[&target_id, &max_depth, &as_of]).await
     }
 
+    #[cfg(feature = "postgres-async")]
     pg_lineages! {
         /// Executes multi-hop ancestor traversal on PostgreSQL in a single round-trip.
         fetch_ancestors => postgres_ancestor_query, AncestorRow;

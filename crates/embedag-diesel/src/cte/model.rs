@@ -82,6 +82,7 @@ pub trait HierarchicalModel {
         Self::table_config().table_context()
     }
 
+    #[cfg(feature = "sqlite")]
     sqlite_traversals! {
         /// Traverses ancestors of `target_id` up to `max_depth` on an SQLite connection.
         fetch_ancestors_sqlite, target_id;
@@ -91,6 +92,7 @@ pub trait HierarchicalModel {
         fetch_ancestors_dedup_sqlite, target_id;
     }
 
+    #[cfg(all(feature = "postgres-async", feature = "diesel-async"))]
     pg_async_traversals! {
         /// Traverses ancestors of `target_id` up to `max_depth` asynchronously on PostgreSQL via `diesel-async`.
         fetch_ancestors_pg_async, target_id;
