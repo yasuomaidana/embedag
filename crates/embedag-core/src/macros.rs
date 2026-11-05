@@ -43,8 +43,8 @@ macro_rules! impl_node_payload {
             }
 
             $(
-                fn attributes(&self) -> serde_json::Value {
-                    let f: fn(&Self) -> serde_json::Value = $attributes;
+                fn attributes(&self) -> $crate::serde_json::Value {
+                    let f: fn(&Self) -> $crate::serde_json::Value = $attributes;
                     f(self)
                 }
             )?
