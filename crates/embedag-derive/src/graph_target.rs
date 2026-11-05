@@ -128,34 +128,34 @@ pub fn derive_graph_target_impl(input: DeriveInput) -> syn::Result<TokenStream> 
 
     let data_enum = match &input.data {
         Data::Enum(e) => e,
-        Data::Struct(s) => return match &s.fields {
-            Fields::Named(f) => {
-                let target_field = f.named.iter().find(|field| {
-                    field.attrs.iter().any(|a| a.path().is_ident("target"))
-                        || field.ident.as_ref().map(|i| i == "target").unwrap_or(false)
-                });
-                if let Some(field) = target_field {
-                    let f_ident = field.ident.as_ref().unwrap();
-                    return Ok(quote! {
-                        impl #impl_generics #ident #ty_generics #where_clause {
-                            pub fn into_graph_target(self) -> #core::model::GraphTarget<String> {
-                                self.#f_ident
-                            }
-                        }
+        Data::Struct(s) => {
+            return match &s.fields {
+                Fields::Named(f) => {
+                    let target_field = f.named.iter().find(|field| {
+                        field.attrs.iter().any(|a| a.path().is_ident("target"))
+                            || field.ident.as_ref().map(|i| i == "target").unwrap_or(false)
                     });
+                    if let Some(field) = target_field {
+                        let f_ident = field.ident.as_ref().unwrap();
+                        return Ok(quote! {
+                            impl #impl_generics #ident #ty_generics #where_clause {
+                                pub fn into_graph_target(self) -> #core::model::GraphTarget<String> {
+                                    self.#f_ident
+                                }
+                            }
+                        });
+                    }
+                    Err(syn::Error::new(
+                        struct_span,
+                        "#[derive(GraphTarget)] on struct requires a `target` field or #[target] attribute",
+                    ))
                 }
-                Err(syn::Error::new(
-                    struct_span,
-                    "#[derive(GraphTarget)] on struct requires a `target` field or #[target] attribute",
-                ))
-            }
-            _ => {
-                Err(syn::Error::new(
+                _ => Err(syn::Error::new(
                     struct_span,
                     "#[derive(GraphTarget)] requires an enum or struct with named fields",
-                ))
-            }
-        },
+                )),
+            };
+        }
         _ => {
             return Err(syn::Error::new(
                 struct_span,
