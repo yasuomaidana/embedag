@@ -1,4 +1,4 @@
-//! Pull-based streaming traversal iterators over [`petgraph::graph::DiGraph`].
+//! Pull-based streaming traversal iterators over [`DiGraph`].
 //!
 //! Enables zero-eager-allocation lazy consumption and early short-circuit termination (e.g. `.take(N)`).
 //! Traceability: `doc/21_Heavy_Graph_Handling_and_Topological_Pagination.md`.

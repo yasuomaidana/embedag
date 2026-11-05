@@ -128,7 +128,7 @@ pub fn derive_graph_target_impl(input: DeriveInput) -> syn::Result<TokenStream> 
 
     let data_enum = match &input.data {
         Data::Enum(e) => e,
-        Data::Struct(s) => match &s.fields {
+        Data::Struct(s) => return match &s.fields {
             Fields::Named(f) => {
                 let target_field = f.named.iter().find(|field| {
                     field.attrs.iter().any(|a| a.path().is_ident("target"))
@@ -144,16 +144,16 @@ pub fn derive_graph_target_impl(input: DeriveInput) -> syn::Result<TokenStream> 
                         }
                     });
                 }
-                return Err(syn::Error::new(
+                Err(syn::Error::new(
                     struct_span,
                     "#[derive(GraphTarget)] on struct requires a `target` field or #[target] attribute",
-                ));
+                ))
             }
             _ => {
-                return Err(syn::Error::new(
+                Err(syn::Error::new(
                     struct_span,
                     "#[derive(GraphTarget)] requires an enum or struct with named fields",
-                ));
+                ))
             }
         },
         _ => {

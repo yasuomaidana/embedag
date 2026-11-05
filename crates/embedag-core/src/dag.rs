@@ -20,7 +20,7 @@ pub use crate::pagination::{NeighborPage, NeighborPageRequest};
 
 /// In-memory DAG arena with secondary O(1) hash index for fast key-based lookups.
 ///
-/// Wraps a [`petgraph::graph::DiGraph`] where edges point from parent to child
+/// Wraps a [`DiGraph`] where edges point from parent to child
 /// (`parent -> child`).
 #[derive(Clone)]
 pub struct MemoryDag<T: NodePayload> {

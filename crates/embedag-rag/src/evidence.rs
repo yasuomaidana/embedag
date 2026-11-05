@@ -48,7 +48,7 @@ impl GroundedEvidencePackager {
         subgraph: &ExpandedSubgraph<T::Key>,
     ) -> String
     where
-        T::Key: std::fmt::Display + std::fmt::Debug + std::hash::Hash + Eq + Clone,
+        T::Key: Display + std::fmt::Debug + std::hash::Hash + Eq + Clone,
     {
         let mut out = String::new();
         out.push_str("### Grounded Evidence Context\n");

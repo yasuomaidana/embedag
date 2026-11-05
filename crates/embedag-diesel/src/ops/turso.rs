@@ -19,7 +19,7 @@ where
     F: for<'a> FnOnce(
             &'a mut crate::migrations::AsyncLibSqlConnection,
         ) -> std::pin::Pin<
-            Box<dyn std::future::Future<Output = Result<T, PersistenceError>> + Send + 'a>,
+            Box<dyn Future<Output = Result<T, PersistenceError>> + Send + 'a>,
         > + Send,
     T: Send,
 {

@@ -18,7 +18,7 @@ pub async fn execute_with_savepoint<F, Fut, T>(
 ) -> Result<T, PersistenceError>
 where
     F: FnOnce() -> Fut,
-    Fut: std::future::Future<Output = Result<T, PersistenceError>>,
+    Fut: Future<Output = Result<T, PersistenceError>>,
 {
     let savepoint = quoted_identifier(savepoint_name);
     tx.batch_execute(&format!("SAVEPOINT {savepoint};")).await?;
