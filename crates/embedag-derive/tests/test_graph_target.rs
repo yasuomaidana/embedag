@@ -1,22 +1,24 @@
 use embedag_core::model::GraphTarget;
 use embedag_derive::GraphTarget;
 
+/// Declared in another order than `GraphTarget` itself: the derive matches variants by their
+/// shape, not by their position.
 #[derive(Debug, PartialEq, GraphTarget)]
 enum CustomPlacement {
-    Exact(String),
-    Fuzzy {
-        key: String,
-        similarity: f32,
+    Root,
+    Ambiguous(Vec<(String, f32)>),
+    MultiChild {
+        parent_keys: Vec<(String, String)>,
     },
     ChildOf {
         parent_key: String,
         relationship: String,
     },
-    MultiChild {
-        parent_keys: Vec<(String, String)>,
+    Fuzzy {
+        key: String,
+        similarity: f32,
     },
-    Root,
-    Ambiguous(Vec<(String, f32)>),
+    Exact(String),
 }
 
 #[test]

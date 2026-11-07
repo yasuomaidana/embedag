@@ -3,6 +3,28 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 
+/// Adds the `with_attribute` and `with_h3_cell` builders to a struct with `attributes` and `h3_cell`
+/// fields; `$who` names the entity in the docs.
+macro_rules! attribute_builders {
+    ($who:ident) => {
+        #[doc = concat!("Adds a dynamic attribute to the ", stringify!($who), " entity.")]
+        pub fn with_attribute(
+            mut self,
+            key: impl Into<String>,
+            value: impl Into<serde_json::Value>,
+        ) -> Self {
+            self.attributes.insert(key.into(), value.into());
+            self
+        }
+
+        /// Sets an optional H3 geospatial index cell.
+        pub fn with_h3_cell(mut self, cell: u64) -> Self {
+            self.h3_cell = Some(cell);
+            self
+        }
+    };
+}
+
 /// Structured representation of a candidate anchor node from the graph.
 /// Structure-agnostic entity holding arbitrary attributes, hierarchy lineage, and optional spatial coordinates.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -38,21 +60,7 @@ impl CandidateEntity {
         self
     }
 
-    /// Adds a dynamic attribute to the candidate entity.
-    pub fn with_attribute(
-        mut self,
-        key: impl Into<String>,
-        value: impl Into<serde_json::Value>,
-    ) -> Self {
-        self.attributes.insert(key.into(), value.into());
-        self
-    }
-
-    /// Sets an optional H3 geospatial index cell.
-    pub fn with_h3_cell(mut self, cell: u64) -> Self {
-        self.h3_cell = Some(cell);
-        self
-    }
+    attribute_builders!(candidate);
 }
 
 /// Structured representation of an incoming entity to be resolved or classified against the graph.
@@ -73,21 +81,7 @@ impl IncomingEntity {
         }
     }
 
-    /// Adds a dynamic attribute to the incoming entity.
-    pub fn with_attribute(
-        mut self,
-        key: impl Into<String>,
-        value: impl Into<serde_json::Value>,
-    ) -> Self {
-        self.attributes.insert(key.into(), value.into());
-        self
-    }
-
-    /// Sets an optional H3 geospatial index cell.
-    pub fn with_h3_cell(mut self, cell: u64) -> Self {
-        self.h3_cell = Some(cell);
-        self
-    }
+    attribute_builders!(incoming);
 }
 
 /// Computed delta comparison metrics for a specific attribute between candidate and incoming entity.

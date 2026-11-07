@@ -59,6 +59,21 @@ impl Default for SubgraphExpander {
     }
 }
 
+/// Whether a node reached at `hops`/`weight` improves on its recorded visit (or is unvisited).
+fn should_visit(
+    visited: &HashMap<NodeIndex, (usize, f32, SeedRelationship)>,
+    idx: NodeIndex,
+    hops: usize,
+    weight: f32,
+) -> bool {
+    match visited.get(&idx) {
+        Some(&(existing_hops, existing_w, _)) => {
+            hops < existing_hops || (hops == existing_hops && weight > existing_w)
+        }
+        None => true,
+    }
+}
+
 impl SubgraphExpander {
     pub fn new(decay_gamma: f32, max_hops: usize, include_siblings: bool) -> Self {
         Self {
@@ -118,15 +133,7 @@ impl SubgraphExpander {
             // 1. Ancestors (parents)
             if matches!(dir, Dir::Both | Dir::AncestorsOnly) {
                 for parent_idx in dag.parent_indices(curr_idx) {
-                    let should_visit = match visited.get(&parent_idx) {
-                        Some(&(existing_hops, existing_w, _)) => {
-                            next_hops < existing_hops
-                                || (next_hops == existing_hops && next_weight > existing_w)
-                        }
-                        None => true,
-                    };
-
-                    if should_visit {
+                    if should_visit(&visited, parent_idx, next_hops, next_weight) {
                         visited.insert(
                             parent_idx,
                             (next_hops, next_weight, SeedRelationship::Ancestor),
@@ -149,15 +156,7 @@ impl SubgraphExpander {
             // 2. Descendants (children)
             if matches!(dir, Dir::Both | Dir::DescendantsOnly) {
                 for child_idx in dag.child_indices(curr_idx) {
-                    let should_visit = match visited.get(&child_idx) {
-                        Some(&(existing_hops, existing_w, _)) => {
-                            next_hops < existing_hops
-                                || (next_hops == existing_hops && next_weight > existing_w)
-                        }
-                        None => true,
-                    };
-
-                    if should_visit {
+                    if should_visit(&visited, child_idx, next_hops, next_weight) {
                         visited.insert(
                             child_idx,
                             (next_hops, next_weight, SeedRelationship::Descendant),
@@ -218,36 +217,7 @@ impl SubgraphExpander {
 mod tests {
     use super::*;
     use embedag_core::model::EdgePayload;
-
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    struct ProductNode {
-        id: String,
-        name: String,
-        level: String,
-    }
-
-    impl ProductNode {
-        fn new(id: &str, name: &str, level: &str) -> Self {
-            Self {
-                id: id.into(),
-                name: name.into(),
-                level: level.into(),
-            }
-        }
-    }
-
-    impl NodePayload for ProductNode {
-        type Key = String;
-        fn key(&self) -> &Self::Key {
-            &self.id
-        }
-        fn name(&self) -> &str {
-            &self.name
-        }
-        fn entity_level(&self) -> &str {
-            &self.level
-        }
-    }
+    use embedag_core::testing::TestNode;
 
     fn edge(rel: &str) -> EdgePayload {
         EdgePayload::new(rel, 1.0, ProvenanceKind::DeterministicRule).unwrap()
@@ -260,11 +230,11 @@ mod tests {
         // Hierarchy: Dept (L1) -> Brand (L2) -> SKU_A (L3)
         //                                   \-> SKU_B (L3, sibling)
         // SKU_A -> Variant_A1 (L4, child)
-        let dept = ProductNode::new("dept", "Confectionery", "Department");
-        let brand = ProductNode::new("brand", "Carlos V", "Brand");
-        let sku_a = ProductNode::new("sku_a", "Carlos V Dark 50g", "SKU");
-        let sku_b = ProductNode::new("sku_b", "Carlos V Milk 50g", "SKU");
-        let variant = ProductNode::new("variant", "Carlos V Dark 50g 10-Pack", "Bundle");
+        let dept = TestNode::new("dept", "Confectionery", "Department");
+        let brand = TestNode::new("brand", "Carlos V", "Brand");
+        let sku_a = TestNode::new("sku_a", "Carlos V Dark 50g", "SKU");
+        let sku_b = TestNode::new("sku_b", "Carlos V Milk 50g", "SKU");
+        let variant = TestNode::new("variant", "Carlos V Dark 50g 10-Pack", "Bundle");
 
         dag.upsert_node(dept);
         dag.upsert_node(brand);

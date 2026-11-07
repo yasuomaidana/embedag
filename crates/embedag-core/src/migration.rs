@@ -262,45 +262,16 @@ impl<T: NodePayload> GraphMigration<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    struct MockNode {
-        id: String,
-        name: String,
-        level: String,
-    }
-
-    impl MockNode {
-        fn new(id: &str, name: &str, level: &str) -> Self {
-            Self {
-                id: id.into(),
-                name: name.into(),
-                level: level.into(),
-            }
-        }
-    }
-
-    impl NodePayload for MockNode {
-        type Key = String;
-        fn key(&self) -> &Self::Key {
-            &self.id
-        }
-        fn name(&self) -> &str {
-            &self.name
-        }
-        fn entity_level(&self) -> &str {
-            &self.level
-        }
-    }
+    use crate::testing::TestNode;
 
     #[test]
     fn test_category_split_migration() {
         let mut dag = MemoryDag::new();
 
         // Initial setup: "Confectionery" contains "Carlos V Dark" and "Gummy Bears"
-        let conf = MockNode::new("CAT-CONF", "Confectionery", "Category");
-        let choco = MockNode::new("SKU-CHOCO", "Carlos V Dark 50g", "Product");
-        let gummy = MockNode::new("SKU-GUMMY", "Gummy Bears 100g", "Product");
+        let conf = TestNode::new("CAT-CONF", "Confectionery", "Category");
+        let choco = TestNode::new("SKU-CHOCO", "Carlos V Dark 50g", "Product");
+        let gummy = TestNode::new("SKU-GUMMY", "Gummy Bears 100g", "Product");
 
         dag.upsert_node(conf);
         dag.upsert_node(choco);
@@ -314,8 +285,8 @@ mod tests {
             .unwrap();
 
         // Plan Migration: Split "Confectionery" into "CAT-CHOCO" (Chocolate) and "CAT-CANDY" (Candy)
-        let cat_chocolate = MockNode::new("CAT-CHOCO", "Chocolate", "Category");
-        let cat_candy = MockNode::new("CAT-CANDY", "Candy & Gummies", "Category");
+        let cat_chocolate = TestNode::new("CAT-CHOCO", "Chocolate", "Category");
+        let cat_candy = TestNode::new("CAT-CANDY", "Candy & Gummies", "Category");
 
         let mut migration = GraphMigration::new();
         migration.add_step(MigrationStep::SplitCategory {
@@ -349,9 +320,9 @@ mod tests {
     #[test]
     fn test_migration_reparent_prevents_cycles() {
         let mut dag = MemoryDag::new();
-        let a = MockNode::new("A", "A", "L0");
-        let b = MockNode::new("B", "B", "L1");
-        let c = MockNode::new("C", "C", "L2");
+        let a = TestNode::new("A", "A", "L0");
+        let b = TestNode::new("B", "B", "L1");
+        let c = TestNode::new("C", "C", "L2");
 
         dag.upsert_node(a);
         dag.upsert_node(b);

@@ -4,6 +4,7 @@ pub mod cte;
 pub mod harness;
 pub mod migrations;
 pub mod ops;
+mod quoting;
 pub mod traversal;
 
 pub use cte::{
@@ -16,11 +17,13 @@ pub use harness::PostgresHarness;
 #[cfg(feature = "turso")]
 pub use harness::TursoHarness;
 
+#[cfg(feature = "turso-async")]
+pub use migrations::{
+    AsyncLibSqlConnection, establish_turso_async, run_turso_migration_async, setup_turso_async,
+};
 pub use migrations::{
     MigrationError, POSTGRES_SETUP, SQLITE_SETUP, TURSO_SETUP, TursoConnectionMode,
 };
-#[cfg(feature = "turso-async")]
-pub use migrations::{establish_turso_async, run_turso_migration_async, setup_turso_async, AsyncLibSqlConnection};
 #[cfg(feature = "turso")]
 pub use migrations::{establish_turso_sync, run_turso_migration_sync, setup_turso_sync};
 #[cfg(feature = "postgres-async")]
@@ -43,3 +46,8 @@ pub use ops::{
 };
 
 pub use traversal::{AncestorRow, DescendantRow, RecursiveTraversalBuilder};
+
+/// Compiles the Rust examples of the crate README as doctests, so they cannot drift from the code.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;

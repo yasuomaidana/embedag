@@ -10,7 +10,7 @@ use crate::tree::Tree;
 
 /// Undirected graph of pairwise similarity scores (`f32`) between named syntax [`Tree`]s.
 ///
-/// Similarity is symmetric and may contain cycles, so it is backed by [`petgraph::graph::UnGraph`]
+/// Similarity is symmetric and may contain cycles, so it is backed by [`UnGraph`]
 /// rather than `MemoryDag`.
 #[derive(Debug, Clone, Default)]
 pub struct SimilarityGraph {

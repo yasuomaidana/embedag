@@ -127,6 +127,7 @@ dedicated specifications:
 | `19` | [19_External_Ecosystem_and_KitaSan_Stack.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/19_External_Ecosystem_and_KitaSan_Stack.md)                         | Vendor Evaluation              | Deep technical audit of `cool-japan/oxibonsai`, `oxillama`, `oxirag`, `oxirs`, `oximedia`, `diesel-cte-ext`.       |
 | `20` | [20_Multi_Database_Extensibility_and_Future_Adapters.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/20_Multi_Database_Extensibility_and_Future_Adapters.md) | Future Adapters                | Native adapters: `oxirs` (TDB2 / SPARQL 1.2), SurrealDB, Neo4j, LanceDB.                                           |
 | `21` | [21_Heavy_Graph_Handling_and_Topological_Pagination.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/21_Heavy_Graph_Handling_and_Topological_Pagination.md)   | Graph Scalability & Pagination | Streaming traversal iterators, degree pagination (hub slicing), differential cycle check, windowed recursive CTEs. |
+| `22` | [22_Dependency_Resolution_and_Merkle_Delta_API.md](22_Dependency_Resolution_and_Merkle_Delta_API.md) | Dependency Resolution & Deltas | Slim `core,matcher` API: deterministic toposort / levels / reverse_deps / critical_path, BLAKE3 Merkle diff, AST similarity graphs. |
 
 ---
 

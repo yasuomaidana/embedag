@@ -1,18 +1,19 @@
 #![cfg(all(feature = "turso", feature = "turso-async"))]
 
-use futures_util::FutureExt;
 use embedag_diesel::cte::{CteHierarchyBuilder, HierarchicalTableConfig};
 use embedag_diesel::harness::TursoHarness;
 use embedag_diesel::migrations::{
-    establish_turso_sync, run_turso_migration_async, run_turso_migration_sync, setup_turso_async,
-    setup_turso_sync, TursoConnectionMode,
+    TursoConnectionMode, establish_turso_sync, run_turso_migration_async, run_turso_migration_sync,
+    setup_turso_async, setup_turso_sync,
 };
 use embedag_diesel::ops::{
+    EdgeUpsertRecord, MutationDirectiveRecord, NodeUpsertRecord, PersistenceError,
     apply_mutation_lifecycle_turso, batch_upsert_edges_turso, batch_upsert_nodes_turso,
-    execute_with_savepoint_turso, EdgeUpsertRecord, MutationDirectiveRecord, NodeUpsertRecord,
-    PersistenceError,
+    cycle_records, execute_with_savepoint_turso, lineage_records,
 };
 use embedag_diesel::traversal::RecursiveTraversalBuilder;
+use futures_util::FutureExt;
+use rstest::{fixture, rstest};
 use uuid::Uuid;
 
 const SCHEMA_SQL: &str = r#"
@@ -47,9 +48,12 @@ fn test_turso_in_memory_sync_migration() {
     use diesel::connection::SimpleConnection;
     let insert_res = conn.batch_execute(
         "INSERT INTO semantic_nodes (id, business_key, entity_level, name, attributes, updated_at) \
-         VALUES ('node-1', 'key-1', 'category', 'Test', '{}', '2026-10-13T00:00:00Z');"
+         VALUES ('node-1', 'key-1', 'category', 'Test', '{}', '2026-10-13T00:00:00Z');",
     );
-    assert!(insert_res.is_ok(), "Sync insert must succeed on Turso in-memory instance");
+    assert!(
+        insert_res.is_ok(),
+        "Sync insert must succeed on Turso in-memory instance"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -58,20 +62,30 @@ async fn test_turso_in_memory_async_migration() {
     let mut conn = harness.connect_async().await.expect("connect async");
 
     assert!(setup_turso_async(&mut conn).await.is_ok());
-    assert!(run_turso_migration_async(&mut conn, SCHEMA_SQL).await.is_ok());
+    assert!(
+        run_turso_migration_async(&mut conn, SCHEMA_SQL)
+            .await
+            .is_ok()
+    );
 
     use diesel_async::SimpleAsyncConnection;
     let insert_res = conn.batch_execute(
         "INSERT INTO semantic_nodes (id, business_key, entity_level, name, attributes, updated_at) \
          VALUES ('node-async-1', 'key-async-1', 'category', 'Async Test', '{}', '2026-10-13T00:00:00Z');"
     ).await;
-    assert!(insert_res.is_ok(), "Async insert must succeed on Turso in-memory instance");
+    assert!(
+        insert_res.is_ok(),
+        "Async insert must succeed on Turso in-memory instance"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_turso_ephemeral_file_persistence() {
     let harness = TursoHarness::ephemeral_file().expect("create ephemeral file harness");
-    let mut conn = harness.connect_async().await.expect("connect async to file");
+    let mut conn = harness
+        .connect_async()
+        .await
+        .expect("connect async to file");
 
     run_turso_migration_async(&mut conn, SCHEMA_SQL)
         .await
@@ -80,15 +94,23 @@ async fn test_turso_ephemeral_file_persistence() {
     use diesel_async::SimpleAsyncConnection;
     conn.batch_execute(
         "INSERT INTO semantic_nodes (id, business_key, entity_level, name, attributes, updated_at) \
-         VALUES ('file-1', 'key-file', 'sku', 'Persisted SKU', '{}', '2026-10-13T00:00:00Z');"
-    ).await.expect("insert into file db");
+         VALUES ('file-1', 'key-file', 'sku', 'Persisted SKU', '{}', '2026-10-13T00:00:00Z');",
+    )
+    .await
+    .expect("insert into file db");
 
     // Open second connection to the same file to verify persistence across sessions
-    let mut conn2 = harness.connect_async().await.expect("connect second handle");
-    let res = conn2.batch_execute(
-        "SELECT id FROM semantic_nodes WHERE id = 'file-1';"
-    ).await;
-    assert!(res.is_ok(), "Second connection to file must access persisted data");
+    let mut conn2 = harness
+        .connect_async()
+        .await
+        .expect("connect second handle");
+    let res = conn2
+        .batch_execute("SELECT id FROM semantic_nodes WHERE id = 'file-1';")
+        .await;
+    assert!(
+        res.is_ok(),
+        "Second connection to file must access persisted data"
+    );
 }
 
 #[test]
@@ -108,7 +130,10 @@ fn test_turso_remote_connection_mode_handling() {
     // or fail immediately if DNS fails
     if let Ok(mut c) = conn_res {
         use diesel::connection::SimpleConnection;
-        assert!(c.batch_execute("SELECT 1;").is_err(), "Query on dummy remote URL must fail gracefully");
+        assert!(
+            c.batch_execute("SELECT 1;").is_err(),
+            "Query on dummy remote URL must fail gracefully"
+        );
     }
 }
 
@@ -116,104 +141,91 @@ fn test_turso_remote_connection_mode_handling() {
 async fn test_turso_batch_upserts_and_conflict_handling() {
     let harness = TursoHarness::in_memory();
     let mut conn = harness.connect_async().await.expect("connect async");
-    run_turso_migration_async(&mut conn, SCHEMA_SQL).await.expect("run migration");
+    run_turso_migration_async(&mut conn, SCHEMA_SQL)
+        .await
+        .expect("run migration");
 
     let node1_id = Uuid::new_v4();
     let node2_id = Uuid::new_v4();
 
     let nodes = vec![
         NodeUpsertRecord {
-            id: node1_id,
-            business_key: "CAT-DAIRY".into(),
-            entity_level: "category".into(),
-            name: "Dairy".into(),
             attributes: serde_json::json!({"department": "Grocery"}),
-            embedding: None,
+            ..NodeUpsertRecord::new(node1_id, "CAT-DAIRY", "category", "Dairy")
         },
         NodeUpsertRecord {
-            id: node2_id,
-            business_key: "SKU-MILK".into(),
-            entity_level: "sku".into(),
-            name: "Whole Milk 1L".into(),
             attributes: serde_json::json!({"fat": "3.5%"}),
-            embedding: None,
+            ..NodeUpsertRecord::new(node2_id, "SKU-MILK", "sku", "Whole Milk 1L")
         },
     ];
 
-    let inserted = batch_upsert_nodes_turso(&mut conn, &nodes).await.expect("batch upsert nodes");
+    let inserted = batch_upsert_nodes_turso(&mut conn, &nodes)
+        .await
+        .expect("batch upsert nodes");
     assert_eq!(inserted, 2, "Must insert 2 nodes");
 
     // Upsert duplicate node with updated name and attributes to test DO UPDATE conflict handling
     let update_node = NodeUpsertRecord {
-        id: node1_id,
-        business_key: "CAT-DAIRY".into(),
-        entity_level: "category".into(),
-        name: "Dairy & Eggs".into(),
         attributes: serde_json::json!({"department": "Grocery", "refrigerated": true}),
-        embedding: None,
+        ..NodeUpsertRecord::new(node1_id, "CAT-DAIRY", "category", "Dairy & Eggs")
     };
-    let updated = batch_upsert_nodes_turso(&mut conn, &[update_node]).await.expect("upsert existing node");
+    let updated = batch_upsert_nodes_turso(&mut conn, &[update_node])
+        .await
+        .expect("upsert existing node");
     assert_eq!(updated, 1, "Must update 1 conflicting node");
 
     // Edges batch upsert
-    let edges = vec![
-        EdgeUpsertRecord {
-            parent_id: node1_id,
-            child_id: node2_id,
-            relationship_type: "PARENT_OF".into(),
-            confidence: 0.95,
-            provenance: "human_curated".into(),
-        },
-    ];
-    let edge_count = batch_upsert_edges_turso(&mut conn, &edges).await.expect("batch upsert edges");
+    let edges = vec![EdgeUpsertRecord::new(
+        node1_id,
+        node2_id,
+        "PARENT_OF",
+        0.95,
+        "human_curated",
+    )];
+    let edge_count = batch_upsert_edges_turso(&mut conn, &edges)
+        .await
+        .expect("batch upsert edges");
     assert_eq!(edge_count, 1, "Must insert 1 edge");
 
     // Edge conflict resolution: re-insert with higher confidence
-    let edge_update = EdgeUpsertRecord {
-        parent_id: node1_id,
-        child_id: node2_id,
-        relationship_type: "PARENT_OF".into(),
-        confidence: 0.99,
-        provenance: "verified".into(),
-    };
-    let edge_updated = batch_upsert_edges_turso(&mut conn, &[edge_update]).await.expect("upsert conflicting edge");
-    assert_eq!(edge_updated, 1, "Must resolve edge conflict by updating confidence");
+    let edge_update = EdgeUpsertRecord::new(node1_id, node2_id, "PARENT_OF", 0.99, "verified");
+    let edge_updated = batch_upsert_edges_turso(&mut conn, &[edge_update])
+        .await
+        .expect("upsert conflicting edge");
+    assert_eq!(
+        edge_updated, 1,
+        "Must resolve edge conflict by updating confidence"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_turso_mutation_lifecycle() {
     let harness = TursoHarness::in_memory();
     let mut conn = harness.connect_async().await.expect("connect async");
-    run_turso_migration_async(&mut conn, SCHEMA_SQL).await.expect("run migration");
+    run_turso_migration_async(&mut conn, SCHEMA_SQL)
+        .await
+        .expect("run migration");
 
     let dept_id = Uuid::new_v4();
     let cat_id = Uuid::new_v4();
     let sku_id = Uuid::new_v4();
 
     let directives = vec![
+        MutationDirectiveRecord::InsertNode(NodeUpsertRecord::new(
+            dept_id,
+            "DEPT-FOOD",
+            "department",
+            "Food & Beverage",
+        )),
+        MutationDirectiveRecord::InsertNode(NodeUpsertRecord::new(
+            cat_id,
+            "CAT-SNACKS",
+            "category",
+            "Snacks",
+        )),
         MutationDirectiveRecord::InsertNode(NodeUpsertRecord {
-            id: dept_id,
-            business_key: "DEPT-FOOD".into(),
-            entity_level: "department".into(),
-            name: "Food & Beverage".into(),
-            attributes: serde_json::json!({}),
-            embedding: None,
-        }),
-        MutationDirectiveRecord::InsertNode(NodeUpsertRecord {
-            id: cat_id,
-            business_key: "CAT-SNACKS".into(),
-            entity_level: "category".into(),
-            name: "Snacks".into(),
-            attributes: serde_json::json!({}),
-            embedding: None,
-        }),
-        MutationDirectiveRecord::InsertNode(NodeUpsertRecord {
-            id: sku_id,
-            business_key: "SKU-CHIPS".into(),
-            entity_level: "sku".into(),
-            name: "Potato Chips".into(),
             attributes: serde_json::json!({"brand": "Crispy"}),
-            embedding: None,
+            ..NodeUpsertRecord::new(sku_id, "SKU-CHIPS", "sku", "Potato Chips")
         }),
         MutationDirectiveRecord::AttachParent {
             parent_id: dept_id,
@@ -240,15 +252,13 @@ async fn test_turso_mutation_lifecycle() {
         .expect("apply mutation lifecycle");
 
     // Retarget SKU parent from cat_id directly to dept_id
-    let retarget = vec![
-        MutationDirectiveRecord::RetargetEdge {
-            child_id: sku_id,
-            old_parent_id: cat_id,
-            new_parent_id: dept_id,
-            relationship_type: "CONTAINS".into(),
-            confidence: 1.0,
-        },
-    ];
+    let retarget = vec![MutationDirectiveRecord::RetargetEdge {
+        child_id: sku_id,
+        old_parent_id: cat_id,
+        new_parent_id: dept_id,
+        relationship_type: "CONTAINS".into(),
+        confidence: 1.0,
+    }];
     apply_mutation_lifecycle_turso(&mut conn, &retarget)
         .await
         .expect("retarget edge");
@@ -258,133 +268,96 @@ async fn test_turso_mutation_lifecycle() {
 async fn test_turso_savepoint_isolation_and_rollback() {
     let harness = TursoHarness::in_memory();
     let mut conn = harness.connect_async().await.expect("connect async");
-    run_turso_migration_async(&mut conn, SCHEMA_SQL).await.expect("run migration");
+    run_turso_migration_async(&mut conn, SCHEMA_SQL)
+        .await
+        .expect("run migration");
 
     let node_id = Uuid::new_v4();
 
     // 1. Successful savepoint commit
     let commit_res = execute_with_savepoint_turso(&mut conn, "sp_success", |c| {
         async move {
-            let node = NodeUpsertRecord {
-                id: node_id,
-                business_key: "KEY-COMMITTED".into(),
-                entity_level: "item".into(),
-                name: "Committed Node".into(),
-                attributes: serde_json::json!({}),
-                embedding: None,
-            };
+            let node = NodeUpsertRecord::new(node_id, "KEY-COMMITTED", "item", "Committed Node");
             batch_upsert_nodes_turso(c, &[node]).await?;
             Ok("success")
-        }.boxed()
-    }).await;
+        }
+        .boxed()
+    })
+    .await;
 
     assert!(commit_res.is_ok());
     assert_eq!(commit_res.unwrap(), "success");
 
     // 2. Failing savepoint rollback
     let rollback_node_id = Uuid::new_v4();
-    let rollback_res: Result<(), PersistenceError> = execute_with_savepoint_turso(&mut conn, "sp_fail", |c| {
-        async move {
-            let node = NodeUpsertRecord {
-                id: rollback_node_id,
-                business_key: "KEY-ROLLED-BACK".into(),
-                entity_level: "item".into(),
-                name: "Doomed Node".into(),
-                attributes: serde_json::json!({}),
-                embedding: None,
-            };
-            batch_upsert_nodes_turso(c, &[node]).await?;
-            Err(PersistenceError::SavepointRolledBack("Simulated failure in transaction".into()))
-        }.boxed()
-    }).await;
+    let rollback_res: Result<(), PersistenceError> =
+        execute_with_savepoint_turso(&mut conn, "sp_fail", |c| {
+            async move {
+                let node = NodeUpsertRecord::new(
+                    rollback_node_id,
+                    "KEY-ROLLED-BACK",
+                    "item",
+                    "Doomed Node",
+                );
+                batch_upsert_nodes_turso(c, &[node]).await?;
+                Err(PersistenceError::SavepointRolledBack(
+                    "Simulated failure in transaction".into(),
+                ))
+            }
+            .boxed()
+        })
+        .await;
 
-    assert!(rollback_res.is_err(), "Savepoint must return the simulated error");
+    assert!(
+        rollback_res.is_err(),
+        "Savepoint must return the simulated error"
+    );
 
     // Verify outer connection is completely healthy and usable
     use diesel_async::SimpleAsyncConnection;
     let ping_res = conn.batch_execute("SELECT 1;").await;
-    assert!(ping_res.is_ok(), "Connection must remain functional after savepoint rollback");
+    assert!(
+        ping_res.is_ok(),
+        "Connection must remain functional after savepoint rollback"
+    );
 }
+
+/// Enterprise (L1) -> Division (L2) -> Team (L3) -> Engineer (L4): business key, level and name.
+const ORG_LEVELS: [(&str, &str, &str); 4] = [
+    ("ORG-ENT", "enterprise", "Global Corp"),
+    ("ORG-DIV", "division", "AI Systems Division"),
+    ("ORG-TEAM", "team", "Knowledge Graph Team"),
+    ("USER-ENG", "individual", "Staff Engineer"),
+];
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_turso_recursive_cte_traversals() {
     let harness = TursoHarness::in_memory();
     let mut conn = harness.connect_async().await.expect("connect async");
-    run_turso_migration_async(&mut conn, SCHEMA_SQL).await.expect("run migration");
+    run_turso_migration_async(&mut conn, SCHEMA_SQL)
+        .await
+        .expect("run migration");
 
     // Build 4-level taxonomy: Enterprise (L1) -> Division (L2) -> Team (L3) -> Engineer (L4)
-    let l1_id = Uuid::new_v4();
-    let l2_id = Uuid::new_v4();
-    let l3_id = Uuid::new_v4();
-    let l4_id = Uuid::new_v4();
-
-    let nodes = vec![
-        NodeUpsertRecord {
-            id: l1_id,
-            business_key: "ORG-ENT".into(),
-            entity_level: "enterprise".into(),
-            name: "Global Corp".into(),
-            attributes: serde_json::json!({}),
-            embedding: None,
-        },
-        NodeUpsertRecord {
-            id: l2_id,
-            business_key: "ORG-DIV".into(),
-            entity_level: "division".into(),
-            name: "AI Systems Division".into(),
-            attributes: serde_json::json!({}),
-            embedding: None,
-        },
-        NodeUpsertRecord {
-            id: l3_id,
-            business_key: "ORG-TEAM".into(),
-            entity_level: "team".into(),
-            name: "Knowledge Graph Team".into(),
-            attributes: serde_json::json!({}),
-            embedding: None,
-        },
-        NodeUpsertRecord {
-            id: l4_id,
-            business_key: "USER-ENG".into(),
-            entity_level: "individual".into(),
-            name: "Staff Engineer".into(),
-            attributes: serde_json::json!({}),
-            embedding: None,
-        },
-    ];
-    batch_upsert_nodes_turso(&mut conn, &nodes).await.expect("insert hierarchy nodes");
-
-    let edges = vec![
-        EdgeUpsertRecord {
-            parent_id: l1_id,
-            child_id: l2_id,
-            relationship_type: "MANAGES".into(),
-            confidence: 1.0,
-            provenance: "org_chart".into(),
-        },
-        EdgeUpsertRecord {
-            parent_id: l2_id,
-            child_id: l3_id,
-            relationship_type: "MANAGES".into(),
-            confidence: 1.0,
-            provenance: "org_chart".into(),
-        },
-        EdgeUpsertRecord {
-            parent_id: l3_id,
-            child_id: l4_id,
-            relationship_type: "MANAGES".into(),
-            confidence: 1.0,
-            provenance: "org_chart".into(),
-        },
-    ];
-    batch_upsert_edges_turso(&mut conn, &edges).await.expect("insert hierarchy edges");
+    let (nodes, edges) = lineage_records(&ORG_LEVELS, "MANAGES", "org_chart");
+    let (l1_id, l4_id) = (nodes[0].id, nodes[3].id);
+    batch_upsert_nodes_turso(&mut conn, &nodes)
+        .await
+        .expect("insert hierarchy nodes");
+    batch_upsert_edges_turso(&mut conn, &edges)
+        .await
+        .expect("insert hierarchy edges");
 
     // Fetch full ancestor lineage of Engineer in a single round-trip
     let ancestors = RecursiveTraversalBuilder::fetch_ancestors_turso_async(&mut conn, l4_id, 10)
         .await
         .expect("fetch ancestors on Turso");
 
-    assert_eq!(ancestors.len(), 3, "Must retrieve all 3 hierarchical ancestors");
+    assert_eq!(
+        ancestors.len(),
+        3,
+        "Must retrieve all 3 hierarchical ancestors"
+    );
     assert_eq!(ancestors[0].depth, 1);
     assert_eq!(ancestors[0].business_key, "ORG-TEAM");
     assert_eq!(ancestors[1].depth, 2);
@@ -393,11 +366,16 @@ async fn test_turso_recursive_cte_traversals() {
     assert_eq!(ancestors[2].business_key, "ORG-ENT");
 
     // Fetch full descendant tree of Enterprise down to depth 10
-    let descendants = RecursiveTraversalBuilder::fetch_descendants_turso_async(&mut conn, l1_id, 10)
-        .await
-        .expect("fetch descendants on Turso");
+    let descendants =
+        RecursiveTraversalBuilder::fetch_descendants_turso_async(&mut conn, l1_id, 10)
+            .await
+            .expect("fetch descendants on Turso");
 
-    assert_eq!(descendants.len(), 3, "Must retrieve all 3 hierarchical descendants");
+    assert_eq!(
+        descendants.len(),
+        3,
+        "Must retrieve all 3 hierarchical descendants"
+    );
     assert_eq!(descendants[0].depth, 1);
     assert_eq!(descendants[0].business_key, "ORG-DIV");
     assert_eq!(descendants[1].depth, 2);
@@ -410,65 +388,27 @@ async fn test_turso_recursive_cte_traversals() {
 async fn test_turso_recursive_cte_cycle_guardrail() {
     let harness = TursoHarness::in_memory();
     let mut conn = harness.connect_async().await.expect("connect async");
-    run_turso_migration_async(&mut conn, SCHEMA_SQL).await.expect("run migration");
+    run_turso_migration_async(&mut conn, SCHEMA_SQL)
+        .await
+        .expect("run migration");
 
     // Create 3 nodes forming a cycle: A -> B -> C -> A
-    let node_a = Uuid::new_v4();
-    let node_b = Uuid::new_v4();
-    let node_c = Uuid::new_v4();
-
-    let nodes = vec![
-        NodeUpsertRecord {
-            id: node_a,
-            business_key: "CYC-A".into(),
-            entity_level: "node".into(),
-            name: "Node A".into(),
-            attributes: serde_json::json!({}),
-            embedding: None,
-        },
-        NodeUpsertRecord {
-            id: node_b,
-            business_key: "CYC-B".into(),
-            entity_level: "node".into(),
-            name: "Node B".into(),
-            attributes: serde_json::json!({}),
-            embedding: None,
-        },
-        NodeUpsertRecord {
-            id: node_c,
-            business_key: "CYC-C".into(),
-            entity_level: "node".into(),
-            name: "Node C".into(),
-            attributes: serde_json::json!({}),
-            embedding: None,
-        },
-    ];
-    batch_upsert_nodes_turso(&mut conn, &nodes).await.expect("insert cyclic nodes");
-
-    let edges = vec![
-        EdgeUpsertRecord {
-            parent_id: node_a,
-            child_id: node_b,
-            relationship_type: "CYCLE".into(),
-            confidence: 1.0,
-            provenance: "test".into(),
-        },
-        EdgeUpsertRecord {
-            parent_id: node_b,
-            child_id: node_c,
-            relationship_type: "CYCLE".into(),
-            confidence: 1.0,
-            provenance: "test".into(),
-        },
-        EdgeUpsertRecord {
-            parent_id: node_c,
-            child_id: node_a,
-            relationship_type: "CYCLE".into(),
-            confidence: 1.0,
-            provenance: "test".into(),
-        },
-    ];
-    batch_upsert_edges_turso(&mut conn, &edges).await.expect("insert cyclic edges");
+    let (nodes, edges) = cycle_records(
+        &[
+            ("CYC-A", "node", "Node A"),
+            ("CYC-B", "node", "Node B"),
+            ("CYC-C", "node", "Node C"),
+        ],
+        "CYCLE",
+        "test",
+    );
+    let node_b = nodes[1].id;
+    batch_upsert_nodes_turso(&mut conn, &nodes)
+        .await
+        .expect("insert cyclic nodes");
+    batch_upsert_edges_turso(&mut conn, &edges)
+        .await
+        .expect("insert cyclic edges");
 
     // Without cycle guard this query would loop forever until recursion limit or memory exhaustion.
     // With INSTR delimiter guardrail, traversal must terminate cleanly having visited only unique ancestors.
@@ -477,7 +417,11 @@ async fn test_turso_recursive_cte_cycle_guardrail() {
         .expect("recursive CTE with cycle guard must succeed without looping");
 
     // Ancestor of B is A, ancestor of A is C; from C, parent is B which is already in visited_path, so cycle halts!
-    assert_eq!(ancestors.len(), 2, "Cycle guardrail must prevent infinite recursion and return exactly 2 unique hops");
+    assert_eq!(
+        ancestors.len(),
+        2,
+        "Cycle guardrail must prevent infinite recursion and return exactly 2 unique hops"
+    );
     assert_eq!(ancestors[0].business_key, "CYC-A");
     assert_eq!(ancestors[1].business_key, "CYC-C");
 }
@@ -494,17 +438,23 @@ async fn test_turso_custom_adjacency_table_cte_traversal() {
         name TEXT NOT NULL
     );
     "#;
-    run_turso_migration_async(&mut conn, custom_schema).await.expect("run custom migration");
+    run_turso_migration_async(&mut conn, custom_schema)
+        .await
+        .expect("run custom migration");
 
     use diesel_async::SimpleAsyncConnection;
-    conn.batch_execute(r#"
+    conn.batch_execute(
+        r#"
         INSERT INTO categories (id, parent_id, name) VALUES
             ('c1', NULL, 'Electronics'),
             ('c2', 'c1', 'Computers'),
             ('c3', 'c2', 'Laptops'),
             ('c4', 'c2', 'Desktops'),
             ('c5', 'c3', 'Ultrabooks');
-    "#).await.expect("insert categories");
+    "#,
+    )
+    .await
+    .expect("insert categories");
 
     let config = HierarchicalTableConfig::new("categories", "id", "parent_id", "name");
 
@@ -522,13 +472,237 @@ async fn test_turso_custom_adjacency_table_cte_traversal() {
     assert_eq!(ancestors[2].name, "Electronics");
 
     // Descendants of Computers (c2) -> Laptops (c3), Desktops (c4), Ultrabooks (c5)
-    let descendants = CteHierarchyBuilder::fetch_descendants_turso_async(&mut conn, &config, "c2", 10)
-        .await
-        .expect("fetch custom descendants");
+    let descendants =
+        CteHierarchyBuilder::fetch_descendants_turso_async(&mut conn, &config, "c2", 10)
+            .await
+            .expect("fetch custom descendants");
 
     assert_eq!(descendants.len(), 3);
     let desc_names: Vec<String> = descendants.into_iter().map(|d| d.name).collect();
     assert!(desc_names.contains(&"Laptops".to_string()));
     assert!(desc_names.contains(&"Desktops".to_string()));
     assert!(desc_names.contains(&"Ultrabooks".to_string()));
+}
+
+#[derive(diesel::QueryableByName)]
+struct NodeRow {
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    entity_level: String,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    name: String,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    attributes: String,
+}
+
+async fn node_by_key(
+    conn: &mut embedag_diesel::migrations::AsyncLibSqlConnection,
+    key: &str,
+) -> Vec<NodeRow> {
+    use diesel_async::RunQueryDsl;
+    diesel::sql_query(format!(
+        "SELECT entity_level, name, attributes FROM semantic_nodes WHERE business_key = '{key}'"
+    ))
+    .load::<NodeRow>(conn)
+    .await
+    .expect("read node")
+}
+
+#[fixture]
+async fn migrated() -> (
+    TursoHarness,
+    embedag_diesel::migrations::AsyncLibSqlConnection,
+) {
+    let harness = TursoHarness::in_memory();
+    let mut conn = harness.connect_async().await.expect("connect async");
+    run_turso_migration_async(&mut conn, SCHEMA_SQL)
+        .await
+        .expect("run migration");
+    (harness, conn)
+}
+
+/// A conflicting upsert and a payload update behave as on PostgreSQL: the entity level stays, the
+/// name is replaced, and the attributes are merged at the top level.
+#[rstest]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_turso_upsert_merges_attributes_and_keeps_entity_level(
+    #[future(awt)] migrated: (
+        TursoHarness,
+        embedag_diesel::migrations::AsyncLibSqlConnection,
+    ),
+) {
+    let (_harness, mut conn) = migrated;
+    let id = Uuid::new_v4();
+    let first = NodeUpsertRecord {
+        attributes: serde_json::json!({"keep": 1, "replace": {"a": 1}, "flag": true, "text": "it's"}),
+        ..NodeUpsertRecord::new(id, "K-MERGE", "category", "Old")
+    };
+    batch_upsert_nodes_turso(&mut conn, &[first]).await.unwrap();
+
+    let second = NodeUpsertRecord {
+        attributes: serde_json::json!({"replace": {"b": 2}, "added": null}),
+        ..NodeUpsertRecord::new(Uuid::new_v4(), "K-MERGE", "sku", "New")
+    };
+    batch_upsert_nodes_turso(&mut conn, &[second])
+        .await
+        .unwrap();
+
+    let rows = node_by_key(&mut conn, "K-MERGE").await;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        rows[0].entity_level, "category",
+        "the level of the stored node stays"
+    );
+    assert_eq!(rows[0].name, "New");
+    let merged: serde_json::Value = serde_json::from_str(&rows[0].attributes).unwrap();
+    assert_eq!(
+        merged,
+        serde_json::json!({"keep": 1, "replace": {"b": 2}, "flag": true, "text": "it's", "added": null})
+    );
+
+    apply_mutation_lifecycle_turso(
+        &mut conn,
+        &[MutationDirectiveRecord::UpdateNodePayload {
+            id,
+            updated_attributes: serde_json::json!({"keep": 2, "extra": "x"}),
+        }],
+    )
+    .await
+    .unwrap();
+    let rows = node_by_key(&mut conn, "K-MERGE").await;
+    let updated: serde_json::Value = serde_json::from_str(&rows[0].attributes).unwrap();
+    assert_eq!(updated["keep"], 2);
+    assert_eq!(updated["extra"], "x");
+    assert_eq!(updated["flag"], true, "members not in the update stay");
+}
+
+/// A batch that fails part way leaves nothing behind.
+#[rstest]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_turso_mutation_lifecycle_is_atomic(
+    #[future(awt)] migrated: (
+        TursoHarness,
+        embedag_diesel::migrations::AsyncLibSqlConnection,
+    ),
+) {
+    let (_harness, mut conn) = migrated;
+    let taken = Uuid::new_v4();
+    batch_upsert_nodes_turso(
+        &mut conn,
+        &[NodeUpsertRecord::new(taken, "K-TAKEN", "item", "Taken")],
+    )
+    .await
+    .unwrap();
+
+    let result = apply_mutation_lifecycle_turso(
+        &mut conn,
+        &[
+            MutationDirectiveRecord::InsertNode(NodeUpsertRecord::new(
+                Uuid::new_v4(),
+                "K-FIRST",
+                "item",
+                "First",
+            )),
+            // The same id under another business key breaks the primary key.
+            MutationDirectiveRecord::InsertNode(NodeUpsertRecord::new(
+                taken, "K-CLASH", "item", "Clash",
+            )),
+        ],
+    )
+    .await;
+
+    assert!(result.is_err(), "the second directive must fail");
+    assert!(
+        node_by_key(&mut conn, "K-FIRST").await.is_empty(),
+        "the first directive is rolled back with the batch"
+    );
+    // The connection is usable and the savepoint is gone.
+    use diesel_async::SimpleAsyncConnection;
+    conn.batch_execute("SELECT 1;").await.unwrap();
+    assert!(
+        conn.batch_execute("RELEASE SAVEPOINT \"apply_mutation_lifecycle\";")
+            .await
+            .is_err(),
+        "no savepoint is left open"
+    );
+}
+
+/// After a rollback the savepoint is released, and the operation's error is what comes back.
+#[rstest]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_turso_savepoint_is_released_after_rollback(
+    #[future(awt)] migrated: (
+        TursoHarness,
+        embedag_diesel::migrations::AsyncLibSqlConnection,
+    ),
+) {
+    let (_harness, mut conn) = migrated;
+    let res: Result<(), PersistenceError> =
+        execute_with_savepoint_turso(&mut conn, "sp_gone", |c| {
+            async move {
+                batch_upsert_nodes_turso(
+                    c,
+                    &[NodeUpsertRecord::new(
+                        Uuid::new_v4(),
+                        "K-DOOMED",
+                        "item",
+                        "Doomed",
+                    )],
+                )
+                .await?;
+                Err(PersistenceError::SavepointRolledBack("boom".into()))
+            }
+            .boxed()
+        })
+        .await;
+    assert!(matches!(res, Err(PersistenceError::SavepointRolledBack(m)) if m == "boom"));
+    assert!(node_by_key(&mut conn, "K-DOOMED").await.is_empty());
+    use diesel_async::SimpleAsyncConnection;
+    assert!(
+        conn.batch_execute("RELEASE SAVEPOINT \"sp_gone\";")
+            .await
+            .is_err()
+    );
+}
+
+/// A batch larger than one round trip is written completely, in order, and counted.
+#[rstest]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_turso_large_batches_cross_round_trips(
+    #[future(awt)] migrated: (
+        TursoHarness,
+        embedag_diesel::migrations::AsyncLibSqlConnection,
+    ),
+) {
+    let (_harness, mut conn) = migrated;
+    let nodes: Vec<NodeUpsertRecord> = (0..450)
+        .map(|n| {
+            NodeUpsertRecord::new(
+                Uuid::new_v4(),
+                &format!("K-{n:04}"),
+                "item",
+                &format!("Node {n}"),
+            )
+        })
+        .collect();
+    assert_eq!(
+        batch_upsert_nodes_turso(&mut conn, &nodes).await.unwrap(),
+        450
+    );
+    for key in ["K-0000", "K-0199", "K-0200", "K-0399", "K-0400", "K-0449"] {
+        assert_eq!(
+            node_by_key(&mut conn, key).await.len(),
+            1,
+            "{key} is stored"
+        );
+    }
+
+    let edges: Vec<EdgeUpsertRecord> = nodes
+        .windows(2)
+        .map(|w| EdgeUpsertRecord::new(w[0].id, w[1].id, "NEXT", 0.5, "test"))
+        .collect();
+    assert_eq!(
+        batch_upsert_edges_turso(&mut conn, &edges).await.unwrap(),
+        449
+    );
+    assert_eq!(batch_upsert_nodes_turso(&mut conn, &[]).await.unwrap(), 0);
 }

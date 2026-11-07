@@ -213,25 +213,13 @@ mod tests {
         meta: serde_json::Value,
     }
 
-    impl NodePayload for MockNode {
-        type Key = String;
-
-        fn key(&self) -> &Self::Key {
-            &self.id
-        }
-
-        fn name(&self) -> &str {
-            &self.label
-        }
-
-        fn entity_level(&self) -> &str {
-            &self.level
-        }
-
-        fn attributes(&self) -> serde_json::Value {
-            self.meta.clone()
-        }
-    }
+    crate::impl_node_payload!(
+        MockNode,
+        key = |n| &n.id,
+        name = |n| &n.label,
+        level = |n| &n.level,
+        attributes = |n| { n.meta.clone() }
+    );
 
     struct MockFullRepo;
 

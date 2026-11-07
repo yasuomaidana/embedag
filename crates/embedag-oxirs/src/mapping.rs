@@ -113,6 +113,21 @@ pub fn make_graph_name(config: &OxiRsTdbConfig) -> Result<GraphName, OxiRsStorag
     }
 }
 
+/// A quad stating `subject predicate "text"` in `graph`.
+fn literal_quad(
+    subject: &Subject,
+    predicate: &NamedNode,
+    text: impl Into<String>,
+    graph: &GraphName,
+) -> Quad {
+    Quad::new(
+        subject.clone(),
+        Predicate::NamedNode(predicate.clone()),
+        Object::Literal(Literal::new(text)),
+        graph.clone(),
+    )
+}
+
 /// Converts a domain node `T: NodePayload` into a set of RDF quads for OxiRS storage.
 pub fn node_to_quads<T: NodePayload + Serialize>(
     config: &OxiRsTdbConfig,
@@ -140,45 +155,40 @@ pub fn node_to_quads<T: NodePayload + Serialize>(
     ));
 
     // 2. rdfs:label Literal
-    quads.push(Quad::new(
-        subject.clone(),
-        Predicate::NamedNode(vocab.rdfs_label.clone()),
-        Object::Literal(Literal::new(node.name())),
-        graph.clone(),
+    quads.push(literal_quad(
+        &subject,
+        &vocab.rdfs_label,
+        node.name(),
+        &graph,
     ));
 
     // 3. embedag:businessKey Literal
-    quads.push(Quad::new(
-        subject.clone(),
-        Predicate::NamedNode(vocab.business_key.clone()),
-        Object::Literal(Literal::new(node.key().to_string())),
-        graph.clone(),
+    quads.push(literal_quad(
+        &subject,
+        &vocab.business_key,
+        node.key().to_string(),
+        &graph,
     ));
 
     // 4. embedag:entityLevel Literal
-    quads.push(Quad::new(
-        subject.clone(),
-        Predicate::NamedNode(vocab.entity_level.clone()),
-        Object::Literal(Literal::new(node.entity_level())),
-        graph.clone(),
+    quads.push(literal_quad(
+        &subject,
+        &vocab.entity_level,
+        node.entity_level(),
+        &graph,
     ));
 
     // 5. embedag:attributes Literal (serialized JSON)
-    quads.push(Quad::new(
-        subject.clone(),
-        Predicate::NamedNode(vocab.attributes.clone()),
-        Object::Literal(Literal::new(node.attributes().to_string())),
-        graph.clone(),
+    quads.push(literal_quad(
+        &subject,
+        &vocab.attributes,
+        node.attributes().to_string(),
+        &graph,
     ));
 
     // 6. embedag:payload Literal (exact JSON serialized node payload for 100% loss-less reconstruction)
     let payload_json = serde_json::to_string(node)?;
-    quads.push(Quad::new(
-        subject,
-        Predicate::NamedNode(vocab.payload.clone()),
-        Object::Literal(Literal::new(payload_json)),
-        graph,
-    ));
+    quads.push(literal_quad(&subject, &vocab.payload, payload_json, &graph));
 
     Ok(quads)
 }
@@ -246,19 +256,19 @@ pub fn edge_to_quads<K: Display>(
     ));
 
     // edge embedag:relationship relationship
-    quads.push(Quad::new(
-        edge_subj.clone(),
-        Predicate::NamedNode(vocab.relationship.clone()),
-        Object::Literal(Literal::new(&edge.relationship)),
-        graph.clone(),
+    quads.push(literal_quad(
+        &edge_subj,
+        &vocab.relationship,
+        &edge.relationship,
+        &graph,
     ));
 
     // edge embedag:confidence confidence
-    quads.push(Quad::new(
-        edge_subj.clone(),
-        Predicate::NamedNode(vocab.confidence.clone()),
-        Object::Literal(Literal::new(format!("{:.4}", edge.confidence))),
-        graph.clone(),
+    quads.push(literal_quad(
+        &edge_subj,
+        &vocab.confidence,
+        format!("{:.4}", edge.confidence),
+        &graph,
     ));
 
     // edge embedag:provenance provenance
@@ -268,11 +278,11 @@ pub fn edge_to_quads<K: Display>(
         ProvenanceKind::LlmConstrainedInference => "LlmConstrainedInference",
         ProvenanceKind::HumanVerified => "HumanVerified",
     };
-    quads.push(Quad::new(
-        edge_subj,
-        Predicate::NamedNode(vocab.provenance.clone()),
-        Object::Literal(Literal::new(prov_str)),
-        graph,
+    quads.push(literal_quad(
+        &edge_subj,
+        &vocab.provenance,
+        prov_str,
+        &graph,
     ));
 
     Ok(quads)

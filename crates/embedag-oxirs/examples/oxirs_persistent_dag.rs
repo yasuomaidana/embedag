@@ -7,7 +7,6 @@
 
 use embedag_core::dag::MemoryDag;
 use embedag_core::model::{EdgePayload, ProvenanceKind};
-use embedag_core::traits::NodePayload;
 use embedag_oxirs::{OxiRsTdbConfig, OxiRsTdbEngine, SyncPolicy};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -33,25 +32,13 @@ impl MedicalConcept {
     }
 }
 
-impl NodePayload for MedicalConcept {
-    type Key = String;
-
-    fn key(&self) -> &Self::Key {
-        &self.code
-    }
-
-    fn name(&self) -> &str {
-        &self.title
-    }
-
-    fn entity_level(&self) -> &str {
-        &self.domain
-    }
-
-    fn attributes(&self) -> serde_json::Value {
-        serde_json::to_value(&self.metadata).unwrap_or(serde_json::Value::Null)
-    }
-}
+embedag_core::impl_node_payload!(
+    MedicalConcept,
+    key = |n| &n.code,
+    name = |n| &n.title,
+    level = |n| &n.domain,
+    attributes = |n| { serde_json::to_value(&n.metadata).unwrap_or(serde_json::Value::Null) }
+);
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== OxiRS TDB2 Persistent Storage Engine Demonstration ===");

@@ -6,9 +6,10 @@ use std::sync::Arc;
 
 use embedag_core::dag::MemoryDag;
 use embedag_core::model::{EdgePayload, ProvenanceKind};
+use embedag_core::mutation::dag_directives;
+use embedag_core::similarity::rank_by_cosine;
 use embedag_core::traits::NodePayload;
 use parking_lot::RwLock;
-use petgraph::visit::EdgeRef;
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::config::{Neo4jConfig, StorageMode};
@@ -121,33 +122,7 @@ impl Neo4jEngine {
         &self,
         key: &T::Key,
     ) -> Result<Option<T>, Neo4jStorageError> {
-        let key_str = key.to_string();
-
-        if let Some(ref mock) = self.mock {
-            if let Some(rec) = mock.nodes.read().get(&key_str) {
-                return Ok(Some(rec.to_node()?));
-            }
-            return Ok(None);
-        }
-
-        if let Some(ref graph) = self.graph {
-            let cypher = format!(
-                "MATCH (n:`{}` {{ business_key: $key }}) RETURN n.payload_json AS payload_json",
-                self.config.node_label
-            );
-
-            let q = neo4rs::query(&cypher).param("key", key_str);
-            let mut stream = graph.execute(q).await?;
-
-            if let Ok(Some(row)) = stream.next().await
-                && let Ok(payload_json) = row.get::<String>("payload_json")
-            {
-                let node: T = serde_json::from_str(&payload_json)?;
-                return Ok(Some(node));
-            }
-        }
-
-        Ok(None)
+        self.get_node_by_string_key(&key.to_string()).await
     }
 
     /// Removes a node and any attached relationships by its business key.
@@ -275,43 +250,7 @@ impl Neo4jEngine {
         &self,
         child_key: &T::Key,
     ) -> Result<Vec<T>, Neo4jStorageError> {
-        let child_str = child_key.to_string();
-
-        if let Some(ref mock) = self.mock {
-            let edges = mock.edges.read();
-            let nodes = mock.nodes.read();
-            let mut parents = Vec::new();
-
-            for (p, c, _) in edges.iter() {
-                if c == &child_str
-                    && let Some(n) = nodes.get(p)
-                {
-                    parents.push(n.to_node()?);
-                }
-            }
-            return Ok(parents);
-        }
-
-        if let Some(ref graph) = self.graph {
-            let cypher = format!(
-                "MATCH (p:`{}`)-[r]->(c:`{}` {{ business_key: $child }}) RETURN p.payload_json AS payload_json",
-                self.config.node_label, self.config.node_label
-            );
-
-            let q = neo4rs::query(&cypher).param("child", child_str);
-            let mut stream = graph.execute(q).await?;
-            let mut parents = Vec::new();
-
-            while let Ok(Some(row)) = stream.next().await {
-                if let Ok(payload_json) = row.get::<String>("payload_json") {
-                    let node: T = serde_json::from_str(&payload_json)?;
-                    parents.push(node);
-                }
-            }
-            return Ok(parents);
-        }
-
-        Ok(Vec::new())
+        self.neighbours(child_key.to_string(), true).await
     }
 
     /// Fetches immediate children of a node identified by business key.
@@ -319,40 +258,54 @@ impl Neo4jEngine {
         &self,
         parent_key: &T::Key,
     ) -> Result<Vec<T>, Neo4jStorageError> {
-        let parent_str = parent_key.to_string();
+        self.neighbours(parent_key.to_string(), false).await
+    }
 
+    /// The nodes one edge away from `key`: its parents when `parents`, else its children.
+    async fn neighbours<T: NodePayload + DeserializeOwned>(
+        &self,
+        key: String,
+        parents: bool,
+    ) -> Result<Vec<T>, Neo4jStorageError> {
         if let Some(ref mock) = self.mock {
             let edges = mock.edges.read();
             let nodes = mock.nodes.read();
-            let mut children = Vec::new();
+            let mut found = Vec::new();
 
             for (p, c, _) in edges.iter() {
-                if p == &parent_str
-                    && let Some(n) = nodes.get(c)
+                let (own, other) = if parents { (c, p) } else { (p, c) };
+                if own == &key
+                    && let Some(n) = nodes.get(other)
                 {
-                    children.push(n.to_node()?);
+                    found.push(n.to_node()?);
                 }
             }
-            return Ok(children);
+            return Ok(found);
         }
 
         if let Some(ref graph) = self.graph {
-            let cypher = format!(
-                "MATCH (p:`{}` {{ business_key: $parent }})-[r]->(c:`{}`) RETURN c.payload_json AS payload_json",
-                self.config.node_label, self.config.node_label
-            );
+            let label = &self.config.node_label;
+            let cypher = if parents {
+                format!(
+                    "MATCH (p:`{label}`)-[r]->(c:`{label}` {{ business_key: $key }}) RETURN p.payload_json AS payload_json"
+                )
+            } else {
+                format!(
+                    "MATCH (p:`{label}` {{ business_key: $key }})-[r]->(c:`{label}`) RETURN c.payload_json AS payload_json"
+                )
+            };
 
-            let q = neo4rs::query(&cypher).param("parent", parent_str);
+            let q = neo4rs::query(&cypher).param("key", key);
             let mut stream = graph.execute(q).await?;
-            let mut children = Vec::new();
+            let mut found = Vec::new();
 
             while let Ok(Some(row)) = stream.next().await {
                 if let Ok(payload_json) = row.get::<String>("payload_json") {
                     let node: T = serde_json::from_str(&payload_json)?;
-                    children.push(node);
+                    found.push(node);
                 }
             }
-            return Ok(children);
+            return Ok(found);
         }
 
         Ok(Vec::new())
@@ -369,37 +322,7 @@ impl Neo4jEngine {
         query: &[f32],
         limit: usize,
     ) -> Result<Vec<(T, f32)>, Neo4jStorageError> {
-        let scored = {
-            let index = self.vector_index.read();
-            let mut scored: Vec<(String, f32)> = Vec::with_capacity(index.len());
-
-            let q_norm = query.iter().map(|v| v * v).sum::<f32>().sqrt();
-            if q_norm == 0.0 {
-                return Ok(Vec::new());
-            }
-
-            for (key, vec) in index.iter() {
-                if vec.len() != query.len() {
-                    continue;
-                }
-                let dot = query
-                    .iter()
-                    .zip(vec.iter())
-                    .map(|(a, b)| a * b)
-                    .sum::<f32>();
-                let v_norm = vec.iter().map(|v| v * v).sum::<f32>().sqrt();
-                let score = if v_norm > 0.0 {
-                    dot / (q_norm * v_norm)
-                } else {
-                    0.0
-                };
-                scored.push((key.clone(), score));
-            }
-
-            scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-            scored.truncate(limit);
-            scored
-        };
+        let scored = rank_by_cosine(&self.vector_index.read(), query, limit);
 
         let mut results = Vec::with_capacity(scored.len());
         for (key_str, score) in scored {
@@ -445,19 +368,7 @@ impl Neo4jEngine {
         &self,
         dag: &MemoryDag<T>,
     ) -> Result<(), Neo4jStorageError> {
-        let inner = dag.inner();
-        for idx in inner.node_indices() {
-            self.insert_node(&inner[idx]).await?;
-        }
-
-        for edge_ref in inner.edge_references() {
-            let source_node = &inner[edge_ref.source()];
-            let target_node = &inner[edge_ref.target()];
-            self.insert_edge(source_node.key(), target_node.key(), edge_ref.weight())
-                .await?;
-        }
-
-        Ok(())
+        self.apply_directives(&dag_directives(dag)).await
     }
 
     /// Loads graph contents from Neo4j into a fresh [`MemoryDag<T>`].

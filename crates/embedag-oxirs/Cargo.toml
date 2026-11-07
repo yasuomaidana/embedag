@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+readme = "README.md"
 
 [features]
 default = []
@@ -20,5 +21,7 @@ parking_lot = { workspace = true }
 petgraph = { workspace = true }
 
 [dev-dependencies]
+embedag-core = { workspace = true, features = ["testing"] }
 tokio = { workspace = true }
 tempfile = { workspace = true }
+rstest = { workspace = true }

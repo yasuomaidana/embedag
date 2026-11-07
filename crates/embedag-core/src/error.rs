@@ -19,6 +19,15 @@ pub enum DagError {
         node_indices: Vec<usize>,
     },
 
+    /// A node index referenced in an edge is out of bounds for the graph.
+    #[error("node index {index} is out of bounds for graph with {node_count} nodes")]
+    NodeIndexOutOfBounds {
+        /// The invalid node index.
+        index: usize,
+        /// Total number of nodes in the graph.
+        node_count: usize,
+    },
+
     /// A referenced node key does not exist in the arena.
     #[error("node with key `{key}` was not found")]
     NodeNotFound {

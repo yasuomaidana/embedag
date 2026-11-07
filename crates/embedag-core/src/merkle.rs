@@ -140,11 +140,7 @@ pub fn diff(old: &MerkleNode, new: &MerkleNode) -> Delta {
 }
 
 /// Computes the [`Delta`] between `old` and `new` while counting the number of visited nodes.
-pub(crate) fn diff_with_counter(
-    old: &MerkleNode,
-    new: &MerkleNode,
-    visited: &mut usize,
-) -> Delta {
+pub(crate) fn diff_with_counter(old: &MerkleNode, new: &MerkleNode, visited: &mut usize) -> Delta {
     let mut delta = Delta::default();
     diff_node(old, new, "", &mut delta, visited);
     delta
@@ -207,27 +203,18 @@ fn diff_node(
         }
     }
 
-    while i < old_children.len() {
-        let child = &old_children[i];
-        let path = join_path(prefix, &child.key);
-        collect_leaves(child, &path, &mut delta.removed, visited);
-        i += 1;
-    }
+    collect_all(&old_children[i..], prefix, &mut delta.removed, visited);
+    collect_all(&new_children[j..], prefix, &mut delta.added, visited);
+}
 
-    while j < new_children.len() {
-        let child = &new_children[j];
-        let path = join_path(prefix, &child.key);
-        collect_leaves(child, &path, &mut delta.added, visited);
-        j += 1;
+/// Collects the leaf paths under every one of `children`, which sit below `prefix`.
+fn collect_all(children: &[MerkleNode], prefix: &str, out: &mut Vec<String>, visited: &mut usize) {
+    for child in children {
+        collect_leaves(child, &join_path(prefix, &child.key), out, visited);
     }
 }
 
-fn collect_leaves(
-    node: &MerkleNode,
-    path: &str,
-    out: &mut Vec<String>,
-    visited: &mut usize,
-) {
+fn collect_leaves(node: &MerkleNode, path: &str, out: &mut Vec<String>, visited: &mut usize) {
     *visited += 1;
     if node.leaf_hash.is_some() || node.children.is_empty() {
         out.push(path.to_string());
@@ -258,7 +245,10 @@ mod tests {
         let files = vec![
             ("src/lib.rs".to_string(), b"pub mod a;".to_vec()),
             ("src/a/mod.rs".to_string(), b"pub fn run() {}".to_vec()),
-            ("Cargo.toml".to_string(), b"[package]\nname = \"x\"".to_vec()),
+            (
+                "Cargo.toml".to_string(),
+                b"[package]\nname = \"x\"".to_vec(),
+            ),
         ];
         let t1 = MerkleNode::from_paths("root", files.clone());
         let t2 = MerkleNode::from_paths("root", files);
@@ -293,22 +283,33 @@ mod tests {
         assert_eq!(delta.changed, vec!["src/lib.rs".to_string()]);
     }
 
+    /// A tree named `name` over files given as (`path`, `content`).
+    fn tree(name: &str, files: &[(&str, &str)]) -> MerkleNode {
+        MerkleNode::from_paths(
+            name,
+            files
+                .iter()
+                .map(|(path, content)| (path.to_string(), content.as_bytes().to_vec()))
+                .collect::<Vec<_>>(),
+        )
+    }
+
     #[test]
     fn test_add_and_remove_file() {
-        let t1 = MerkleNode::from_paths(
+        let t1 = tree(
             "root",
-            vec![
-                ("a/keep.rs".to_string(), b"keep".to_vec()),
-                ("a/old.rs".to_string(), b"remove me".to_vec()),
-                ("removed_dir/x.rs".to_string(), b"gone".to_vec()),
+            &[
+                ("a/keep.rs", "keep"),
+                ("a/old.rs", "remove me"),
+                ("removed_dir/x.rs", "gone"),
             ],
         );
-        let t2 = MerkleNode::from_paths(
+        let t2 = tree(
             "root",
-            vec![
-                ("a/keep.rs".to_string(), b"keep".to_vec()),
-                ("a/new.rs".to_string(), b"added".to_vec()),
-                ("added_dir/y.rs".to_string(), b"fresh".to_vec()),
+            &[
+                ("a/keep.rs", "keep"),
+                ("a/new.rs", "added"),
+                ("added_dir/y.rs", "fresh"),
             ],
         );
 
@@ -359,21 +360,24 @@ mod tests {
 
     #[test]
     fn test_from_paths_order_independence() {
-        let files_a = vec![
-            ("z/b.rs".to_string(), b"1".to_vec()),
-            ("a/c.rs".to_string(), b"2".to_vec()),
-            ("a/a.rs".to_string(), b"3".to_vec()),
-            ("m.rs".to_string(), b"4".to_vec()),
-        ];
-        let files_b = vec![
-            ("m.rs".to_string(), b"4".to_vec()),
-            ("a/a.rs".to_string(), b"3".to_vec()),
-            ("z/b.rs".to_string(), b"1".to_vec()),
-            ("a/c.rs".to_string(), b"2".to_vec()),
-        ];
-
-        let t_a = MerkleNode::from_paths("repo", files_a);
-        let t_b = MerkleNode::from_paths("repo", files_b);
+        let t_a = tree(
+            "repo",
+            &[
+                ("z/b.rs", "1"),
+                ("a/c.rs", "2"),
+                ("a/a.rs", "3"),
+                ("m.rs", "4"),
+            ],
+        );
+        let t_b = tree(
+            "repo",
+            &[
+                ("m.rs", "4"),
+                ("a/a.rs", "3"),
+                ("z/b.rs", "1"),
+                ("a/c.rs", "2"),
+            ],
+        );
 
         assert_eq!(t_a.hash, t_b.hash);
         assert_eq!(t_a, t_b);

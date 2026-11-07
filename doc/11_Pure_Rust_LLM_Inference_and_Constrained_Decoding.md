@@ -13,8 +13,8 @@
 ## 1. Executive Summary & Architectural Role
 
 To fulfill `embedag`'s core promise of **Zero C/C++ FFI and 100% Pure Rust**, LLM execution is powered strictly by the **KitaSan open-source LLM engines (`cool-japan` / COOLJAPAN OÜ)**:
-1. **`cool-japan/oxibonsai` (Priority 1 Sub-2-Bit Engine)**: Specialized for ultra-low memory footprints (1-bit `Q1_0_g128` and ternary `TQ2_0_g128` quantization) and Pushdown Automaton (PDA) constrained logit masking.
-2. **`cool-japan/oxillama` (Priority 1 General GGUF Engine)**: Pure-Rust sovereign replacement for `llama.cpp`. Supports full GGUF model parsing, 25 transformer architectures (LLaMA, Qwen3, Mistral, Gemma, Phi, DeepSeek, etc.), and mainstream quantization formats (`Q4_0`..`Q8_0`, K-quants, I-quants) built atop `SciRS2`, `OxiBLAS`, and `OxiFFT`.
+1. **`cool-japan/oxibonsai` (Sub-2-Bit Engine, memory-constrained CPU deployments)**: Specialized for ultra-low memory footprints (1-bit `Q1_0_g128` and ternary `TQ2_0_g128` quantization) and Pushdown Automaton (PDA) constrained logit masking.
+2. **`cool-japan/oxillama` (General GGUF Engine, CPU-only deployments)**: Pure-Rust sovereign replacement for `llama.cpp`. Supports full GGUF model parsing, 25 transformer architectures (LLaMA, Qwen3, Mistral, Gemma, Phi, DeepSeek, etc.), and mainstream quantization formats (`Q4_0`..`Q8_0`, K-quants, I-quants) built atop `SciRS2`, `OxiBLAS`, and `OxiFFT`.
 
 Unlike `llama.cpp` or PyTorch, both engines compile directly with `cargo build` and execute in-process with zero foreign system dependencies.
 
@@ -53,7 +53,15 @@ When general pretrained open weights are provided (e.g. `Meta-Llama-3.1-8B-Instr
 - Complete pure Rust GGUF parser (`oxillama-gguf`) reads metadata and tensor offsets directly via `mmap`.
 - SIMD and matrix multiplication kernels run via `OxiBLAS` and `SciRS2`.
 - RoPE rotary position embeddings execute via `OxiFFT`.
-- Zero dynamic linking to CUDA C runtimes; optional pure Rust GPU kernels available via `oxillama-gpu`.
+- Zero dynamic linking to CUDA C runtimes; optional pure Rust GPU kernels available via `oxillama-gpu`, limited to Q4_0 single-token decode.
+
+### 2.3 Provider priority: GPU first
+
+oxillama-runtime 0.1.4 offloads only Q4_0 single-token decode to the GPU (`oxillama-gpu`, wgpu); multi-token prefill, and therefore prompt processing and embeddings, runs on the CPU (measured: over 3 s per 500-token embedding on Apple Silicon, against about 0.1 s for a GPU runtime). Local providers are therefore ranked:
+
+1. `candle` (`CandleProvider`) on Metal or CUDA: whole forward passes, prefill included, run on the GPU.
+2. An Ollama-compatible HTTP provider (ticket 10.3.1): GPU inference outside the process.
+3. `candle` on the CPU, `oxillama` (GGUF) and `oxibonsai` (sub-2-bit): CPU-only or memory-constrained deployments, and short structured outputs where decode dominates.
 
 ---
 

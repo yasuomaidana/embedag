@@ -317,6 +317,19 @@ pub fn composite_distance<A: AsGraphContext + ?Sized, B: AsGraphContext + ?Sized
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A record with a key, a text and tokens and nothing else.
+    fn record(key: &str, text: &str, tokens: Vec<(u32, f32)>) -> FullContextRecord {
+        FullContextRecord {
+            key: key.to_string(),
+            text: text.to_string(),
+            tokens,
+            scalars: HashMap::new(),
+            time: None,
+            coords: None,
+            tags: HashMap::new(),
+        }
+    }
     use chrono::TimeZone;
     use std::collections::HashMap;
 
@@ -378,37 +391,16 @@ mod tests {
 
     #[test]
     fn test_composite_distance_all_modalities() {
-        let mut scalars_a = HashMap::new();
-        scalars_a.insert("weight_grams".to_string(), 50.0);
-        let mut scalars_b = HashMap::new();
-        scalars_b.insert("weight_grams".to_string(), 50.0);
-
-        let mut tags_a = HashMap::new();
-        tags_a.insert("brand".to_string(), "Nestle".to_string());
-        let mut tags_b = HashMap::new();
-        tags_b.insert("brand".to_string(), "Nestle".to_string());
-
         let t = Utc.with_ymd_and_hms(2026, 5, 1, 12, 0, 0).single().unwrap();
-
-        let rec_a = FullContextRecord {
-            key: "sku-1".to_string(),
-            text: "Dark Chocolate".to_string(),
-            tokens: vec![(101, 1.0), (102, 1.0)],
-            scalars: scalars_a,
+        let full = |key: &str, text: &str| FullContextRecord {
+            scalars: HashMap::from([("weight_grams".to_string(), 50.0)]),
             time: Some(t),
             coords: Some((2.3522, 48.8566)),
-            tags: tags_a,
+            tags: HashMap::from([("brand".to_string(), "Nestle".to_string())]),
+            ..record(key, text, vec![(101, 1.0), (102, 1.0)])
         };
-
-        let rec_b = FullContextRecord {
-            key: "sku-2".to_string(),
-            text: "Dark Chocolate Bar".to_string(),
-            tokens: vec![(101, 1.0), (102, 1.0)],
-            scalars: scalars_b,
-            time: Some(t),
-            coords: Some((2.3522, 48.8566)),
-            tags: tags_b,
-        };
+        let rec_a = full("sku-1", "Dark Chocolate");
+        let rec_b = full("sku-2", "Dark Chocolate Bar");
 
         let vec_a = vec![1.0, 0.0, 0.0];
         let vec_b = vec![1.0, 0.0, 0.0];
@@ -424,24 +416,11 @@ mod tests {
     fn test_composite_distance_partial_fallback() {
         // Record A has temporal and coordinates; Record B does NOT
         let rec_a = FullContextRecord {
-            key: "sku-1".to_string(),
-            text: "Phone".to_string(),
-            tokens: vec![(1, 1.0)],
-            scalars: HashMap::new(),
             time: Some(Utc::now()),
             coords: Some((10.0, 20.0)),
-            tags: HashMap::new(),
+            ..record("sku-1", "Phone", vec![(1, 1.0)])
         };
-
-        let rec_b = FullContextRecord {
-            key: "sku-2".to_string(),
-            text: "Phone".to_string(),
-            tokens: vec![(1, 1.0)],
-            scalars: HashMap::new(),
-            time: None,
-            coords: None,
-            tags: HashMap::new(),
-        };
+        let rec_b = record("sku-2", "Phone", vec![(1, 1.0)]);
 
         let vec_a = vec![1.0, 0.0];
         let vec_b = vec![1.0, 0.0];

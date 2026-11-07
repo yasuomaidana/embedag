@@ -26,7 +26,7 @@ fn test_macro_generated_table_config_and_context_for_llm() {
 
 #[test]
 fn test_macro_generated_crud_operations_on_receipt_categories() {
-    let mut conn = diesel::SqliteConnection::establish(":memory:").expect("in-memory sqlite");
+    let mut conn = SqliteConnection::establish(":memory:").expect("in-memory sqlite");
     run_receipt_categories_sqlite_migration(&mut conn).expect("custom receipt migration");
 
     // 1. Single Insert via macro-generated method
@@ -76,7 +76,7 @@ fn test_macro_generated_crud_operations_on_receipt_categories() {
 
 #[test]
 fn test_developer_custom_migration_and_invoice_categorization_cte_sqlite() {
-    let mut conn = diesel::SqliteConnection::establish(":memory:").expect("in-memory sqlite");
+    let mut conn = SqliteConnection::establish(":memory:").expect("in-memory sqlite");
 
     // 1. Run developer's custom migration (does NOT use hardcoded semantic_nodes/edges)
     run_receipt_categories_sqlite_migration(&mut conn).expect("custom receipt migration");
@@ -85,7 +85,7 @@ fn test_developer_custom_migration_and_invoice_categorization_cte_sqlite() {
     let ticket = FinanceInvoice {
         invoice_id: "inv_101".into(),
         merchant_id: "FreshMarket".into(),
-        date: embedag_example_receipts::finance::parse_date("2026-10-12"),
+        date: embedag_example_receipts::finance::parse_date("2026-10-12").unwrap(),
         purchase_content: None,
         items: vec![
             InvoiceItem::new("item_1", "Organic Oat Milk", 3.99, 2, None),
@@ -172,7 +172,7 @@ fn test_developer_custom_migration_and_invoice_categorization_cte_sqlite() {
 
 #[test]
 fn test_diamond_dag_deduplication_with_recursive_not_all() {
-    let mut conn = diesel::SqliteConnection::establish(":memory:").expect("in-memory sqlite");
+    let mut conn = SqliteConnection::establish(":memory:").expect("in-memory sqlite");
     run_receipt_categories_sqlite_migration(&mut conn).expect("custom receipt migration");
 
     let diamond_rows = vec![
@@ -223,6 +223,7 @@ fn test_diamond_dag_deduplication_with_recursive_not_all() {
 }
 
 #[tokio::test]
+#[ignore = "starts a Postgres container: runs in the persistence-testcontainers and coverage jobs"]
 async fn test_developer_custom_migration_and_invoice_categorization_cte_postgres() {
     use diesel_async::{AsyncConnection, AsyncPgConnection};
     use embedag_diesel::harness::PostgresHarness;
@@ -250,7 +251,7 @@ async fn test_developer_custom_migration_and_invoice_categorization_cte_postgres
     let ticket = FinanceInvoice {
         invoice_id: "inv_pg_101".into(),
         merchant_id: "WholeOrganics".into(),
-        date: embedag_example_receipts::finance::parse_date("2026-10-12"),
+        date: embedag_example_receipts::finance::parse_date("2026-10-12").unwrap(),
         purchase_content: None,
         items: vec![
             InvoiceItem::new("item_1", "Fresh Whole Milk", 4.99, 1, None),
@@ -294,7 +295,7 @@ async fn test_developer_custom_migration_and_invoice_categorization_cte_postgres
 
 #[test]
 fn test_degree_bounded_descendant_cte_sqlite() {
-    let mut conn = diesel::SqliteConnection::establish(":memory:").expect("in-memory sqlite");
+    let mut conn = SqliteConnection::establish(":memory:").expect("in-memory sqlite");
     run_receipt_categories_sqlite_migration(&mut conn).expect("custom receipt migration");
 
     let mut rows = vec![ReceiptCategoryRecord {

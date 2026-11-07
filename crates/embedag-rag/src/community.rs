@@ -123,18 +123,12 @@ mod tests {
         }
     }
 
-    impl NodePayload for MockClusterNode {
-        type Key = String;
-        fn key(&self) -> &Self::Key {
-            &self.id
-        }
-        fn name(&self) -> &str {
-            &self.label
-        }
-        fn entity_level(&self) -> &str {
-            "ClusterItem"
-        }
-    }
+    embedag_core::impl_node_payload!(
+        MockClusterNode,
+        key = |n| &n.id,
+        name = |n| &n.label,
+        level = |_| "ClusterItem"
+    );
 
     fn edge() -> EdgePayload {
         EdgePayload::new("CONNECTS", 1.0, ProvenanceKind::DeterministicRule).unwrap()
