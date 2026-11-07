@@ -166,48 +166,49 @@ impl SparseLexicalIndex {
             .documents
             .iter()
             .filter_map(|doc| {
-                // 1. Exact token overlap (handles exact SKUs, codes, words)
-                let token_overlap = if !query_tokens.is_empty() {
-                    let common = doc.tokens.intersection(&query_tokens).count();
-                    common as f32 / query_tokens.len() as f32
-                } else {
-                    0.0
-                };
-
-                // 2. Trigram Jaccard similarity (handles typos e.g., "Carols V" -> "Carlos V")
-                let trigram_sim = if !query_trigrams.is_empty() && !doc.trigrams.is_empty() {
-                    let intersection = doc.trigrams.intersection(&query_trigrams).count();
-                    let union = doc.trigrams.union(&query_trigrams).count();
-                    if union > 0 {
-                        intersection as f32 / union as f32
-                    } else {
-                        0.0
-                    }
-                } else {
-                    0.0
-                };
-
-                // Composite score weighted towards exact token match if present, else trigram
-                let score = if token_overlap > 0.0 {
-                    0.6 * token_overlap + 0.4 * trigram_sim
-                } else {
-                    trigram_sim
-                };
-
-                if score > 0.01 {
-                    Some((doc.id, score))
-                } else {
-                    None
-                }
+                let score = doc.score(&query_tokens, &query_trigrams);
+                (score > 0.01).then_some((doc.id, score))
             })
             .collect();
 
         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        if scored.len() > top_k {
-            scored.truncate(top_k);
-        }
+        scored.truncate(top_k);
 
         scored
+    }
+}
+
+impl LexicalDocument {
+    /// Share of the query tokens the document contains (exact SKUs, codes, words).
+    fn token_overlap(&self, query_tokens: &HashSet<String>) -> f32 {
+        if query_tokens.is_empty() {
+            return 0.0;
+        }
+        self.tokens.intersection(query_tokens).count() as f32 / query_tokens.len() as f32
+    }
+
+    /// Trigram Jaccard similarity (handles typos, e.g. "Carols V" -> "Carlos V").
+    fn trigram_similarity(&self, query_trigrams: &HashSet<String>) -> f32 {
+        if query_trigrams.is_empty() || self.trigrams.is_empty() {
+            return 0.0;
+        }
+        let intersection = self.trigrams.intersection(query_trigrams).count();
+        let union = self.trigrams.union(query_trigrams).count();
+        if union == 0 {
+            return 0.0;
+        }
+        intersection as f32 / union as f32
+    }
+
+    /// Weighted towards the exact token match when there is one, else the trigram similarity.
+    fn score(&self, query_tokens: &HashSet<String>, query_trigrams: &HashSet<String>) -> f32 {
+        let token_overlap = self.token_overlap(query_tokens);
+        let trigram_sim = self.trigram_similarity(query_trigrams);
+        if token_overlap > 0.0 {
+            0.6 * token_overlap + 0.4 * trigram_sim
+        } else {
+            trigram_sim
+        }
     }
 }
 

@@ -58,11 +58,7 @@ fn push_new_edge<T>(
     if edge_exists {
         return;
     }
-    if let Ok(edge) = EdgePayload::new(
-        relationship,
-        confidence.clamp(0.0, 1.0),
-        ProvenanceKind::LlmConstrainedInference,
-    ) {
+    if let Some(edge) = proposed_edge(relationship, confidence) {
         diff.new_edges
             .push((parent_key.clone(), entity_name.clone(), edge));
     }
@@ -86,17 +82,11 @@ impl ChangesetDiffEngine {
             ExtractionDirective::InsertNode {
                 parent_key,
                 entity_name,
-                entity_level: _,
                 relationship,
                 confidence,
+                ..
             } => {
-                let node_exists = dag.contains_key(entity_name);
-                if !node_exists {
-                    diff.new_nodes
-                        .push((entity_name.clone(), entity_name.clone()));
-                }
-
-                // Check if directed edge (parent -> child) exists
+                push_new_node(&mut diff, dag, entity_name);
                 push_new_edge(
                     &mut diff,
                     dag,
@@ -106,19 +96,14 @@ impl ChangesetDiffEngine {
                     *confidence,
                 );
             }
-
             ExtractionDirective::InsertMultiParentNode {
                 parent_keys,
                 entity_name,
-                entity_level: _,
                 relationship,
                 confidence,
+                ..
             } => {
-                if !dag.contains_key(entity_name) {
-                    diff.new_nodes
-                        .push((entity_name.clone(), entity_name.clone()));
-                }
-
+                push_new_node(&mut diff, dag, entity_name);
                 for parent_key in parent_keys {
                     push_new_edge(
                         &mut diff,
@@ -130,29 +115,19 @@ impl ChangesetDiffEngine {
                     );
                 }
             }
-
-            ExtractionDirective::CreateRootNode {
-                entity_name,
-                entity_level: _,
-                confidence: _,
-            } => {
-                if !dag.contains_key(entity_name) {
-                    diff.new_nodes
-                        .push((entity_name.clone(), entity_name.clone()));
-                }
+            ExtractionDirective::CreateRootNode { entity_name, .. } => {
+                push_new_node(&mut diff, dag, entity_name);
             }
-
             ExtractionDirective::UpdateAttributes {
                 target_key,
                 updated_fields,
-                confidence: _,
+                ..
             } => {
                 if dag.contains_key(target_key) && !updated_fields.is_empty() {
                     diff.updated_nodes
                         .push((target_key.clone(), updated_fields.clone()));
                 }
             }
-
             ExtractionDirective::RetargetEdge {
                 child_key,
                 old_parent_key,
@@ -162,21 +137,36 @@ impl ChangesetDiffEngine {
             } => {
                 diff.removed_edges
                     .push((old_parent_key.clone(), child_key.clone()));
-                let valid_conf = confidence.clamp(0.0, 1.0);
-                if let Ok(edge) = EdgePayload::new(
-                    relationship.clone(),
-                    valid_conf,
-                    ProvenanceKind::LlmConstrainedInference,
-                ) {
+                if let Some(edge) = proposed_edge(relationship, *confidence) {
                     diff.new_edges
                         .push((new_parent_key.clone(), child_key.clone(), edge));
                 }
             }
-
             ExtractionDirective::MarkAmbiguous { .. } => {}
         }
 
         diff
+    }
+}
+
+/// An LLM-proposed edge; the confidence is clamped to `[0.0, 1.0]`.
+fn proposed_edge(relationship: &str, confidence: f32) -> Option<EdgePayload> {
+    EdgePayload::new(
+        relationship,
+        confidence.clamp(0.0, 1.0),
+        ProvenanceKind::LlmConstrainedInference,
+    )
+    .ok()
+}
+
+/// Proposes the node `entity_name` unless the DAG already has it.
+fn push_new_node<T>(diff: &mut GraphDiff<String>, dag: &MemoryDag<T>, entity_name: &String)
+where
+    T: NodePayload<Key = String>,
+{
+    if !dag.contains_key(entity_name) {
+        diff.new_nodes
+            .push((entity_name.clone(), entity_name.clone()));
     }
 }
 

@@ -421,50 +421,89 @@ fn execute_constrained_semantic_inference(
     Ok(json_value)
 }
 
+const CANDIDATE_HEADER: &str = "### CANDIDATE PARENT / PEER SUBGRAPHS\n";
+
 fn extract_candidates_from_prompt(prompt: &str) -> Vec<ParsedCandidate> {
-    let mut candidates = Vec::new();
-    if let Some(start) = prompt.find("### CANDIDATE PARENT / PEER SUBGRAPHS\n") {
-        let rest = &prompt[start + "### CANDIDATE PARENT / PEER SUBGRAPHS\n".len()..];
-        let end = rest.find("\n\n###").unwrap_or(rest.len());
-        let slice = &rest[..end];
+    let Some(start) = prompt.find(CANDIDATE_HEADER) else {
+        return Vec::new();
+    };
+    let rest = &prompt[start + CANDIDATE_HEADER.len()..];
+    let section = &rest[..rest.find("\n\n###").unwrap_or(rest.len())];
 
-        for line in slice.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with("- None") {
-                continue;
-            }
-            // Strip index prefix like "1. " or "- "
-            let cleaned = if let Some(dot_idx) = line.find(". ") {
-                &line[dot_idx + 2..]
-            } else if let Some(stripped) = line.strip_prefix("- ") {
-                stripped
-            } else {
-                line
-            };
+    section
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with("- None"))
+        .map(|line| parse_candidate(strip_list_marker(line)))
+        .collect()
+}
 
-            // Format: "key (Name)" or "key: Name" or simply "Name"
-            if let (Some(open), Some(close)) = (cleaned.find('('), cleaned.rfind(')')) {
-                if open < close {
-                    let key = cleaned[..open].trim().to_string();
-                    let name = cleaned[open + 1..close].trim().to_string();
-                    candidates.push(ParsedCandidate { key, name });
-                    continue;
-                }
-            } else if let Some((k, n)) = cleaned.split_once(':') {
-                candidates.push(ParsedCandidate {
-                    key: k.trim().to_string(),
-                    name: n.trim().to_string(),
-                });
-                continue;
-            }
+/// Strips an index prefix like "1. " or "- ".
+fn strip_list_marker(line: &str) -> &str {
+    if let Some(dot_idx) = line.find(". ") {
+        &line[dot_idx + 2..]
+    } else {
+        line.strip_prefix("- ").unwrap_or(line)
+    }
+}
 
-            candidates.push(ParsedCandidate {
-                key: cleaned.to_string(),
-                name: cleaned.to_string(),
-            });
+/// Format: "key (Name)" or "key: Name" or simply "Name".
+fn parse_candidate(cleaned: &str) -> ParsedCandidate {
+    let parsed = if let (Some(open), Some(close)) = (cleaned.find('('), cleaned.rfind(')')) {
+        (open < close).then(|| ParsedCandidate {
+            key: cleaned[..open].trim().to_string(),
+            name: cleaned[open + 1..close].trim().to_string(),
+        })
+    } else {
+        cleaned.split_once(':').map(|(k, n)| ParsedCandidate {
+            key: k.trim().to_string(),
+            name: n.trim().to_string(),
+        })
+    };
+    parsed.unwrap_or_else(|| ParsedCandidate {
+        key: cleaned.to_string(),
+        name: cleaned.to_string(),
+    })
+}
+
+/// Lowercased alphanumeric words of at least three characters.
+fn significant_tokens(lower: &str) -> Vec<&str> {
+    lower
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|s| s.len() >= 3)
+        .collect()
+}
+
+/// Whether the text equals or contains the candidate's key or name, or the other way round.
+fn contains_either_way(lower_incoming: &str, other: &str) -> bool {
+    lower_incoming.contains(other) || other.contains(lower_incoming)
+}
+
+fn matches_directly(lower_incoming: &str, cand: &ParsedCandidate) -> bool {
+    contains_either_way(lower_incoming, &cand.name.to_lowercase())
+        || contains_either_way(lower_incoming, &cand.key.to_lowercase())
+}
+
+/// The candidate sharing the most tokens with the incoming text (the first one on ties).
+fn best_token_overlap<'a>(
+    incoming_tokens: &[&str],
+    candidates: &'a [ParsedCandidate],
+) -> Option<&'a ParsedCandidate> {
+    let mut best = None;
+    let mut max_shared = 0;
+    for cand in candidates {
+        let lower_cand = cand.name.to_lowercase();
+        let cand_tokens = significant_tokens(&lower_cand);
+        let shared = incoming_tokens
+            .iter()
+            .filter(|tok| cand_tokens.contains(tok))
+            .count();
+        if shared > max_shared {
+            max_shared = shared;
+            best = Some(cand);
         }
     }
-    candidates
+    best
 }
 
 fn find_best_matching_candidate<'a>(
@@ -472,61 +511,32 @@ fn find_best_matching_candidate<'a>(
     candidates: &'a [ParsedCandidate],
 ) -> Option<&'a ParsedCandidate> {
     let lower_incoming = incoming_text.to_lowercase();
-    let incoming_tokens: Vec<&str> = lower_incoming
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|s| s.len() >= 3)
-        .collect();
 
     // 1. Direct containment or equality in key or name
-    for cand in candidates {
-        let lower_cand = cand.name.to_lowercase();
-        let lower_key = cand.key.to_lowercase();
-        if lower_incoming == lower_cand
-            || lower_incoming == lower_key
-            || lower_incoming.contains(&lower_cand)
-            || lower_cand.contains(&lower_incoming)
-            || lower_incoming.contains(&lower_key)
-            || lower_key.contains(&lower_incoming)
-        {
-            return Some(cand);
-        }
+    if let Some(found) = candidates
+        .iter()
+        .find(|cand| matches_directly(&lower_incoming, cand))
+    {
+        return Some(found);
     }
 
     // 2. Token overlap (match candidate with highest shared token count)
-    let mut best_cand = None;
-    let mut max_shared = 0;
-    for cand in candidates {
-        let lower_cand = cand.name.to_lowercase();
-        let cand_tokens: Vec<&str> = lower_cand
-            .split(|c: char| !c.is_alphanumeric())
-            .filter(|s| s.len() >= 3)
-            .collect();
-
-        let shared = incoming_tokens
-            .iter()
-            .filter(|tok| cand_tokens.contains(tok))
-            .count();
-
-        if shared > max_shared {
-            max_shared = shared;
-            best_cand = Some(cand);
-        }
-    }
-
-    if max_shared > 0 {
-        return best_cand;
+    let incoming_tokens = significant_tokens(&lower_incoming);
+    if let Some(found) = best_token_overlap(&incoming_tokens, candidates) {
+        return Some(found);
     }
 
     // Default to first candidate if ambiguous/synthetic test keys indicate anchor
-    if candidates.len() == 1
-        && (lower_incoming.contains("ambiguous")
-            || lower_incoming.contains("unseen")
-            || candidates[0].key.contains("anchor"))
-    {
-        return candidates.first();
+    match candidates {
+        [only]
+            if lower_incoming.contains("ambiguous")
+                || lower_incoming.contains("unseen")
+                || only.key.contains("anchor") =>
+        {
+            Some(only)
+        }
+        _ => None,
     }
-
-    None
 }
 
 #[cfg(test)]
