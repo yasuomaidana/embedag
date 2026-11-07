@@ -12,6 +12,7 @@ pub mod dto;
 pub mod engine;
 pub mod item_inference;
 pub mod nodes;
+pub mod purchase_categories;
 pub mod temporal;
 pub mod user_actions;
 

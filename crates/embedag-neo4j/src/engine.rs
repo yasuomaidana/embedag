@@ -22,6 +22,133 @@ struct MockStore {
     edges: Arc<RwLock<Vec<(String, String, Neo4jEdgeRecord)>>>,
 }
 
+impl MockStore {
+    fn neighbours<T: DeserializeOwned>(
+        &self,
+        key: &str,
+        parents: bool,
+    ) -> Result<Vec<T>, Neo4jStorageError> {
+        let edges = self.edges.read();
+        let nodes = self.nodes.read();
+        let mut found = Vec::new();
+        for (p, c, _) in edges.iter() {
+            let (own, other) = if parents { (c, p) } else { (p, c) };
+            if own == key
+                && let Some(n) = nodes.get(other)
+            {
+                found.push(n.to_node()?);
+            }
+        }
+        Ok(found)
+    }
+
+    fn load_dag<T: NodePayload + DeserializeOwned>(
+        &self,
+    ) -> Result<MemoryDag<T>, Neo4jStorageError> {
+        let mut dag = MemoryDag::<T>::new();
+        let mut key_map = HashMap::new();
+        for (k, rec) in self.nodes.read().iter() {
+            let node: T = rec.to_node()?;
+            key_map.insert(k.clone(), node.key().clone());
+            dag.upsert_node(node);
+        }
+        for (p, c, r) in self.edges.read().iter() {
+            let provenance =
+                ProvenanceKind::from_label(&r.provenance).unwrap_or(ProvenanceKind::HumanVerified);
+            let edge = EdgePayload::new(&r.relationship, r.confidence, provenance)?;
+            add_edge_if_known(&mut dag, &key_map, p, c, edge)?;
+        }
+        Ok(dag)
+    }
+}
+
+/// Adds the edge when both endpoints were loaded.
+fn add_edge_if_known<T: NodePayload>(
+    dag: &mut MemoryDag<T>,
+    key_map: &HashMap<String, T::Key>,
+    parent: &str,
+    child: &str,
+    edge: EdgePayload,
+) -> Result<(), Neo4jStorageError> {
+    if let (Some(pk), Some(ck)) = (key_map.get(parent), key_map.get(child)) {
+        dag.add_edge_by_keys(pk, ck, edge)?;
+    }
+    Ok(())
+}
+
+fn neighbours_cypher(label: &str, parents: bool) -> String {
+    if parents {
+        format!(
+            "MATCH (p:`{label}`)-[r]->(c:`{label}` {{ business_key: $key }}) RETURN p.payload_json AS payload_json"
+        )
+    } else {
+        format!(
+            "MATCH (p:`{label}` {{ business_key: $key }})-[r]->(c:`{label}`) RETURN c.payload_json AS payload_json"
+        )
+    }
+}
+
+/// Runs `query` and deserializes the `payload_json` column of every row.
+async fn query_payloads<T: DeserializeOwned>(
+    graph: &neo4rs::Graph,
+    query: neo4rs::Query,
+) -> Result<Vec<T>, Neo4jStorageError> {
+    let mut stream = graph.execute(query).await?;
+    let mut found = Vec::new();
+    while let Ok(Some(row)) = stream.next().await {
+        if let Ok(payload_json) = row.get::<String>("payload_json") {
+            found.push(serde_json::from_str(&payload_json)?);
+        }
+    }
+    Ok(found)
+}
+
+/// Loads every node into `dag` and returns the business-key to node-key map.
+async fn load_graph_nodes<T: NodePayload + DeserializeOwned>(
+    graph: &neo4rs::Graph,
+    label: &str,
+    dag: &mut MemoryDag<T>,
+) -> Result<HashMap<String, T::Key>, Neo4jStorageError> {
+    let cypher = format!("MATCH (n:`{label}`) RETURN n.payload_json AS payload_json");
+    let mut key_map = HashMap::new();
+    for node in query_payloads::<T>(graph, neo4rs::query(&cypher)).await? {
+        key_map.insert(node.key().to_string(), node.key().clone());
+        dag.upsert_node(node);
+    }
+    Ok(key_map)
+}
+
+async fn load_graph_edges<T: NodePayload>(
+    graph: &neo4rs::Graph,
+    label: &str,
+    key_map: &HashMap<String, T::Key>,
+    dag: &mut MemoryDag<T>,
+) -> Result<(), Neo4jStorageError> {
+    let cypher = format!(
+        "MATCH (p:`{label}`)-[r]->(c:`{label}`) RETURN p.business_key AS parent, c.business_key AS child, type(r) AS rel, r.confidence AS conf, r.provenance AS prov"
+    );
+    let mut stream = graph.execute(neo4rs::query(&cypher)).await?;
+    while let Ok(Some(row)) = stream.next().await {
+        if let (Ok(p), Ok(c)) = (row.get::<String>("parent"), row.get::<String>("child")) {
+            let edge = graph_edge(&row)?;
+            add_edge_if_known(dag, key_map, &p, &c, edge)?;
+        }
+    }
+    Ok(())
+}
+
+/// The relationship, confidence and provenance columns of an edge row, with defaults.
+fn graph_edge(row: &neo4rs::Row) -> Result<EdgePayload, Neo4jStorageError> {
+    let rel = row.get::<String>("rel").unwrap_or_else(|_| "REL".into());
+    let conf = row.get::<f64>("conf").unwrap_or(1.0) as f32;
+    let provenance = row
+        .get::<String>("prov")
+        .ok()
+        .and_then(|label| ProvenanceKind::from_label(&label))
+        .unwrap_or(ProvenanceKind::DeterministicRule);
+    Ok(EdgePayload::new(rel, conf, provenance)?)
+}
+
 /// High-performance native Neo4j OpenCypher Bolt engine adapter.
 ///
 /// Features:
@@ -268,46 +395,12 @@ impl Neo4jEngine {
         parents: bool,
     ) -> Result<Vec<T>, Neo4jStorageError> {
         if let Some(ref mock) = self.mock {
-            let edges = mock.edges.read();
-            let nodes = mock.nodes.read();
-            let mut found = Vec::new();
-
-            for (p, c, _) in edges.iter() {
-                let (own, other) = if parents { (c, p) } else { (p, c) };
-                if own == &key
-                    && let Some(n) = nodes.get(other)
-                {
-                    found.push(n.to_node()?);
-                }
-            }
-            return Ok(found);
+            return mock.neighbours(&key, parents);
         }
-
         if let Some(ref graph) = self.graph {
-            let label = &self.config.node_label;
-            let cypher = if parents {
-                format!(
-                    "MATCH (p:`{label}`)-[r]->(c:`{label}` {{ business_key: $key }}) RETURN p.payload_json AS payload_json"
-                )
-            } else {
-                format!(
-                    "MATCH (p:`{label}` {{ business_key: $key }})-[r]->(c:`{label}`) RETURN c.payload_json AS payload_json"
-                )
-            };
-
-            let q = neo4rs::query(&cypher).param("key", key);
-            let mut stream = graph.execute(q).await?;
-            let mut found = Vec::new();
-
-            while let Ok(Some(row)) = stream.next().await {
-                if let Ok(payload_json) = row.get::<String>("payload_json") {
-                    let node: T = serde_json::from_str(&payload_json)?;
-                    found.push(node);
-                }
-            }
-            return Ok(found);
+            let cypher = neighbours_cypher(&self.config.node_label, parents);
+            return query_payloads(graph, neo4rs::query(&cypher).param("key", key)).await;
         }
-
         Ok(Vec::new())
     }
 
@@ -375,81 +468,15 @@ impl Neo4jEngine {
     pub async fn load_dag<T: NodePayload + DeserializeOwned>(
         &self,
     ) -> Result<MemoryDag<T>, Neo4jStorageError> {
-        let mut dag = MemoryDag::<T>::new();
-
         if let Some(ref mock) = self.mock {
-            let nodes = mock.nodes.read();
-            let mut key_map = HashMap::new();
-
-            for (k, rec) in nodes.iter() {
-                let node: T = rec.to_node()?;
-                let key = node.key().clone();
-                dag.upsert_node(node);
-                key_map.insert(k.clone(), key);
-            }
-
-            let edges = mock.edges.read();
-            for (p, c, r) in edges.iter() {
-                if let (Some(pk), Some(ck)) = (key_map.get(p), key_map.get(c)) {
-                    let provenance = match r.provenance.as_str() {
-                        "deterministic_rule" => ProvenanceKind::DeterministicRule,
-                        "dense_similarity_match" => ProvenanceKind::DenseSimilarityMatch,
-                        "llm_constrained_inference" => ProvenanceKind::LlmConstrainedInference,
-                        _ => ProvenanceKind::HumanVerified,
-                    };
-                    let edge = EdgePayload::new(&r.relationship, r.confidence, provenance)?;
-                    dag.add_edge_by_keys(pk, ck, edge)?;
-                }
-            }
-
-            return Ok(dag);
+            return mock.load_dag();
         }
-
+        let mut dag = MemoryDag::<T>::new();
         if let Some(ref graph) = self.graph {
-            let cypher_nodes = format!(
-                "MATCH (n:`{}`) RETURN n.payload_json AS payload_json",
-                self.config.node_label
-            );
-            let mut stream_nodes = graph.execute(neo4rs::query(&cypher_nodes)).await?;
-            let mut key_map = HashMap::new();
-
-            while let Ok(Some(row)) = stream_nodes.next().await {
-                if let Ok(payload_json) = row.get::<String>("payload_json") {
-                    let node: T = serde_json::from_str(&payload_json)?;
-                    let key_str = node.key().to_string();
-                    let key = node.key().clone();
-                    dag.upsert_node(node);
-                    key_map.insert(key_str, key);
-                }
-            }
-
-            let cypher_edges = format!(
-                "MATCH (p:`{}`)-[r]->(c:`{}`) RETURN p.business_key AS parent, c.business_key AS child, type(r) AS rel, r.confidence AS conf, r.provenance AS prov",
-                self.config.node_label, self.config.node_label
-            );
-            let mut stream_edges = graph.execute(neo4rs::query(&cypher_edges)).await?;
-
-            while let Ok(Some(row)) = stream_edges.next().await {
-                if let (Ok(p), Ok(c)) = (row.get::<String>("parent"), row.get::<String>("child"))
-                    && let (Some(pk), Some(ck)) = (key_map.get(&p), key_map.get(&c))
-                {
-                    let rel = row.get::<String>("rel").unwrap_or_else(|_| "REL".into());
-                    let conf = row.get::<f64>("conf").unwrap_or(1.0) as f32;
-                    let prov_str = row
-                        .get::<String>("prov")
-                        .unwrap_or_else(|_| "deterministic_rule".into());
-                    let provenance = match prov_str.as_str() {
-                        "dense_similarity_match" => ProvenanceKind::DenseSimilarityMatch,
-                        "llm_constrained_inference" => ProvenanceKind::LlmConstrainedInference,
-                        "human_verified" => ProvenanceKind::HumanVerified,
-                        _ => ProvenanceKind::DeterministicRule,
-                    };
-                    let edge = EdgePayload::new(rel, conf, provenance)?;
-                    dag.add_edge_by_keys(pk, ck, edge)?;
-                }
-            }
+            let label = &self.config.node_label;
+            let key_map = load_graph_nodes(graph, label, &mut dag).await?;
+            load_graph_edges(graph, label, &key_map, &mut dag).await?;
         }
-
         Ok(dag)
     }
 }

@@ -43,6 +43,18 @@ impl ProvenanceKind {
         }
     }
 
+    /// The provenance a [`as_str`](Self::as_str) label stands for; `None` for an unknown label.
+    #[must_use]
+    pub fn from_label(label: &str) -> Option<Self> {
+        match label {
+            "deterministic_rule" => Some(Self::DeterministicRule),
+            "dense_similarity_match" => Some(Self::DenseSimilarityMatch),
+            "llm_constrained_inference" => Some(Self::LlmConstrainedInference),
+            "human_verified" => Some(Self::HumanVerified),
+            _ => None,
+        }
+    }
+
     /// Returns `true` for algorithmic/human provenance that does not depend on a probabilistic model.
     #[must_use]
     pub const fn is_deterministic(self) -> bool {
@@ -185,6 +197,21 @@ impl<K> GraphTarget<K> {
 mod tests {
     use super::*;
     use chrono::TimeZone;
+    use rstest::rstest;
+
+    #[rstest]
+    #[case(ProvenanceKind::DeterministicRule)]
+    #[case(ProvenanceKind::DenseSimilarityMatch)]
+    #[case(ProvenanceKind::LlmConstrainedInference)]
+    #[case(ProvenanceKind::HumanVerified)]
+    fn provenance_label_round_trips(#[case] kind: ProvenanceKind) {
+        assert_eq!(ProvenanceKind::from_label(kind.as_str()), Some(kind));
+    }
+
+    #[test]
+    fn unknown_provenance_label_is_none() {
+        assert_eq!(ProvenanceKind::from_label("guessed"), None);
+    }
 
     fn fixed_time() -> DateTime<Utc> {
         Utc.with_ymd_and_hms(2026, 1, 1, 12, 0, 0).single().unwrap()

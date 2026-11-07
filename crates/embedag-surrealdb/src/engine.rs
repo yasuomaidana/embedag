@@ -301,8 +301,16 @@ impl SurrealDbEngine {
         &self,
     ) -> Result<MemoryDag<T>, SurrealDbStorageError> {
         let mut dag = MemoryDag::<T>::new();
+        let key_map = self.load_nodes(&mut dag).await?;
+        self.load_edges(&key_map, &mut dag).await?;
+        Ok(dag)
+    }
 
-        // 1. Fetch all nodes
+    /// Loads every node into `dag` and returns the business-key to node-key map.
+    async fn load_nodes<T: NodePayload + DeserializeOwned>(
+        &self,
+        dag: &mut MemoryDag<T>,
+    ) -> Result<HashMap<String, T::Key>, SurrealDbStorageError> {
         let query_nodes = format!("SELECT * FROM {}", self.config.node_table);
         let mut res_nodes = self.db.query(query_nodes).await?;
         let node_recs: Vec<SurrealNodeRecord> = res_nodes.take(0)?;
@@ -310,12 +318,18 @@ impl SurrealDbEngine {
         let mut key_map = HashMap::new();
         for rec in node_recs {
             let node: T = rec.to_node()?;
-            let key = node.key().clone();
+            key_map.insert(rec.business_key, node.key().clone());
             dag.upsert_node(node);
-            key_map.insert(rec.business_key, key);
         }
+        Ok(key_map)
+    }
 
-        // 2. Fetch all edges
+    /// Loads the edges between already loaded nodes.
+    async fn load_edges<T: NodePayload>(
+        &self,
+        key_map: &HashMap<String, T::Key>,
+        dag: &mut MemoryDag<T>,
+    ) -> Result<(), SurrealDbStorageError> {
         let query_edges = format!("SELECT * FROM {}", self.config.edge_table);
         let mut res_edges = self.db.query(query_edges).await?;
         let edge_rows: Vec<EdgeLinkRow> = res_edges.take(0)?;
@@ -324,20 +338,17 @@ impl SurrealDbEngine {
             if let (Some(parent_key), Some(child_key)) =
                 (key_map.get(&row.in_key), key_map.get(&row.out_key))
             {
+                let provenance = row
+                    .provenance
+                    .as_deref()
+                    .and_then(ProvenanceKind::from_label)
+                    .unwrap_or(ProvenanceKind::HumanVerified);
                 let relationship = row.relationship.unwrap_or_else(|| "RELATE".to_string());
-                let confidence = row.confidence.unwrap_or(1.0);
-                let provenance = match row.provenance.as_deref() {
-                    Some("deterministic_rule") => ProvenanceKind::DeterministicRule,
-                    Some("dense_similarity_match") => ProvenanceKind::DenseSimilarityMatch,
-                    Some("llm_constrained_inference") => ProvenanceKind::LlmConstrainedInference,
-                    _ => ProvenanceKind::HumanVerified,
-                };
-
-                let edge = EdgePayload::new(relationship, confidence, provenance)?;
+                let edge =
+                    EdgePayload::new(relationship, row.confidence.unwrap_or(1.0), provenance)?;
                 dag.add_edge_by_keys(parent_key, child_key, edge)?;
             }
         }
-
-        Ok(dag)
+        Ok(())
     }
 }
