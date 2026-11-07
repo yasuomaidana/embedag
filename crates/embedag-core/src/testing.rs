@@ -51,11 +51,13 @@ crate::impl_node_payload!(
 );
 
 /// Defines the persistence tests every storage adapter must pass. `$engine` is a future that
-/// opens an empty in-memory engine; the engine must offer `insert_node`, `get_node`, `insert_edge`,
+/// opens an empty engine; attributes after it (such as `#[ignore = "..."]` for engines that need a
+/// container) are put on every generated test; the engine must offer `insert_node`, `get_node`, `insert_edge`,
 /// `export_dag`, `load_dag` and the repository traits. The caller needs `tokio` with its test macro.
 #[macro_export]
 macro_rules! persistence_suite {
-    ($engine:expr) => {
+    ($engine:expr $(, #[$attr:meta])* $(,)?) => {
+        $(#[$attr])*
         #[tokio::test]
         async fn test_in_memory_basic_operations() {
             use $crate::dag::MemoryDag;
@@ -92,6 +94,7 @@ macro_rules! persistence_suite {
             assert_eq!(deleted, None);
         }
 
+        $(#[$attr])*
         #[tokio::test]
         async fn test_graph_relate_traversal() {
             use $crate::dag::MemoryDag;
@@ -167,6 +170,7 @@ macro_rules! persistence_suite {
             assert_eq!(children_after[0].sku, "CAT-COFFEE");
         }
 
+        $(#[$attr])*
         #[tokio::test]
         async fn test_repository_capability_traits() {
             use $crate::dag::MemoryDag;
@@ -225,6 +229,7 @@ macro_rules! persistence_suite {
             assert!(results[0].1 > 0.8);
         }
 
+        $(#[$attr])*
         #[tokio::test]
         async fn test_dag_export_and_load_roundtrip() {
             use $crate::dag::MemoryDag;

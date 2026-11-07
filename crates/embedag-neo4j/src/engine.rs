@@ -23,6 +23,36 @@ struct MockStore {
 }
 
 impl MockStore {
+    fn remove_node(&self, key: &str) {
+        self.nodes.write().remove(key);
+        self.edges.write().retain(|(p, c, _)| p != key && c != key);
+    }
+
+    fn insert_edge(&self, parent: String, child: String, edge: Neo4jEdgeRecord) {
+        let mut edges = self.edges.write();
+        edges.retain(|(p, c, r)| {
+            !(p == &parent && c == &child && r.relationship == edge.relationship)
+        });
+        edges.push((parent, child, edge));
+    }
+
+    /// Removes the edges between the pair, only the ones with `relationship` when it is given.
+    fn remove_edge(&self, parent: &str, child: &str, relationship: Option<&str>) {
+        self.edges.write().retain(|(p, c, r)| {
+            let is_pair = p == parent && c == child;
+            !is_pair || relationship.is_some_and(|rel| r.relationship != rel)
+        });
+    }
+
+    fn get_node<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>, Neo4jStorageError> {
+        Ok(self
+            .nodes
+            .read()
+            .get(key)
+            .map(Neo4jNodeRecord::to_node)
+            .transpose()?)
+    }
+
     fn neighbours<T: DeserializeOwned>(
         &self,
         key: &str,
@@ -88,6 +118,50 @@ fn neighbours_cypher(label: &str, parents: bool) -> String {
     }
 }
 
+fn insert_node_cypher(label: &str) -> String {
+    format!(
+        "MERGE (n:`{label}` {{ business_key: $key }}) \
+        SET n.name = $name, \
+            n.entity_level = $level, \
+            n.attributes_json = $attr, \
+            n.payload_json = $payload"
+    )
+}
+
+fn get_node_cypher(label: &str) -> String {
+    format!("MATCH (n:`{label}` {{ business_key: $key }}) RETURN n.payload_json AS payload_json")
+}
+
+fn remove_node_cypher(label: &str) -> String {
+    format!("MATCH (n:`{label}` {{ business_key: $key }}) DETACH DELETE n")
+}
+
+/// The relationship type to store: the edge's own, else the configured default.
+fn relationship_type<'a>(relationship: &'a str, default_relation: &'a str) -> &'a str {
+    if relationship.is_empty() {
+        default_relation
+    } else {
+        relationship
+    }
+}
+
+fn insert_edge_cypher(label: &str, rel_type: &str) -> String {
+    format!(
+        "MATCH (p:`{label}` {{ business_key: $parent }}), (c:`{label}` {{ business_key: $child }}) \
+        MERGE (p)-[r:`{rel_type}`]->(c) \
+        SET r.confidence = $conf, \
+            r.provenance = $prov, \
+            r.created_at = $created"
+    )
+}
+
+fn remove_edge_cypher(label: &str, relationship: Option<&str>) -> String {
+    let rel = relationship.map_or_else(String::new, |rel| format!(":`{rel}`"));
+    format!(
+        "MATCH (p:`{label}` {{ business_key: $parent }})-[r{rel}]->(c:`{label}` {{ business_key: $child }}) DELETE r"
+    )
+}
+
 /// Runs `query` and deserializes the `payload_json` column of every row.
 async fn query_payloads<T: DeserializeOwned>(
     graph: &neo4rs::Graph,
@@ -96,9 +170,13 @@ async fn query_payloads<T: DeserializeOwned>(
     let mut stream = graph.execute(query).await?;
     let mut found = Vec::new();
     while let Ok(Some(row)) = stream.next().await {
-        if let Ok(payload_json) = row.get::<String>("payload_json") {
-            found.push(serde_json::from_str(&payload_json)?);
-        }
+        // A row without the column is skipped.
+        let payload = row.get::<String>("payload_json").ok();
+        found.extend(
+            payload
+                .map(|json| serde_json::from_str(&json))
+                .transpose()?,
+        );
     }
     Ok(found)
 }
@@ -129,12 +207,16 @@ async fn load_graph_edges<T: NodePayload>(
     );
     let mut stream = graph.execute(neo4rs::query(&cypher)).await?;
     while let Ok(Some(row)) = stream.next().await {
-        if let (Ok(p), Ok(c)) = (row.get::<String>("parent"), row.get::<String>("child")) {
-            let edge = graph_edge(&row)?;
-            add_edge_if_known(dag, key_map, &p, &c, edge)?;
-        }
+        // A row without both endpoints yields nothing to add.
+        edge_endpoints(&row).map_or(Ok(()), |(p, c)| {
+            add_edge_if_known(dag, key_map, &p, &c, graph_edge(&row)?)
+        })?;
     }
     Ok(())
+}
+
+fn edge_endpoints(row: &neo4rs::Row) -> Option<(String, String)> {
+    Some((row.get("parent").ok()?, row.get("child").ok()?))
 }
 
 /// The relationship, confidence and provenance columns of an edge row, with defaults.
@@ -149,6 +231,13 @@ fn graph_edge(row: &neo4rs::Row) -> Result<EdgePayload, Neo4jStorageError> {
     Ok(EdgePayload::new(rel, conf, provenance)?)
 }
 
+/// Where the engine keeps the graph: in memory, or in a Neo4j server reached over Bolt.
+#[derive(Clone)]
+enum Backend {
+    Mock(MockStore),
+    Bolt(Arc<neo4rs::Graph>),
+}
+
 /// High-performance native Neo4j OpenCypher Bolt engine adapter.
 ///
 /// Features:
@@ -159,8 +248,7 @@ fn graph_edge(row: &neo4rs::Row) -> Result<EdgePayload, Neo4jStorageError> {
 #[derive(Clone)]
 pub struct Neo4jEngine {
     config: Neo4jConfig,
-    graph: Option<Arc<neo4rs::Graph>>,
-    mock: Option<MockStore>,
+    backend: Backend,
     vector_index: Arc<RwLock<HashMap<String, Vec<f32>>>>,
 }
 
@@ -170,8 +258,7 @@ impl Neo4jEngine {
         match &config.mode {
             StorageMode::InMemoryMock => Ok(Self {
                 config,
-                graph: None,
-                mock: Some(MockStore::default()),
+                backend: Backend::Mock(MockStore::default()),
                 vector_index: Arc::new(RwLock::new(HashMap::new())),
             }),
             StorageMode::Bolt(uri) => {
@@ -189,8 +276,7 @@ impl Neo4jEngine {
 
                 Ok(Self {
                     config,
-                    graph: Some(Arc::new(graph)),
-                    mock: None,
+                    backend: Backend::Bolt(Arc::new(graph)),
                     vector_index: Arc::new(RwLock::new(HashMap::new())),
                 })
             }
@@ -216,31 +302,20 @@ impl Neo4jEngine {
         let embedding = self.vector_index.read().get(&key_str).cloned();
         let record = Neo4jNodeRecord::from_node_with_embedding(node, embedding)?;
 
-        if let Some(ref mock) = self.mock {
-            mock.nodes.write().insert(key_str, record);
-            return Ok(());
+        match &self.backend {
+            Backend::Mock(mock) => {
+                mock.nodes.write().insert(key_str, record);
+            }
+            Backend::Bolt(graph) => {
+                let q = neo4rs::query(&insert_node_cypher(&self.config.node_label))
+                    .param("key", record.business_key)
+                    .param("name", record.name)
+                    .param("level", record.entity_level)
+                    .param("attr", record.attributes_json)
+                    .param("payload", record.payload_json);
+                graph.run(q).await?;
+            }
         }
-
-        if let Some(ref graph) = self.graph {
-            let cypher = format!(
-                "MERGE (n:`{}` {{ business_key: $key }}) \
-                SET n.name = $name, \
-                    n.entity_level = $level, \
-                    n.attributes_json = $attr, \
-                    n.payload_json = $payload",
-                self.config.node_label
-            );
-
-            let q = neo4rs::query(&cypher)
-                .param("key", record.business_key)
-                .param("name", record.name)
-                .param("level", record.entity_level)
-                .param("attr", record.attributes_json)
-                .param("payload", record.payload_json);
-
-            graph.run(q).await?;
-        }
-
         Ok(())
     }
 
@@ -254,23 +329,15 @@ impl Neo4jEngine {
 
     /// Removes a node and any attached relationships by its business key.
     pub async fn remove_node_by_key(&self, key: &str) -> Result<(), Neo4jStorageError> {
-        if let Some(ref mock) = self.mock {
-            mock.nodes.write().remove(key);
-            mock.edges.write().retain(|(p, c, _)| p != key && c != key);
-            self.vector_index.write().remove(key);
-            return Ok(());
+        match &self.backend {
+            Backend::Mock(mock) => mock.remove_node(key),
+            Backend::Bolt(graph) => {
+                let q =
+                    neo4rs::query(&remove_node_cypher(&self.config.node_label)).param("key", key);
+                graph.run(q).await?;
+            }
         }
-
-        if let Some(ref graph) = self.graph {
-            let cypher = format!(
-                "MATCH (n:`{}` {{ business_key: $key }}) DETACH DELETE n",
-                self.config.node_label
-            );
-            let q = neo4rs::query(&cypher).param("key", key);
-            graph.run(q).await?;
-            self.vector_index.write().remove(key);
-        }
-
+        self.vector_index.write().remove(key);
         Ok(())
     }
 
@@ -281,45 +348,24 @@ impl Neo4jEngine {
         child: &K,
         edge: &EdgePayload,
     ) -> Result<(), Neo4jStorageError> {
-        let parent_key = parent.to_string();
-        let child_key = child.to_string();
+        let (parent_key, child_key) = (parent.to_string(), child.to_string());
         let edge_rec = Neo4jEdgeRecord::from_edge(edge);
 
-        if let Some(ref mock) = self.mock {
-            let mut edges = mock.edges.write();
-            edges.retain(|(p, c, r)| {
-                !(p == &parent_key && c == &child_key && r.relationship == edge_rec.relationship)
-            });
-            edges.push((parent_key, child_key, edge_rec));
-            return Ok(());
+        match &self.backend {
+            Backend::Mock(mock) => mock.insert_edge(parent_key, child_key, edge_rec),
+            Backend::Bolt(graph) => {
+                let rel_type =
+                    relationship_type(&edge_rec.relationship, &self.config.default_relation);
+                let cypher = insert_edge_cypher(&self.config.node_label, rel_type);
+                let q = neo4rs::query(&cypher)
+                    .param("parent", parent_key)
+                    .param("child", child_key)
+                    .param("conf", edge_rec.confidence as f64)
+                    .param("prov", edge_rec.provenance)
+                    .param("created", edge_rec.created_at);
+                graph.run(q).await?;
+            }
         }
-
-        if let Some(ref graph) = self.graph {
-            let rel_type = if edge_rec.relationship.is_empty() {
-                self.config.default_relation.as_str()
-            } else {
-                edge_rec.relationship.as_str()
-            };
-
-            let cypher = format!(
-                "MATCH (p:`{}` {{ business_key: $parent }}), (c:`{}` {{ business_key: $child }}) \
-                MERGE (p)-[r:`{}`]->(c) \
-                SET r.confidence = $conf, \
-                    r.provenance = $prov, \
-                    r.created_at = $created",
-                self.config.node_label, self.config.node_label, rel_type
-            );
-
-            let q = neo4rs::query(&cypher)
-                .param("parent", parent_key)
-                .param("child", child_key)
-                .param("conf", edge_rec.confidence as f64)
-                .param("prov", edge_rec.provenance)
-                .param("created", edge_rec.created_at);
-
-            graph.run(q).await?;
-        }
-
         Ok(())
     }
 
@@ -330,45 +376,18 @@ impl Neo4jEngine {
         child: &K,
         relationship: Option<&str>,
     ) -> Result<(), Neo4jStorageError> {
-        let parent_key = parent.to_string();
-        let child_key = child.to_string();
+        let (parent_key, child_key) = (parent.to_string(), child.to_string());
 
-        if let Some(ref mock) = self.mock {
-            let mut edges = mock.edges.write();
-            edges.retain(|(p, c, r)| {
-                let matches_pair = p == &parent_key && c == &child_key;
-                if !matches_pair {
-                    return true;
-                }
-                if let Some(rel) = relationship {
-                    r.relationship != rel
-                } else {
-                    false
-                }
-            });
-            return Ok(());
+        match &self.backend {
+            Backend::Mock(mock) => mock.remove_edge(&parent_key, &child_key, relationship),
+            Backend::Bolt(graph) => {
+                let cypher = remove_edge_cypher(&self.config.node_label, relationship);
+                let q = neo4rs::query(&cypher)
+                    .param("parent", parent_key)
+                    .param("child", child_key);
+                graph.run(q).await?;
+            }
         }
-
-        if let Some(ref graph) = self.graph {
-            let cypher = if let Some(rel) = relationship {
-                format!(
-                    "MATCH (p:`{}` {{ business_key: $parent }})-[r:`{}`]->(c:`{}` {{ business_key: $child }}) DELETE r",
-                    self.config.node_label, rel, self.config.node_label
-                )
-            } else {
-                format!(
-                    "MATCH (p:`{}` {{ business_key: $parent }})-[r]->(c:`{}` {{ business_key: $child }}) DELETE r",
-                    self.config.node_label, self.config.node_label
-                )
-            };
-
-            let q = neo4rs::query(&cypher)
-                .param("parent", parent_key)
-                .param("child", child_key);
-
-            graph.run(q).await?;
-        }
-
         Ok(())
     }
 
@@ -394,14 +413,13 @@ impl Neo4jEngine {
         key: String,
         parents: bool,
     ) -> Result<Vec<T>, Neo4jStorageError> {
-        if let Some(ref mock) = self.mock {
-            return mock.neighbours(&key, parents);
+        match &self.backend {
+            Backend::Mock(mock) => mock.neighbours(&key, parents),
+            Backend::Bolt(graph) => {
+                let cypher = neighbours_cypher(&self.config.node_label, parents);
+                query_payloads(graph, neo4rs::query(&cypher).param("key", key)).await
+            }
         }
-        if let Some(ref graph) = self.graph {
-            let cypher = neighbours_cypher(&self.config.node_label, parents);
-            return query_payloads(graph, neo4rs::query(&cypher).param("key", key)).await;
-        }
-        Ok(Vec::new())
     }
 
     /// Indexes a dense vector embedding for a node key.
@@ -431,29 +449,13 @@ impl Neo4jEngine {
         &self,
         key: &str,
     ) -> Result<Option<T>, Neo4jStorageError> {
-        if let Some(ref mock) = self.mock {
-            if let Some(rec) = mock.nodes.read().get(key) {
-                return Ok(Some(rec.to_node()?));
-            }
-            return Ok(None);
-        }
-
-        if let Some(ref graph) = self.graph {
-            let cypher = format!(
-                "MATCH (n:`{}` {{ business_key: $key }}) RETURN n.payload_json AS payload_json",
-                self.config.node_label
-            );
-            let q = neo4rs::query(&cypher).param("key", key);
-            let mut stream = graph.execute(q).await?;
-            if let Ok(Some(row)) = stream.next().await
-                && let Ok(payload_json) = row.get::<String>("payload_json")
-            {
-                let node: T = serde_json::from_str(&payload_json)?;
-                return Ok(Some(node));
+        match &self.backend {
+            Backend::Mock(mock) => mock.get_node(key),
+            Backend::Bolt(graph) => {
+                let q = neo4rs::query(&get_node_cypher(&self.config.node_label)).param("key", key);
+                Ok(query_payloads(graph, q).await?.into_iter().next())
             }
         }
-
-        Ok(None)
     }
 
     /// Exports an in-memory [`MemoryDag<T>`] into the Neo4j graph database.
@@ -468,15 +470,132 @@ impl Neo4jEngine {
     pub async fn load_dag<T: NodePayload + DeserializeOwned>(
         &self,
     ) -> Result<MemoryDag<T>, Neo4jStorageError> {
-        if let Some(ref mock) = self.mock {
-            return mock.load_dag();
+        match &self.backend {
+            Backend::Mock(mock) => mock.load_dag(),
+            Backend::Bolt(graph) => {
+                let label = &self.config.node_label;
+                let mut dag = MemoryDag::<T>::new();
+                let key_map = load_graph_nodes(graph, label, &mut dag).await?;
+                load_graph_edges(graph, label, &key_map, &mut dag).await?;
+                Ok(dag)
+            }
         }
-        let mut dag = MemoryDag::<T>::new();
-        if let Some(ref graph) = self.graph {
-            let label = &self.config.node_label;
-            let key_map = load_graph_nodes(graph, label, &mut dag).await?;
-            load_graph_edges(graph, label, &key_map, &mut dag).await?;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use embedag_core::testing::StoredNode;
+    use rstest::rstest;
+
+    fn node(sku: &str) -> StoredNode {
+        StoredNode {
+            sku: sku.into(),
+            title: format!("{sku} title"),
+            category: "Category".into(),
         }
-        Ok(dag)
+    }
+
+    fn edge(relationship: &str, provenance: &str) -> Neo4jEdgeRecord {
+        Neo4jEdgeRecord {
+            relationship: relationship.into(),
+            confidence: 0.5,
+            provenance: provenance.into(),
+            created_at: "2026-01-01T00:00:00Z".into(),
+        }
+    }
+
+    #[rstest]
+    #[case::own("CONTAINS", "REL", "CONTAINS")]
+    #[case::default("", "REL", "REL")]
+    fn relationship_type_falls_back_to_the_default(
+        #[case] own: &str,
+        #[case] default: &str,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(relationship_type(own, default), expected);
+    }
+
+    #[rstest]
+    #[case::any_relationship(None, "-[r]->")]
+    #[case::one_relationship(Some("CONTAINS"), "-[r:`CONTAINS`]->")]
+    fn remove_edge_cypher_filters_by_relationship(
+        #[case] relationship: Option<&str>,
+        #[case] pattern: &str,
+    ) {
+        assert!(remove_edge_cypher("Node", relationship).contains(pattern));
+    }
+
+    #[rstest]
+    #[case::parents(true, "RETURN p.payload_json")]
+    #[case::children(false, "RETURN c.payload_json")]
+    fn neighbours_cypher_returns_the_requested_side(#[case] parents: bool, #[case] returns: &str) {
+        assert!(neighbours_cypher("Node", parents).contains(returns));
+    }
+
+    #[test]
+    fn the_other_cypher_statements_name_the_label() {
+        for cypher in [
+            insert_node_cypher("Lbl"),
+            get_node_cypher("Lbl"),
+            remove_node_cypher("Lbl"),
+            insert_edge_cypher("Lbl", "REL"),
+        ] {
+            assert!(cypher.contains("`Lbl`"), "{cypher}");
+        }
+    }
+
+    #[tokio::test]
+    async fn exposes_its_configuration() {
+        let engine = Neo4jEngine::in_memory().await.unwrap();
+        assert_eq!(
+            engine.config().node_label,
+            Neo4jConfig::in_memory().node_label
+        );
+    }
+
+    #[test]
+    fn mock_edge_removal_respects_the_relationship_filter() {
+        let mock = MockStore::default();
+        for rel in ["A", "B"] {
+            mock.insert_edge("p".into(), "c".into(), edge(rel, "human_verified"));
+        }
+        mock.insert_edge("p".into(), "other".into(), edge("A", "human_verified"));
+
+        mock.remove_edge("p", "c", Some("A"));
+        assert_eq!(mock.edges.read().len(), 2);
+        mock.remove_edge("p", "c", None);
+        assert_eq!(mock.edges.read().len(), 1);
+    }
+
+    #[test]
+    fn mock_load_skips_edges_with_an_unknown_endpoint_and_defaults_the_provenance() {
+        let mock = MockStore::default();
+        for sku in ["a", "b"] {
+            let record = Neo4jNodeRecord::from_node(&node(sku)).unwrap();
+            mock.nodes.write().insert(sku.into(), record);
+        }
+        mock.insert_edge("a".into(), "b".into(), edge("CONTAINS", "unheard_of"));
+        mock.insert_edge(
+            "a".into(),
+            "missing".into(),
+            edge("CONTAINS", "human_verified"),
+        );
+
+        let dag: MemoryDag<StoredNode> = mock.load_dag().unwrap();
+        assert_eq!(dag.edge_count(), 1);
+    }
+
+    #[test]
+    fn mock_remove_node_drops_its_edges() {
+        let mock = MockStore::default();
+        mock.nodes
+            .write()
+            .insert("a".into(), Neo4jNodeRecord::from_node(&node("a")).unwrap());
+        mock.insert_edge("a".into(), "b".into(), edge("CONTAINS", "human_verified"));
+        mock.remove_node("a");
+        assert!(mock.edges.read().is_empty());
+        assert!(mock.get_node::<StoredNode>("a").unwrap().is_none());
     }
 }

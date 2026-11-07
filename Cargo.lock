@@ -2281,6 +2281,7 @@ dependencies = [
  "rstest",
  "serde",
  "serde_json",
+ "testcontainers",
  "thiserror 2.0.21",
  "tokio",
 ]
