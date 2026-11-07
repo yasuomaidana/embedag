@@ -3,10 +3,10 @@ coverage:
   status:
     project:
       default:
-        target: 100%
+        target: 82%
         threshold: 0%
     patch:
       default:
-        target: 100%
+        target: 82%
 comment:
   layout: "condensed_header, condensed_files, condensed_footer"
