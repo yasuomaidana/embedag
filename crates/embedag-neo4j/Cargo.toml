@@ -27,4 +27,4 @@ embedag-core = { workspace = true, features = ["testing"] }
 #tempfile = { workspace = true }
 #testcontainers = { workspace = true }
 #testcontainers-modules = { workspace = true }
-#rstest = { workspace = true }
+rstest = { workspace = true }

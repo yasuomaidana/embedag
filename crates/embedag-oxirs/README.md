@@ -62,14 +62,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 `embedag-oxirs` defines no optional Cargo feature flags (`default = []`).
 
-## Workspace and Dendrite relationship
+## Workspace relationship
 
 Within the workspace:
 
 - `embedag-oxirs` depends on [`embedag-core`](../embedag-core/README.md) (`MemoryDag`, `NodePayload`, `EdgePayload`, `rank_by_cosine`, repository traits) and `oxirs-core`.
 - [`embedag`](../embedag/README.md) re-exports `embedag-oxirs` under `embedag::oxirs` and `embedag::prelude` when the `oxirs-tdb` feature is enabled.
 
-No Dendrite repository depends on this crate today.
 
 ## Build and test
 

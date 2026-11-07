@@ -21,11 +21,11 @@ Version 0.1.0. Milestones 1 to 8 are complete. Milestone 9 (dependency resolutio
 ## Use
 
 ```toml
-# a slim consumer: only the DAG algorithms and the AST matcher
+# a slim dependency: only the DAG algorithms and the AST matcher
 embedag = { git = "https://github.com/yasuomaidana/embedag", branch = "develop", default-features = false, features = ["core", "matcher"] }
 ```
 
-Features of the `embedag` facade: `core`, `matcher`, `derive`, `llm`, `diesel`, `turso`, `turso-async`, `rag`, `oxirs-tdb`, `surrealdb`, `neo4j`; `full` (the default) turns all of them on. Today only `dendrite-rag-rs` depends on embedag, with feature `core`, for the Merkle delta trees.
+Features of the `embedag` facade: `core`, `matcher`, `derive`, `llm`, `diesel`, `turso`, `turso-async`, `rag`, `oxirs-tdb`, `surrealdb`, `neo4j`; `full` (the default) turns all of them on.
 
 ```rust
 use embedag::dag; // toposort, levels, reverse_deps, critical_path; embedag::dag::merkle for delta trees

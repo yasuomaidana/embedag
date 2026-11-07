@@ -91,7 +91,7 @@ fn main() {
 
 `embedag-derive` is a `proc-macro = true` crate and defines no Cargo feature flags. Note that the SQLite and PostgreSQL CRUD helper methods emitted by `#[derive(HierarchicalModel)]` are gated on `#[cfg(feature = "sqlite")]` and `#[cfg(feature = "postgres-async")]` in the **consumer** crate.
 
-## Workspace and Dendrite relationship
+## Workspace relationship
 
 Within the workspace:
 
@@ -99,7 +99,6 @@ Within the workspace:
 - [`embedag-example-receipts`](../embedag-example-receipts/README.md) uses `#[derive(AsGraphContext)]`, `#[derive(GraphTarget)]`, and `#[derive(HierarchicalModel)]` across its receipt and multi-DAG finance taxonomy models.
 - [`embedag`](../embedag/README.md) re-exports all three derive macros under `embedag::derive` and `embedag::prelude`.
 
-No Dendrite repository depends on this crate today.
 
 ## Build and test
 

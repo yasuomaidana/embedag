@@ -80,7 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 | `turso` | No | Enables `diesel-libsql`, `libsql`, and `tempfile` for Turso / libSQL support |
 | `turso-async` | No | Enables `turso`, `diesel-async`, and `diesel-libsql/async` for async Turso / libSQL CTEs and mutations |
 
-## Workspace and Dendrite relationship
+## Workspace relationship
 
 Within the workspace:
 
@@ -89,7 +89,6 @@ Within the workspace:
 - [`embedag-example-receipts`](../embedag-example-receipts/README.md) uses `embedag-diesel` to persist and traverse receipt and financial category hierarchies across SQLite and PostgreSQL.
 - [`embedag`](../embedag/README.md) re-exports `embedag-diesel` under `embedag::diesel` and forwards the `turso` and `turso-async` feature flags.
 
-No Dendrite repository depends on this crate today.
 
 ## Build and test
 

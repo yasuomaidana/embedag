@@ -81,11 +81,10 @@ fn main() -> Result<(), DagError> {
 | `surrealdb` | Via `full` | `dep:embedag-surrealdb` (`embedag::surrealdb`) |
 | `neo4j` | Via `full` | `dep:embedag-neo4j` (`embedag::neo4j`) |
 
-## Workspace and Dendrite relationship
+## Workspace relationship
 
 Within the `embedag` workspace, this crate sits at the top of the dependency DAG and contains no logic of its own beyond re-exports and end-to-end integration tests (`crates/embedag/tests/e2e_pipeline.rs`).
 
-Outside this workspace, `dendrite-rag-rs` (crate `loom-rag`) is the only Dendrite repository that depends on embedag today. It uses feature `core` for `embedag::dag::merkle` (`MerkleNode`, `diff`) in incremental change detection. The other Dendrite repositories do not depend on embedag yet; planned uses are listed in `DEV_STATUS.md` and the Dendrite tickets (for example the SCC API for dendrite-git-rs).
 
 ## Build and test
 

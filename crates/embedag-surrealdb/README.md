@@ -63,14 +63,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 `embedag-surrealdb` defines no optional Cargo feature flags (`default = []`). The underlying `surrealdb` dependency is compiled with `kv-mem` and `protocol-ws` enabled at the workspace level.
 
-## Workspace and Dendrite relationship
+## Workspace relationship
 
 Within the workspace:
 
 - `embedag-surrealdb` depends on [`embedag-core`](../embedag-core/README.md) (`MemoryDag`, `NodePayload`, `EdgePayload`, `MutationDirective`, `rank_by_cosine`, repository traits) and `surrealdb`.
 - [`embedag`](../embedag/README.md) re-exports `embedag-surrealdb` under `embedag::surrealdb` and `embedag::prelude` when the `surrealdb` feature is enabled.
 
-No Dendrite repository depends on this crate today.
 
 ## Build and test
 

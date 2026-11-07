@@ -62,14 +62,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 `embedag-neo4j` defines no optional Cargo feature flags (`default = []`).
 
-## Workspace and Dendrite relationship
+## Workspace relationship
 
 Within the workspace:
 
 - `embedag-neo4j` depends on [`embedag-core`](../embedag-core/README.md) (`MemoryDag`, `NodePayload`, `EdgePayload`, `MutationDirective`, `rank_by_cosine`, repository traits) and `neo4rs`.
 - [`embedag`](../embedag/README.md) re-exports `embedag-neo4j` under `embedag::neo4j` and `embedag::prelude` when the `neo4j` feature is enabled.
 
-No Dendrite repository depends on this crate today.
 
 ## Build and test
 

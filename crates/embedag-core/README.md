@@ -99,11 +99,10 @@ fn main() -> Result<(), DagError> {
 | `h3o` | Yes | Enables H3 hexagonal geospatial indexing (`dep:h3o`) in `embedag_core::encoder::geospatial` |
 | `testing` | No | Exposes shared test fixtures (`embedag_core::testing::{TestNode, StoredNode}`) and the `persistence_suite!` macro for adapter test suites |
 
-## Workspace and Dendrite relationship
+## Workspace relationship
 
 Every other crate in the `embedag` workspace (except the `embedag-derive` proc-macro crate) depends on `embedag-core` for `MemoryDag`, `NodePayload`, `EdgePayload`, `DagError`, and repository traits.
 
-Outside this workspace, `dendrite-rag-rs` (crate `loom-rag`) is the only Dendrite repository that depends on embedag today. It uses feature `core` for `embedag::dag::merkle` (`MerkleNode`, `diff`) in incremental change detection. The other Dendrite repositories do not depend on embedag yet; planned uses are listed in `DEV_STATUS.md` and the Dendrite tickets (for example the SCC API for dendrite-git-rs).
 
 ## Build and test
 

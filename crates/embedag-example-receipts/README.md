@@ -78,11 +78,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 `embedag-example-receipts` defines no Cargo feature flags of its own; it uses the default features of `embedag-core`, `embedag-diesel` (`sqlite`, `postgres-async`, `test-harness`), `embedag-derive`, and `embedag-llm`.
 
-## Workspace and Dendrite relationship
+## Workspace relationship
 
 Within the workspace, `embedag-example-receipts` is a leaf example crate that exercises [`embedag-core`](../embedag-core/README.md), [`embedag-derive`](../embedag-derive/README.md), [`embedag-diesel`](../embedag-diesel/README.md), and [`embedag-llm`](../embedag-llm/README.md) together in end-to-end SQLite and Testcontainers PostgreSQL tests (`tests/finance_categorization_e2e.rs`, `tests/postgres_Categorization_e2e.rs`).
 
-No Dendrite repository depends on this crate today.
 
 ## Build and test
 

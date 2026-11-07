@@ -75,7 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 | `candle` | Yes | Enables optional `dep:candle-core` tensor/device integration |
 | `oxillama` | Yes | Enables `dep:oxillama` GBNF grammar validation in `OxillamaProvider::validate_gbnf_grammar` |
 
-## Workspace and Dendrite relationship
+## Workspace relationship
 
 Within the workspace:
 
@@ -83,7 +83,6 @@ Within the workspace:
 - [`embedag-example-receipts`](../embedag-example-receipts/README.md) uses `embedag-llm` (`PromptFormatter`, `LlmProvider`, `CandleProvider`, `WaterfallPipeline`, `SemanticDeltaSynthesizer`, `ChangesetDiffEngine`) to categorize receipts and invoices into hierarchical taxonomies.
 - [`embedag`](../embedag/README.md) re-exports `embedag-llm` under `embedag::llm` and `embedag::prelude`.
 
-No Dendrite repository depends on this crate today.
 
 ## Build and test
 

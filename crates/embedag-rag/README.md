@@ -75,14 +75,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 `embedag-rag` defines no Cargo feature flags.
 
-## Workspace and Dendrite relationship
+## Workspace relationship
 
 Within the workspace:
 
 - `embedag-rag` depends on [`embedag-core`](../embedag-core/README.md) (`MemoryDag`, `NodePayload`, `EdgePayload`, `rank_by_cosine`) and `oxirag`.
 - [`embedag`](../embedag/README.md) re-exports `embedag-rag` under `embedag::rag` and `embedag::prelude`.
 
-No Dendrite repository depends on this crate today.
 
 ## Build and test
 

@@ -42,9 +42,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/loom-gate
-          # The dendrite-rag-rs revision loom-gate is built from appears in this key and in the install command below: change both
-          # together. It is written out (not an env variable) so `dendrite allostasis gate` can check that the revision exists.
-          # dendrite-rag-rs has no release tag yet; EMBEDAG-99 moves this to v0.1.0.
+          # The loom-gate revision appears in this key and in the install command below: change both together.
           key: loom-gate-${{ runner.os }}-3a8b6d07f3235141b87e129699e855f2dac76325
 
       - name: Install loom-gate

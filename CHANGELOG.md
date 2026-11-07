@@ -13,7 +13,7 @@ First release. Milestones 1 to 8 of the development plan are complete; Milestone
 
 ### Added
 - `embedag-core`: domain contracts, the `MemoryDag` arena with cycle guards and typestate mutation plans, deterministic scalar, temporal and H3 geospatial encoders with a hybrid distance metric, an `embedag_core::testing` fixture module.
-- `embedag::dag`: toposort, levels, reverse dependencies and critical path, and `embedag::dag::merkle` BLAKE3 Merkle delta trees (Milestone 9, ticket 9.1.1), used today by dendrite-rag-rs, with feature `core`, for the Merkle delta trees.
+- `embedag::dag`: toposort, levels, reverse dependencies and critical path, and `embedag::dag::merkle` BLAKE3 Merkle delta trees (Milestone 9, ticket 9.1.1).
 - `embedag-matcher`: structural AST similarity and similarity graphs.
 - `embedag-core`: Iterative Tarjan strongly connected components (`strongly_connected_components`) and acyclic condensation API (`condense`, `Condensation`) for plain index graphs, re-exported under `embedag::dag` (Ticket 9.5.1).
 - `embedag-derive`: `AsGraphContext`, `GraphTarget` and `HierarchicalModel` derives.
@@ -33,7 +33,7 @@ First release. Milestones 1 to 8 of the development plan are complete; Milestone
 ### Not in this release
 - Milestone 9 open tickets: multi-root dependency manifests, work-item prioritisation, Merkle journal verification, Leiden clustering with a god-node index.
 - Milestone 10 (text embeddings, vector search, classification primitives) is specified only.
-- Rust test coverage is not gated yet (tracked in the Dendrite project as DEN-1060).
+- Rust test coverage is not gated yet.
 
 ### Security
 - `.cargo/audit.toml` documents 15 advisories pinned by upstream crates (libsql, candle-core, oxirs-core, surrealdb, oxitls, ...); `libsql` stays at 0.9 and `testcontainers` at 0.27 because `diesel-libsql` and `testcontainers-modules` require them. A decision on the remaining ones is open (issue #2).

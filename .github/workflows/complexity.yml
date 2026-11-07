@@ -1,7 +1,5 @@
-# Second opinion on function complexity, using the standard tool of each language.
-# Our own implementation (dendrite-core, run by `dendrite allostasis gate` and loom-gate) stays the first check; this
-# workflow runs the language tools as an independent cross-check. Limits come from [complexity] in
-# .github/dendrite/directives.toml (defaults: cyclomatic 10, cognitive 15).
+# Second opinion on function complexity, using the standard tools for Rust (clippy, lizard).
+# Limits come from [complexity] in .github/dendrite/directives.toml (defaults: cyclomatic 10, cognitive 15).
 name: complexity (second opinion)
 on:
   push:
@@ -38,7 +36,7 @@ jobs:
           if [ "$rc" -ne 0 ] && [ "$n" -eq 0 ]; then printf '%s\n' "$out" | tail -30; echo "::error title=clippy::clippy did not run to completion (exit $rc)"; exit 1; fi
           echo "::warning title=clippy cognitive_complexity::$n functions above the cognitive limit (known debt, EMBEDAG-86); this step turns blocking when the debt is cleared"
           echo "clippy cognitive_complexity: $n functions above the limit" >> "$GITHUB_STEP_SUMMARY"
-      - name: lizard (cyclomatic, report only until the first run is compared with loom-gate, see EMBEDAG-86)
+      - name: lizard (cyclomatic, report only until the first run is compared with loom-gate complexity, see EMBEDAG-86)
         run: |
           python3 -m pip install --quiet lizard==1.17.10
           out=$(python3 -m lizard -l rust -C "${{ steps.limits.outputs.cyc }}" -w -x "*/target/*" . 2>&1) && rc=0 || rc=$?

@@ -65,11 +65,10 @@ fn main() {
 
 `embedag-matcher` defines no Cargo feature flags.
 
-## Workspace and Dendrite relationship
+## Workspace relationship
 
 Within the workspace, `embedag-matcher` depends only on `embedag-core`, `petgraph`, `blake3`, and `thiserror`, and is re-exported by [`embedag`](../embedag/README.md) under the `matcher` feature (`embedag::matcher`).
 
-No Dendrite repository depends on this crate today.
 
 ## Build and test
 
