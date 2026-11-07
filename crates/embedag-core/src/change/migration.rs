@@ -164,7 +164,11 @@ impl<T: NodePayload> GraphMigration<T> {
                 } => split_category(
                     dag,
                     &mut directives,
-                    (source_category, new_categories, child_routes),
+                    &Split {
+                        source: source_category,
+                        new_categories,
+                        child_routes,
+                    },
                     relationship,
                 )?,
                 MigrationStep::MergeNodes {
@@ -234,21 +238,28 @@ fn ensure_acyclic<T: NodePayload>(
     Ok(())
 }
 
+/// A category split: the source category, the categories to create and where each child goes.
+struct Split<'a, T: NodePayload> {
+    source: &'a T::Key,
+    new_categories: &'a [T],
+    child_routes: &'a [(T::Key, T::Key)],
+}
+
 /// Inserts the new categories, then routes each child from the source category to its target.
 fn split_category<T: NodePayload>(
     dag: &mut MemoryDag<T>,
     directives: &mut Vec<MutationDirective<T>>,
-    (source, new_categories, child_routes): (&T::Key, &[T], &[(T::Key, T::Key)]),
+    split: &Split<T>,
     relationship: &str,
 ) -> Result<(), DagError> {
-    for new_cat in new_categories {
+    for new_cat in split.new_categories {
         dag.upsert_node(new_cat.clone());
         directives.push(MutationDirective::UpsertNode(new_cat.clone()));
     }
-    for (child_key, target_cat_key) in child_routes {
+    for (child_key, target_cat_key) in split.child_routes {
         ensure_acyclic(dag, target_cat_key, child_key)?;
         Reroute {
-            from: source,
+            from: split.source,
             to: target_cat_key,
             child: child_key,
             relationship,

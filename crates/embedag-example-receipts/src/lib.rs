@@ -313,46 +313,62 @@ pub fn sanitize_id(raw: &str) -> String {
         .to_string()
 }
 
-fn classify_item_heuristics(
-    name: &str,
-) -> (&'static str, &'static str, &'static str, &'static str) {
-    let lower = name.to_lowercase();
-    if lower.contains("milk") || lower.contains("cheese") || lower.contains("yogurt") {
+/// `(department id, department name, category id, category name)`.
+type Heuristic = (&'static str, &'static str, &'static str, &'static str);
+
+/// Keyword rules, checked in order.
+const ITEM_HEURISTICS: [(&[&str], Heuristic); 4] = [
+    (
+        &["milk", "cheese", "yogurt"],
         (
             "dept_dairy",
             "Dairy & Plant Alternatives",
             "cat_milk_products",
             "Milk & Dairy",
-        )
-    } else if lower.contains("bread") || lower.contains("croissant") || lower.contains("bagel") {
+        ),
+    ),
+    (
+        &["bread", "croissant", "bagel"],
         (
             "dept_bakery",
             "Fresh Bakery",
             "cat_artisan_breads",
             "Breads & Bagels",
-        )
-    } else if lower.contains("paper") || lower.contains("towel") || lower.contains("soap") {
+        ),
+    ),
+    (
+        &["paper", "towel", "soap"],
         (
             "dept_household",
             "Household & Cleaning",
             "cat_paper_goods",
             "Paper & Cleaning",
-        )
-    } else if lower.contains("apple") || lower.contains("banana") || lower.contains("salad") {
+        ),
+    ),
+    (
+        &["apple", "banana", "salad"],
         (
             "dept_produce",
             "Fresh Produce",
             "cat_fruits_veg",
             "Fruits & Vegetables",
-        )
-    } else {
-        (
-            "dept_general",
-            "General Groceries",
-            "cat_packaged",
-            "Packaged Goods",
-        )
-    }
+        ),
+    ),
+];
+
+const DEFAULT_HEURISTIC: Heuristic = (
+    "dept_general",
+    "General Groceries",
+    "cat_packaged",
+    "Packaged Goods",
+);
+
+fn classify_item_heuristics(name: &str) -> Heuristic {
+    let lower = name.to_lowercase();
+    ITEM_HEURISTICS
+        .iter()
+        .find(|(words, _)| words.iter().any(|word| lower.contains(word)))
+        .map_or(DEFAULT_HEURISTIC, |&(_, heuristic)| heuristic)
 }
 
 /// Compiles the Rust examples of the crate README as doctests, so they cannot drift from the code.

@@ -1,7 +1,6 @@
 use embedag_core::dag::MemoryDag;
 use embedag_core::model::{EdgePayload, ProvenanceKind};
 use embedag_core::traits::NodePayload;
-use embedag_llm::diff::ChangesetDiffEngine;
 use embedag_llm::prompt::PromptFormatter;
 use embedag_llm::provider::{LlmError, LlmProvider};
 use embedag_llm::schema::ExtractionDirective;
@@ -10,6 +9,10 @@ use super::dto::InvoiceItem;
 use super::engine::FinanceCategorizationEngine;
 use super::nodes::{ItemCategoryNode, PurchaseCategoryNode};
 use super::temporal::sanitize_slug;
+
+fn mentions_any(lower: &str, words: &[&str]) -> bool {
+    words.iter().any(|word| lower.contains(word))
+}
 
 /// Adds a `SUB_CATEGORY_OF` edge `parent -> child`; a failed insertion is deliberately ignored.
 fn link_sub_category<T: NodePayload<Key = String>>(
@@ -30,90 +33,74 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
         item: &InvoiceItem,
     ) -> Result<(String, String), LlmError> {
         let name_lower = item.item_name.to_lowercase();
-
-        // 1. Check if it's chocolate
-        if name_lower.contains("chocolate")
-            || name_lower.contains("ferrero")
-            || name_lower.contains("snicker")
-        {
-            let root_cat = "cat_chocolate";
-            self.item_dag.upsert_node(ItemCategoryNode {
-                category_id: root_cat.into(),
-                parent_category_id: None,
-                category_name: "Chocolate".into(),
-                entity_level: "root_category".into(),
-            });
-
-            let (child_key, child_name) = if name_lower.contains("white") {
-                ("cat_white_chocolate", "White Chocolate")
-            } else if name_lower.contains("cookies") || name_lower.contains("cream") {
-                ("cat_cookies_and_cream", "Cookies and Cream")
-            } else if name_lower.contains("ferrero") {
-                ("cat_hazelnut_chocolate", "Hazelnut Chocolate")
-            } else {
-                ("cat_chocolate_bar", "Chocolate Bar")
-            };
-
-            self.item_dag.upsert_node(ItemCategoryNode {
-                category_id: child_key.into(),
-                parent_category_id: Some(root_cat.into()),
-                category_name: child_name.into(),
-                entity_level: "sub_category".into(),
-            });
-
-            link_sub_category(
-                &mut self.item_dag,
-                root_cat,
-                child_key,
-                ProvenanceKind::HumanVerified,
-            );
-
-            return Ok((child_key.into(), child_name.into()));
+        if mentions_any(&name_lower, &["chocolate", "ferrero", "snicker"]) {
+            return Ok(self.categorize_chocolate(&name_lower));
         }
-
-        // 2. Check if it's apparel / shirt
-        if name_lower.contains("shirt")
-            || name_lower.contains("apparel")
-            || name_lower.contains("clothing")
-        {
-            let root_cat = "cat_apparel";
-            self.item_dag.upsert_node(ItemCategoryNode {
-                category_id: root_cat.into(),
-                parent_category_id: None,
-                category_name: "Apparel".into(),
-                entity_level: "root_category".into(),
-            });
-
-            let child_key = "cat_t_shirt";
-            let child_name = "T-Shirt";
-
-            self.item_dag.upsert_node(ItemCategoryNode {
-                category_id: child_key.into(),
-                parent_category_id: Some(root_cat.into()),
-                category_name: child_name.into(),
-                entity_level: "sub_category".into(),
-            });
-
-            link_sub_category(
-                &mut self.item_dag,
-                root_cat,
-                child_key,
-                ProvenanceKind::HumanVerified,
-            );
-
-            return Ok((child_key.into(), child_name.into()));
+        if mentions_any(&name_lower, &["shirt", "apparel", "clothing"]) {
+            return Ok(self.categorize_apparel());
         }
+        self.categorize_with_llm(item).await
+    }
 
-        // 3. Fallback: ask LLM inference model
+    fn categorize_chocolate(&mut self, name_lower: &str) -> (String, String) {
+        let (child_key, child_name) = if name_lower.contains("white") {
+            ("cat_white_chocolate", "White Chocolate")
+        } else if name_lower.contains("cookies") || name_lower.contains("cream") {
+            ("cat_cookies_and_cream", "Cookies and Cream")
+        } else if name_lower.contains("ferrero") {
+            ("cat_hazelnut_chocolate", "Hazelnut Chocolate")
+        } else {
+            ("cat_chocolate_bar", "Chocolate Bar")
+        };
+        self.upsert_item_category_pair(("cat_chocolate", "Chocolate"), (child_key, child_name))
+    }
+
+    fn categorize_apparel(&mut self) -> (String, String) {
+        self.upsert_item_category_pair(("cat_apparel", "Apparel"), ("cat_t_shirt", "T-Shirt"))
+    }
+
+    /// Upserts a root category and one sub-category under it, linked by a human-verified edge.
+    fn upsert_item_category_pair(
+        &mut self,
+        (root_key, root_name): (&str, &str),
+        (child_key, child_name): (&str, &str),
+    ) -> (String, String) {
+        self.item_dag.upsert_node(ItemCategoryNode {
+            category_id: root_key.into(),
+            parent_category_id: None,
+            category_name: root_name.into(),
+            entity_level: "root_category".into(),
+        });
+        self.item_dag.upsert_node(ItemCategoryNode {
+            category_id: child_key.into(),
+            parent_category_id: Some(root_key.into()),
+            category_name: child_name.into(),
+            entity_level: "sub_category".into(),
+        });
+        link_sub_category(
+            &mut self.item_dag,
+            root_key,
+            child_key,
+            ProvenanceKind::HumanVerified,
+        );
+        (child_key.into(), child_name.into())
+    }
+
+    /// Fallback: ask the LLM inference model.
+    async fn categorize_with_llm(
+        &mut self,
+        item: &InvoiceItem,
+    ) -> Result<(String, String), LlmError> {
         let prompt = PromptFormatter::build_prompt(
             "Categorize product into intrinsic taxonomy tree.",
             &item.item_name,
             &["cat_groceries (Groceries)", "cat_general (General Retail)"],
         );
-
         let (directive, _) = self.provider.extract_directive(&prompt).await?;
-        let _diff = ChangesetDiffEngine::diff_directive(&self.item_dag, &directive);
+        Ok(self.record_llm_category(directive))
+    }
 
+    fn record_llm_category(&mut self, directive: ExtractionDirective) -> (String, String) {
         match directive {
             ExtractionDirective::CreateRootNode { entity_name, .. } => {
                 let key = format!("cat_{}", sanitize_slug(&entity_name));
@@ -123,7 +110,7 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
                     category_name: entity_name.clone(),
                     entity_level: "category".into(),
                 });
-                Ok((key, entity_name))
+                (key, entity_name)
             }
             ExtractionDirective::InsertNode {
                 parent_key,
@@ -143,9 +130,9 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
                     &key,
                     ProvenanceKind::LlmConstrainedInference,
                 );
-                Ok((key, entity_name))
+                (key, entity_name)
             }
-            _ => Ok(("cat_general".into(), "General Item".into())),
+            _ => ("cat_general".into(), "General Item".into()),
         }
     }
 

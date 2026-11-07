@@ -158,10 +158,7 @@ fn diff_node(
         return;
     }
 
-    let old_is_leaf = old.leaf_hash.is_some();
-    let new_is_leaf = new.leaf_hash.is_some();
-
-    if old_is_leaf || new_is_leaf {
+    if old.leaf_hash.is_some() || new.leaf_hash.is_some() {
         let path = if prefix.is_empty() {
             new.key.clone()
         } else {
@@ -171,28 +168,42 @@ fn diff_node(
         return;
     }
 
+    diff_children(&old.children, &new.children, prefix, delta, visited);
+}
+
+/// Merge-walks two key-sorted child lists: unmatched children are removed or added, matched ones are diffed.
+fn diff_children(
+    old_children: &[MerkleNode],
+    new_children: &[MerkleNode],
+    prefix: &str,
+    delta: &mut Delta,
+    visited: &mut usize,
+) {
     let mut i = 0usize;
     let mut j = 0usize;
-    let old_children = &old.children;
-    let new_children = &new.children;
 
     while i < old_children.len() && j < new_children.len() {
-        match old_children[i].key.cmp(&new_children[j].key) {
+        let (old_child, new_child) = (&old_children[i], &new_children[j]);
+        match old_child.key.cmp(&new_child.key) {
             Ordering::Less => {
-                let child = &old_children[i];
-                let path = join_path(prefix, &child.key);
-                collect_leaves(child, &path, &mut delta.removed, visited);
+                collect_all(
+                    std::slice::from_ref(old_child),
+                    prefix,
+                    &mut delta.removed,
+                    visited,
+                );
                 i += 1;
             }
             Ordering::Greater => {
-                let child = &new_children[j];
-                let path = join_path(prefix, &child.key);
-                collect_leaves(child, &path, &mut delta.added, visited);
+                collect_all(
+                    std::slice::from_ref(new_child),
+                    prefix,
+                    &mut delta.added,
+                    visited,
+                );
                 j += 1;
             }
             Ordering::Equal => {
-                let old_child = &old_children[i];
-                let new_child = &new_children[j];
                 if old_child.hash != new_child.hash {
                     let path = join_path(prefix, &new_child.key);
                     diff_node(old_child, new_child, &path, delta, visited);

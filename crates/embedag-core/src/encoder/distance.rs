@@ -245,73 +245,108 @@ pub fn composite_distance<A: AsGraphContext + ?Sized, B: AsGraphContext + ?Sized
 ) -> Result<f64, EncodingError> {
     weights.validate()?;
 
-    let mut components = Vec::with_capacity(6);
+    let mut components: Vec<Component> = Vec::with_capacity(6);
+    components.extend(dense_component(dense_vec_a, dense_vec_b, weights)?);
+    let pair = Pair {
+        a: ctx_a,
+        b: ctx_b,
+        weights,
+    };
+    components.extend(pair.lexical());
+    components.extend(pair.scalar());
+    components.extend(pair.temporal());
+    components.extend(pair.geospatial(h3_resolution, max_h3_rings));
+    components.extend(pair.categorical());
+    Ok(weighted_mean(&components))
+}
 
-    // 1. Semantic dense embedding
-    if !dense_vec_a.is_empty() && !dense_vec_b.is_empty() {
-        let d_text = cosine_distance(dense_vec_a, dense_vec_b)?;
-        components.push((weights.text, d_text));
+/// A modality's `(weight, distance)`.
+type Component = (f64, f64);
+
+/// Semantic dense embedding.
+fn dense_component(
+    dense_vec_a: &[f32],
+    dense_vec_b: &[f32],
+    weights: &ModalityWeights,
+) -> Result<Option<Component>, EncodingError> {
+    if dense_vec_a.is_empty() || dense_vec_b.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some((
+        weights.text,
+        cosine_distance(dense_vec_a, dense_vec_b)?,
+    )))
+}
+
+/// The two items being compared and the modality weights.
+struct Pair<'a, A: ?Sized, B: ?Sized> {
+    a: &'a A,
+    b: &'a B,
+    weights: &'a ModalityWeights,
+}
+
+impl<A: AsGraphContext + ?Sized, B: AsGraphContext + ?Sized> Pair<'_, A, B> {
+    /// Lexical sparse tokens.
+    fn lexical(&self) -> Option<Component> {
+        let tokens_a = self.a.sparse_lexical_tokens();
+        let tokens_b = self.b.sparse_lexical_tokens();
+        if tokens_a.is_empty() && tokens_b.is_empty() {
+            return None;
+        }
+        Some((
+            self.weights.lexical,
+            lexical_token_distance(&tokens_a, &tokens_b),
+        ))
     }
 
-    // 2. Lexical sparse tokens
-    let tokens_a = ctx_a.sparse_lexical_tokens();
-    let tokens_b = ctx_b.sparse_lexical_tokens();
-    if !tokens_a.is_empty() || !tokens_b.is_empty() {
-        let d_lex = lexical_token_distance(&tokens_a, &tokens_b);
-        components.push((weights.lexical, d_lex));
+    /// Continuous scalar features.
+    fn scalar(&self) -> Option<Component> {
+        scalar_gower_distance(&self.a.scalar_features(), &self.b.scalar_features())
+            .map(|d| (self.weights.scalar, d))
     }
 
-    // 3. Continuous scalar features
-    let scalars_a = ctx_a.scalar_features();
-    let scalars_b = ctx_b.scalar_features();
-    if let Some(d_scalar) = scalar_gower_distance(&scalars_a, &scalars_b) {
-        components.push((weights.scalar, d_scalar));
+    /// Temporal cyclical distance.
+    fn temporal(&self) -> Option<Component> {
+        temporal_distance_opt(self.a.timestamp_utc(), self.b.timestamp_utc())
+            .map(|d| (self.weights.temporal, d))
     }
 
-    // 4. Temporal cyclical distance
-    if let Some(d_time) = temporal_distance_opt(ctx_a.timestamp_utc(), ctx_b.timestamp_utc()) {
-        components.push((weights.temporal, d_time));
-    }
-
-    // 5. Geospatial H3 distance
+    /// Geospatial H3 distance.
     #[cfg(feature = "h3o")]
-    {
-        if let Some(d_geo) = compute_geospatial_distance(
-            ctx_a.geographic_coordinates(),
-            ctx_b.geographic_coordinates(),
+    fn geospatial(&self, h3_resolution: u8, max_h3_rings: u32) -> Option<Component> {
+        compute_geospatial_distance(
+            self.a.geographic_coordinates(),
+            self.b.geographic_coordinates(),
             h3_resolution,
             max_h3_rings,
-        ) {
-            components.push((weights.geospatial, d_geo));
-        }
+        )
+        .map(|d| (self.weights.geospatial, d))
     }
+
+    /// Without the `h3o` feature the geospatial modality never participates.
     #[cfg(not(feature = "h3o"))]
-    {
-        let _ = (h3_resolution, max_h3_rings);
+    fn geospatial(&self, _h3_resolution: u8, _max_h3_rings: u32) -> Option<Component> {
+        None
     }
 
-    // 6. Categorical tags
-    let tags_a = ctx_a.categorical_tags();
-    let tags_b = ctx_b.categorical_tags();
-    if let Some(d_cat) = categorical_tag_distance(&tags_a, &tags_b) {
-        components.push((weights.categorical, d_cat));
+    /// Categorical tags.
+    fn categorical(&self) -> Option<Component> {
+        categorical_tag_distance(&self.a.categorical_tags(), &self.b.categorical_tags())
+            .map(|d| (self.weights.categorical, d))
     }
+}
 
-    if components.is_empty() {
-        return Ok(0.0);
-    }
-
+/// The weight-normalized mean of the available modalities, in `[0.0, 1.0]`.
+fn weighted_mean(components: &[Component]) -> f64 {
     let total_weight: f64 = components.iter().map(|(w, _)| *w).sum();
-    if total_weight < f64::EPSILON {
-        return Ok(0.0);
+    if components.is_empty() || total_weight < f64::EPSILON {
+        return 0.0;
     }
-
     let mut weighted_distance = 0.0;
     for (w, d) in components {
         weighted_distance += (w / total_weight) * d;
     }
-
-    Ok(weighted_distance.clamp(0.0, 1.0))
+    weighted_distance.clamp(0.0, 1.0)
 }
 
 #[cfg(test)]

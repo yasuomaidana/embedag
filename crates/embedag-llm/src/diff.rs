@@ -122,12 +122,7 @@ impl ChangesetDiffEngine {
                 target_key,
                 updated_fields,
                 ..
-            } => {
-                if dag.contains_key(target_key) && !updated_fields.is_empty() {
-                    diff.updated_nodes
-                        .push((target_key.clone(), updated_fields.clone()));
-                }
-            }
+            } => push_update(&mut diff, dag, target_key, updated_fields),
             ExtractionDirective::RetargetEdge {
                 child_key,
                 old_parent_key,
@@ -146,6 +141,21 @@ impl ChangesetDiffEngine {
         }
 
         diff
+    }
+}
+
+/// Proposes updating `target_key` when it exists and there is something to update.
+fn push_update<T>(
+    diff: &mut GraphDiff<String>,
+    dag: &MemoryDag<T>,
+    target_key: &String,
+    updated_fields: &HashMap<String, serde_json::Value>,
+) where
+    T: NodePayload<Key = String>,
+{
+    if dag.contains_key(target_key) && !updated_fields.is_empty() {
+        diff.updated_nodes
+            .push((target_key.clone(), updated_fields.clone()));
     }
 }
 

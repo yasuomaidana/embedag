@@ -93,11 +93,20 @@ fn parse_multi_valued(
     parsed: &mut ParsedFields,
 ) -> Option<syn::Result<()>> {
     Some(match name {
-        "text" => Ok(parsed.text_fields.push(field_ident.clone())),
+        "text" => {
+            parsed.text_fields.push(field_ident.clone());
+            Ok(())
+        }
         "scalar" => named(meta, field_ident).map(|n| parsed.scalar_fields.push(n)),
         "tag" => named(meta, field_ident).map(|n| parsed.tag_fields.push(n)),
-        "blob" | "blobs" => Ok(parsed.blob_fields.push(field_ident.clone())),
-        "tokens" | "sparse" => Ok(parsed.tokens_field = Some(field_ident.clone())),
+        "blob" | "blobs" => {
+            parsed.blob_fields.push(field_ident.clone());
+            Ok(())
+        }
+        "tokens" | "sparse" => {
+            parsed.tokens_field = Some(field_ident.clone());
+            Ok(())
+        }
         _ => return None,
     })
 }

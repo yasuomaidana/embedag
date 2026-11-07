@@ -315,78 +315,72 @@ mod tests {
     use super::*;
     use embedag_core::model::EdgePayload;
     use embedag_core::testing::TestNode;
+    use rstest::{fixture, rstest};
 
     fn edge(rel: &str) -> EdgePayload {
         EdgePayload::new(rel, 1.0, ProvenanceKind::DeterministicRule).unwrap()
     }
 
-    #[test]
-    fn test_subgraph_expansion_with_decay() {
+    /// Hierarchy: Dept (L1) -> Brand (L2) -> SKU_A (L3)
+    ///                                   \-> SKU_B (L3, sibling)
+    /// SKU_A -> Variant_A1 (L4, child)
+    #[fixture]
+    fn dag() -> MemoryDag<TestNode> {
         let mut dag = MemoryDag::new();
+        for (key, name, level) in [
+            ("dept", "Confectionery", "Department"),
+            ("brand", "Carlos V", "Brand"),
+            ("sku_a", "Carlos V Dark 50g", "SKU"),
+            ("sku_b", "Carlos V Milk 50g", "SKU"),
+            ("variant", "Carlos V Dark 50g 10-Pack", "Bundle"),
+        ] {
+            dag.upsert_node(TestNode::new(key, name, level));
+        }
+        for (parent, child, rel) in [
+            ("dept", "brand", "PARENT_OF"),
+            ("brand", "sku_a", "PARENT_OF"),
+            ("brand", "sku_b", "PARENT_OF"),
+            ("sku_a", "variant", "HAS_VARIANT"),
+        ] {
+            dag.add_edge_by_keys(&parent.into(), &child.into(), edge(rel))
+                .unwrap();
+        }
+        dag
+    }
 
-        // Hierarchy: Dept (L1) -> Brand (L2) -> SKU_A (L3)
-        //                                   \-> SKU_B (L3, sibling)
-        // SKU_A -> Variant_A1 (L4, child)
-        let dept = TestNode::new("dept", "Confectionery", "Department");
-        let brand = TestNode::new("brand", "Carlos V", "Brand");
-        let sku_a = TestNode::new("sku_a", "Carlos V Dark 50g", "SKU");
-        let sku_b = TestNode::new("sku_b", "Carlos V Milk 50g", "SKU");
-        let variant = TestNode::new("variant", "Carlos V Dark 50g 10-Pack", "Bundle");
-
-        dag.upsert_node(dept);
-        dag.upsert_node(brand);
-        dag.upsert_node(sku_a);
-        dag.upsert_node(sku_b);
-        dag.upsert_node(variant);
-
-        dag.add_edge_by_keys(&"dept".into(), &"brand".into(), edge("PARENT_OF"))
-            .unwrap();
-        dag.add_edge_by_keys(&"brand".into(), &"sku_a".into(), edge("PARENT_OF"))
-            .unwrap();
-        dag.add_edge_by_keys(&"brand".into(), &"sku_b".into(), edge("PARENT_OF"))
-            .unwrap();
-        dag.add_edge_by_keys(&"sku_a".into(), &"variant".into(), edge("HAS_VARIANT"))
-            .unwrap();
-
+    #[fixture]
+    fn subgraph(dag: MemoryDag<TestNode>) -> ExpandedSubgraph<String> {
         let expander = SubgraphExpander {
             decay_gamma: 0.70,
             max_hops: 2,
             include_siblings: true,
         };
+        expander.expand(&dag, &[("sku_a".to_string(), 1.0)])
+    }
 
-        let seed_candidates = vec![("sku_a".to_string(), 1.0)];
-        let subgraph = expander.expand(&dag, &seed_candidates);
+    #[rstest]
+    #[case::seed("sku_a", 0, Some(1.0), SeedRelationship::Seed)]
+    #[case::one_hop_ancestor("brand", 1, Some(0.70), SeedRelationship::Ancestor)]
+    #[case::two_hop_ancestor("dept", 2, Some(0.49), SeedRelationship::Ancestor)]
+    #[case::one_hop_descendant("variant", 1, Some(0.70), SeedRelationship::Descendant)]
+    #[case::one_hop_sibling("sku_b", 1, None, SeedRelationship::Sibling)]
+    fn expands_around_the_seed(
+        subgraph: ExpandedSubgraph<String>,
+        #[case] key: &str,
+        #[case] hops: usize,
+        #[case] weight: Option<f32>,
+        #[case] relationship: SeedRelationship,
+    ) {
+        let node = subgraph.nodes.get(key).unwrap();
+        assert_eq!(node.hop_distance, hops);
+        assert_eq!(node.relationship, relationship);
+        if let Some(expected) = weight {
+            assert!((node.weight - expected).abs() < 1e-4);
+        }
+    }
 
-        // 1. Seed
-        let seed_node = subgraph.nodes.get("sku_a").unwrap();
-        assert_eq!(seed_node.hop_distance, 0);
-        assert_eq!(seed_node.weight, 1.0);
-        assert_eq!(seed_node.relationship, SeedRelationship::Seed);
-
-        // 2. 1-hop Ancestor (brand)
-        let brand_node = subgraph.nodes.get("brand").unwrap();
-        assert_eq!(brand_node.hop_distance, 1);
-        assert!((brand_node.weight - 0.70).abs() < 1e-4);
-        assert_eq!(brand_node.relationship, SeedRelationship::Ancestor);
-
-        // 3. 2-hop Ancestor (dept)
-        let dept_node = subgraph.nodes.get("dept").unwrap();
-        assert_eq!(dept_node.hop_distance, 2);
-        assert!((dept_node.weight - 0.49).abs() < 1e-4);
-        assert_eq!(dept_node.relationship, SeedRelationship::Ancestor);
-
-        // 4. 1-hop Descendant (variant)
-        let var_node = subgraph.nodes.get("variant").unwrap();
-        assert_eq!(var_node.hop_distance, 1);
-        assert!((var_node.weight - 0.70).abs() < 1e-4);
-        assert_eq!(var_node.relationship, SeedRelationship::Descendant);
-
-        // 5. 1-hop Sibling (sku_b)
-        let sib_node = subgraph.nodes.get("sku_b").unwrap();
-        assert_eq!(sib_node.hop_distance, 1);
-        assert_eq!(sib_node.relationship, SeedRelationship::Sibling);
-
-        // 6. Edges captured
+    #[rstest]
+    fn captures_the_edges_between_visited_nodes(subgraph: ExpandedSubgraph<String>) {
         assert!(!subgraph.edges.is_empty());
     }
 }

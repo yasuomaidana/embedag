@@ -124,26 +124,8 @@ impl<P: LlmProvider> WaterfallPipeline<P> {
         }
 
         // --- TIER 2: Composite Hybrid Distance Thresholding ---
-        if let Some(best) = candidates.iter().max_by(|a, b| {
-            a.similarity_score
-                .partial_cmp(&b.similarity_score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        }) {
-            if best.similarity_score >= self.tier2_near_threshold {
-                return Ok(ResolutionOutcome::Tier2NearMatch {
-                    target_key: best.key.clone(),
-                    similarity: best.similarity_score,
-                });
-            } else if best.similarity_score < self.tier2_novel_threshold {
-                return Ok(ResolutionOutcome::Tier2NovelEntity {
-                    suggested_parent_key: None,
-                });
-            }
-        } else {
-            // No candidates exist in graph -> Novel entity
-            return Ok(ResolutionOutcome::Tier2NovelEntity {
-                suggested_parent_key: None,
-            });
+        if let Some(outcome) = self.tier2_outcome(candidates) {
+            return Ok(outcome);
         }
 
         // --- TIER 3: Sovereign Constrained LLM Inference ---
@@ -156,15 +138,7 @@ impl<P: LlmProvider> WaterfallPipeline<P> {
         );
 
         let (directive, notes) = self.llm_provider.extract_directive(&prompt).await?;
-
-        let confidence = match &directive {
-            ExtractionDirective::InsertNode { confidence, .. } => *confidence,
-            ExtractionDirective::InsertMultiParentNode { confidence, .. } => *confidence,
-            ExtractionDirective::UpdateAttributes { confidence, .. } => *confidence,
-            ExtractionDirective::RetargetEdge { confidence, .. } => *confidence,
-            ExtractionDirective::CreateRootNode { confidence, .. } => *confidence,
-            ExtractionDirective::MarkAmbiguous { .. } => 0.0,
-        };
+        let confidence = directive_confidence(&directive);
 
         if confidence >= self.tier3_confidence_gate {
             Ok(ResolutionOutcome::Tier3LlmResolved { directive, notes })
@@ -175,9 +149,46 @@ impl<P: LlmProvider> WaterfallPipeline<P> {
                     "LLM confidence {confidence:.2} fell below gate {:.2}",
                     self.tier3_confidence_gate
                 ),
-                candidate_keys: candidates.iter().map(|c| c.key.clone()).collect(),
+                candidate_keys,
             })
         }
+    }
+
+    /// Tier 2 decides on the best candidate's similarity: a near match, a novel entity, or neither.
+    fn tier2_outcome(&self, candidates: &[CandidateMatch]) -> Option<ResolutionOutcome> {
+        let novel = || ResolutionOutcome::Tier2NovelEntity {
+            suggested_parent_key: None,
+        };
+        // No candidates exist in graph -> Novel entity
+        let Some(best) = candidates.iter().max_by(|a, b| {
+            a.similarity_score
+                .partial_cmp(&b.similarity_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        }) else {
+            return Some(novel());
+        };
+        if best.similarity_score >= self.tier2_near_threshold {
+            Some(ResolutionOutcome::Tier2NearMatch {
+                target_key: best.key.clone(),
+                similarity: best.similarity_score,
+            })
+        } else if best.similarity_score < self.tier2_novel_threshold {
+            Some(novel())
+        } else {
+            None
+        }
+    }
+}
+
+/// The confidence the directive carries; an ambiguity marker carries none.
+fn directive_confidence(directive: &ExtractionDirective) -> f32 {
+    match directive {
+        ExtractionDirective::InsertNode { confidence, .. }
+        | ExtractionDirective::InsertMultiParentNode { confidence, .. }
+        | ExtractionDirective::UpdateAttributes { confidence, .. }
+        | ExtractionDirective::RetargetEdge { confidence, .. }
+        | ExtractionDirective::CreateRootNode { confidence, .. } => *confidence,
+        ExtractionDirective::MarkAmbiguous { .. } => 0.0,
     }
 }
 

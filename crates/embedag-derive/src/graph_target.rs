@@ -18,24 +18,15 @@ enum TargetVariantKind {
     Ambiguous,
 }
 
-/// Attribute keys: `#[target(exact)]` and so on.
-const ATTRIBUTE_KINDS: [(&str, TargetVariantKind); 6] = [
-    ("exact", TargetVariantKind::Exact),
-    ("fuzzy", TargetVariantKind::Fuzzy),
-    ("child", TargetVariantKind::Child),
-    ("multi_child", TargetVariantKind::MultiChild),
-    ("root", TargetVariantKind::Root),
-    ("ambiguous", TargetVariantKind::Ambiguous),
-];
-
-/// Variant-name fragments, checked in this order (`multi` before `child`).
-const NAME_KINDS: [(&str, TargetVariantKind); 6] = [
-    ("exact", TargetVariantKind::Exact),
-    ("fuzzy", TargetVariantKind::Fuzzy),
-    ("multi", TargetVariantKind::MultiChild),
-    ("child", TargetVariantKind::Child),
-    ("root", TargetVariantKind::Root),
-    ("ambiguous", TargetVariantKind::Ambiguous),
+/// `(attribute key, variant-name fragment, kind)`; fragments are checked in this order, so `multi`
+/// comes before `child`.
+const KINDS: [(&str, &str, TargetVariantKind); 6] = [
+    ("exact", "exact", TargetVariantKind::Exact),
+    ("fuzzy", "fuzzy", TargetVariantKind::Fuzzy),
+    ("multi_child", "multi", TargetVariantKind::MultiChild),
+    ("child", "child", TargetVariantKind::Child),
+    ("root", "root", TargetVariantKind::Root),
+    ("ambiguous", "ambiguous", TargetVariantKind::Ambiguous),
 ];
 
 /// The kind named by a `#[target(..)]` attribute, else the one the variant's name suggests.
@@ -51,10 +42,7 @@ fn detect_kind(variant: &Variant) -> Option<TargetVariantKind> {
 fn attribute_kind(attr: &syn::Attribute) -> Option<TargetVariantKind> {
     let mut detected = None;
     let _ = attr.parse_nested_meta(|meta| {
-        if let Some(&(_, kind)) = ATTRIBUTE_KINDS
-            .iter()
-            .find(|(key, _)| meta.path.is_ident(key))
-        {
+        if let Some(&(.., kind)) = KINDS.iter().find(|(key, ..)| meta.path.is_ident(key)) {
             detected = Some(kind);
         }
         Ok(())
@@ -63,10 +51,10 @@ fn attribute_kind(attr: &syn::Attribute) -> Option<TargetVariantKind> {
 }
 
 fn name_kind(lowercase_name: &str) -> Option<TargetVariantKind> {
-    NAME_KINDS
+    KINDS
         .iter()
-        .find(|(fragment, _)| lowercase_name.contains(fragment))
-        .map(|&(_, kind)| kind)
+        .find(|(_, fragment, _)| lowercase_name.contains(fragment))
+        .map(|&(.., kind)| kind)
 }
 
 fn build_into_arm(
