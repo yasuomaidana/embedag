@@ -3,6 +3,7 @@
 //! Traceability: `doc/03_Architectural_Design_Patterns.md` §2.3 and
 //! `doc/13_Topological_Cycle_Detection_and_Guards.md` §3.
 
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::marker::PhantomData;
 
@@ -201,53 +202,18 @@ impl<T: NodePayload> MutationPlan<T, Unverified> {
     ) -> Result<MutationPlan<T, CycleValidated>, DagError> {
         let current_rev = dag.revision();
 
-        // 1. Collect all keys introduced via UpsertNode in this batch
-        let mut introduced_keys = std::collections::HashSet::new();
-        for dir in &self.directives {
-            if let MutationDirective::UpsertNode(node) = dir {
-                introduced_keys.insert(node.key().clone());
-            }
-        }
-
-        // 2. Track removed edges in this batch
-        let mut removed_edges = std::collections::HashSet::new();
-        for dir in &self.directives {
-            if let MutationDirective::RemoveEdge { parent, child, .. } = dir {
-                removed_edges.insert((parent.clone(), child.clone()));
-            }
-        }
-
-        // 3. Track newly added edges in this batch
-        let mut overlay_out: std::collections::HashMap<T::Key, Vec<T::Key>> =
-            std::collections::HashMap::new();
+        let introduced = introduced_keys(&self.directives);
+        let removed = removed_edges(&self.directives);
+        let mut overlay_out: HashMap<T::Key, Vec<T::Key>> = HashMap::new();
 
         for directive in &self.directives {
             if let MutationDirective::AddEdge { parent, child, .. } = directive {
-                let parent_exists = dag.contains_key(parent) || introduced_keys.contains(parent);
-                if !parent_exists {
-                    return Err(DagError::NodeNotFound {
-                        key: parent.to_string(),
-                    });
-                }
-                let child_exists = dag.contains_key(child) || introduced_keys.contains(child);
-                if !child_exists {
-                    return Err(DagError::NodeNotFound {
-                        key: child.to_string(),
-                    });
-                }
-
-                if parent == child {
-                    return Err(DagError::CycleDetected {
-                        node_indices: vec![],
-                    });
-                }
-
-                if has_path_differential(dag, child, parent, &overlay_out, &removed_edges) {
-                    return Err(DagError::CycleDetected {
-                        node_indices: vec![],
-                    });
-                }
-
+                let batch = Batch {
+                    introduced: &introduced,
+                    removed: &removed,
+                    overlay_out: &overlay_out,
+                };
+                check_new_edge(dag, &batch, parent, child)?;
                 overlay_out
                     .entry(parent.clone())
                     .or_default()
@@ -263,52 +229,110 @@ impl<T: NodePayload> MutationPlan<T, Unverified> {
     }
 }
 
+/// What the batch being validated has introduced, removed and added so far.
+struct Batch<'a, K> {
+    introduced: &'a HashSet<K>,
+    removed: &'a HashSet<(K, K)>,
+    overlay_out: &'a HashMap<K, Vec<K>>,
+}
+
+/// Keys introduced via `UpsertNode` in the batch.
+fn introduced_keys<T: NodePayload>(directives: &[MutationDirective<T>]) -> HashSet<T::Key> {
+    directives
+        .iter()
+        .filter_map(|d| match d {
+            MutationDirective::UpsertNode(node) => Some(node.key().clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Edges removed in the batch.
+fn removed_edges<T: NodePayload>(directives: &[MutationDirective<T>]) -> HashSet<(T::Key, T::Key)> {
+    directives
+        .iter()
+        .filter_map(|d| match d {
+            MutationDirective::RemoveEdge { parent, child, .. } => {
+                Some((parent.clone(), child.clone()))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+fn ensure_exists<T: NodePayload>(
+    dag: &MemoryDag<T>,
+    batch: &Batch<T::Key>,
+    key: &T::Key,
+) -> Result<(), DagError> {
+    if dag.contains_key(key) || batch.introduced.contains(key) {
+        Ok(())
+    } else {
+        Err(DagError::NodeNotFound {
+            key: key.to_string(),
+        })
+    }
+}
+
+/// Both ends must exist and the new edge must not close a loop.
+fn check_new_edge<T: NodePayload>(
+    dag: &MemoryDag<T>,
+    batch: &Batch<T::Key>,
+    parent: &T::Key,
+    child: &T::Key,
+) -> Result<(), DagError> {
+    ensure_exists(dag, batch, parent)?;
+    ensure_exists(dag, batch, child)?;
+    if parent == child || has_path_differential(dag, child, parent, batch) {
+        return Err(DagError::CycleDetected {
+            node_indices: vec![],
+        });
+    }
+    Ok(())
+}
+
 fn has_path_differential<T: NodePayload>(
     dag: &MemoryDag<T>,
     from: &T::Key,
     to: &T::Key,
-    overlay_out: &std::collections::HashMap<T::Key, Vec<T::Key>>,
-    removed_edges: &std::collections::HashSet<(T::Key, T::Key)>,
+    batch: &Batch<T::Key>,
 ) -> bool {
-    let mut queue = std::collections::VecDeque::new();
-    let mut visited = std::collections::HashSet::new();
-
-    queue.push_back(from.clone());
-    visited.insert(from.clone());
+    let mut queue = VecDeque::from([from.clone()]);
+    let mut visited = HashSet::from([from.clone()]);
 
     while let Some(curr) = queue.pop_front() {
         if &curr == to {
             return true;
         }
-
-        if let Some(_node) = dag.node(&curr) {
-            for child_node in dag.children_of(&curr) {
-                let child_key = child_node.key().clone();
-                if removed_edges.contains(&(curr.clone(), child_key.clone())) {
-                    continue;
-                }
-                if &child_key == to {
-                    return true;
-                }
-                if visited.insert(child_key.clone()) {
-                    queue.push_back(child_key);
-                }
+        for next in next_keys(dag, &curr, batch) {
+            if &next == to {
+                return true;
             }
-        }
-
-        if let Some(overlay_children) = overlay_out.get(&curr) {
-            for child_key in overlay_children {
-                if child_key == to {
-                    return true;
-                }
-                if visited.insert(child_key.clone()) {
-                    queue.push_back(child_key.clone());
-                }
+            if visited.insert(next.clone()) {
+                queue.push_back(next);
             }
         }
     }
-
     false
+}
+
+/// Children of `curr` in the arena, minus the removed edges, then the ones the batch adds.
+fn next_keys<T: NodePayload>(
+    dag: &MemoryDag<T>,
+    curr: &T::Key,
+    batch: &Batch<T::Key>,
+) -> Vec<T::Key> {
+    let mut next = Vec::new();
+    if dag.contains_key(curr) {
+        next.extend(
+            dag.children_of(curr)
+                .into_iter()
+                .map(|child| child.key().clone())
+                .filter(|key| !batch.removed.contains(&(curr.clone(), key.clone()))),
+        );
+    }
+    next.extend(batch.overlay_out.get(curr).into_iter().flatten().cloned());
+    next
 }
 
 impl<T: NodePayload> MutationPlan<T, CycleValidated> {

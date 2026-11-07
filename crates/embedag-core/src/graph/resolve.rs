@@ -196,17 +196,39 @@ pub fn critical_path<T: NodePayload, F: Fn(&T) -> u64>(
         return Ok((0, Vec::new()));
     }
 
+    let display_keys = display_keys(dag, &topo_keys);
+    let (dist, prev) = longest_distances(dag, &topo_keys, &display_keys, &weight);
+    let Some((max_weight, end_idx)) = best_end(dag, &topo_keys, &dist, &prev, &display_keys) else {
+        return Ok((0, Vec::new()));
+    };
+    Ok((max_weight, path_keys(dag, end_idx, &prev)))
+}
+
+/// Whether `new` beats `current`: longer, or equal and earlier in tie-break order.
+fn beats<D: PartialOrd + ?Sized>(new: (u64, &D), current: (u64, &D)) -> bool {
+    new.0 > current.0 || (new.0 == current.0 && new.1 < current.1)
+}
+
+fn display_keys<T: NodePayload>(
+    dag: &MemoryDag<T>,
+    topo_keys: &[T::Key],
+) -> HashMap<NodeIndex, String> {
+    topo_keys
+        .iter()
+        .filter_map(|key| dag.node_index(key).map(|idx| (idx, key.to_string())))
+        .collect()
+}
+
+/// Longest distance to every node, and the parent each distance came through.
+fn longest_distances<T: NodePayload, F: Fn(&T) -> u64>(
+    dag: &MemoryDag<T>,
+    topo_keys: &[T::Key],
+    display_keys: &HashMap<NodeIndex, String>,
+    weight: &F,
+) -> (HashMap<NodeIndex, u64>, HashMap<NodeIndex, NodeIndex>) {
     let mut dist: HashMap<NodeIndex, u64> = HashMap::with_capacity(topo_keys.len());
     let mut prev: HashMap<NodeIndex, NodeIndex> = HashMap::with_capacity(topo_keys.len());
-    let mut display_keys: HashMap<NodeIndex, String> = HashMap::with_capacity(topo_keys.len());
-
-    for key in &topo_keys {
-        if let Some(idx) = dag.node_index(key) {
-            display_keys.insert(idx, key.to_string());
-        }
-    }
-
-    for key in &topo_keys {
+    for key in topo_keys {
         let Some(idx) = dag.node_index(key) else {
             continue;
         };
@@ -214,68 +236,83 @@ pub fn critical_path<T: NodePayload, F: Fn(&T) -> u64>(
             continue;
         };
         let node_w = weight(payload);
-
-        let mut best_parent: Option<(u64, &str, NodeIndex)> = None;
-        for p_idx in dag.parent_indices(idx) {
-            let Some(&p_dist) = dist.get(&p_idx) else {
-                continue;
-            };
-            let p_disp = display_keys.get(&p_idx).map_or("", String::as_str);
-            match best_parent {
-                None => best_parent = Some((p_dist, p_disp, p_idx)),
-                Some((cur_dist, cur_disp, _)) => {
-                    if p_dist > cur_dist || (p_dist == cur_dist && p_disp < cur_disp) {
-                        best_parent = Some((p_dist, p_disp, p_idx));
-                    }
-                }
+        match best_parent(dag, idx, &dist, display_keys) {
+            Some((p_dist, p_idx)) => {
+                dist.insert(idx, p_dist.saturating_add(node_w));
+                prev.insert(idx, p_idx);
+            }
+            None => {
+                dist.insert(idx, node_w);
             }
         }
+    }
+    (dist, prev)
+}
 
-        if let Some((p_dist, _, p_idx)) = best_parent {
-            dist.insert(idx, p_dist.saturating_add(node_w));
-            prev.insert(idx, p_idx);
-        } else {
-            dist.insert(idx, node_w);
+/// The already-measured parent with the longest distance (ties: smallest display string).
+fn best_parent<T: NodePayload>(
+    dag: &MemoryDag<T>,
+    idx: NodeIndex,
+    dist: &HashMap<NodeIndex, u64>,
+    display_keys: &HashMap<NodeIndex, String>,
+) -> Option<(u64, NodeIndex)> {
+    let mut best: Option<(u64, &str, NodeIndex)> = None;
+    for p_idx in dag.parent_indices(idx) {
+        let Some(&p_dist) = dist.get(&p_idx) else {
+            continue;
+        };
+        let p_disp = display_keys.get(&p_idx).map_or("", String::as_str);
+        if best.is_none_or(|(cur, disp, _)| beats((p_dist, p_disp), (cur, disp))) {
+            best = Some((p_dist, p_disp, p_idx));
         }
     }
+    best.map(|(d, _, i)| (d, i))
+}
 
-    let mut best_end: Option<(u64, Vec<String>, NodeIndex)> = None;
-    for key in &topo_keys {
+/// The end node of the critical path: longest distance (ties: smallest display path).
+fn best_end<T: NodePayload>(
+    dag: &MemoryDag<T>,
+    topo_keys: &[T::Key],
+    dist: &HashMap<NodeIndex, u64>,
+    prev: &HashMap<NodeIndex, NodeIndex>,
+    display_keys: &HashMap<NodeIndex, String>,
+) -> Option<(u64, NodeIndex)> {
+    let mut best: Option<(u64, Vec<String>, NodeIndex)> = None;
+    for key in topo_keys {
         let Some(idx) = dag.node_index(key) else {
             continue;
         };
         let Some(&d) = dist.get(&idx) else {
             continue;
         };
-        let path_disp = reconstruct_display_path(idx, &prev, &display_keys);
-        match &best_end {
-            None => best_end = Some((d, path_disp, idx)),
-            Some((cur_d, cur_path, _)) => {
-                if d > *cur_d || (d == *cur_d && path_disp < *cur_path) {
-                    best_end = Some((d, path_disp, idx));
-                }
-            }
+        let path_disp = reconstruct_display_path(idx, prev, display_keys);
+        if best
+            .as_ref()
+            .is_none_or(|(cur, cur_path, _)| beats((d, &path_disp), (*cur, cur_path)))
+        {
+            best = Some((d, path_disp, idx));
         }
     }
+    best.map(|(d, _, idx)| (d, idx))
+}
 
-    let Some((max_weight, _, end_idx)) = best_end else {
-        return Ok((0, Vec::new()));
-    };
-
+/// The keys from the start root to `end_idx`.
+fn path_keys<T: NodePayload>(
+    dag: &MemoryDag<T>,
+    end_idx: NodeIndex,
+    prev: &HashMap<NodeIndex, NodeIndex>,
+) -> Vec<T::Key> {
     let mut path_indices = Vec::new();
     let mut curr = Some(end_idx);
     while let Some(idx) = curr {
         path_indices.push(idx);
         curr = prev.get(&idx).copied();
     }
-    path_indices.reverse();
-
-    let path_keys = path_indices
+    path_indices
         .into_iter()
+        .rev()
         .filter_map(|idx| dag.node_by_index(idx).map(|n| n.key().clone()))
-        .collect();
-
-    Ok((max_weight, path_keys))
+        .collect()
 }
 
 fn reconstruct_display_path(
