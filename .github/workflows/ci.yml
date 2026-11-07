@@ -28,7 +28,7 @@ jobs:
         run: cargo fmt --all --check
 
   quality:
-    name: Quality gates (production lines, repeated code, rstest)
+    name: Quality gates (lines, repeated code, complexity, structure, rstest)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -43,19 +43,25 @@ jobs:
         with:
           path: ~/.cargo/bin/loom-gate
           # The loom-gate revision appears in this key and in the install command below: change both together.
-          key: loom-gate-${{ runner.os }}-3a8b6d07f3235141b87e129699e855f2dac76325
+          key: loom-gate-${{ runner.os }}-b3dd79d0190b29fe9815b21b30ca22c402c6f2be
 
       - name: Install loom-gate
         if: steps.loom-gate-cache.outputs.cache-hit != 'true'
         env:
           RUSTFLAGS: ""
-        run: cargo install --locked --git https://github.com/yasuomaidana/dendrite-rag-rs --rev 3a8b6d07f3235141b87e129699e855f2dac76325 loom-gate
+        run: cargo install --locked --git https://github.com/yasuomaidana/dendrite-rag-rs --rev b3dd79d0190b29fe9815b21b30ca22c402c6f2be loom-gate
 
       - name: No file over its production-line limit
         run: loom-gate loc --format github
 
       - name: No repeated code
         run: loom-gate clones --format github
+
+      - name: No function over the complexity limits
+        run: loom-gate complexity --format github
+
+      - name: No directory that is a pile of files
+        run: loom-gate structure --format github
 
       - name: Tests use the rstest crate
         run: loom-gate rstest --format github
@@ -194,7 +200,8 @@ jobs:
       # One test run: the report command prints the summary from the same profile data as the lcov file.
       - name: Generate Code Coverage Report (LCOV & Summary)
         run: |
-          cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info -- --include-ignored
+          MIN=$(awk '/^\[coverage\]/{t=1;next} /^\[/{t=0} t && $1=="min_percent"{print int($3)}' .github/dendrite/directives.toml)
+          cargo llvm-cov --all-features --workspace --fail-under-lines "$MIN" --lcov --output-path lcov.info -- --include-ignored
           cargo llvm-cov report --summary-only
 
       - name: Upload coverage artifact
