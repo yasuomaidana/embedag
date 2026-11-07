@@ -54,35 +54,52 @@ fn parse_single_attr(
     field_ident: &Ident,
     parsed: &mut ParsedFields,
 ) -> syn::Result<()> {
-    if meta.path.is_ident("key") {
-        set_once(&mut parsed.key_field, field_ident, meta, "key")?;
-    } else if meta.path.is_ident("text") {
-        parsed.text_fields.push(field_ident.clone());
-    } else if meta.path.is_ident("scalar") {
-        parsed.scalar_fields.push(named(meta, field_ident)?);
-    } else if meta.path.is_ident("time") || meta.path.is_ident("temporal") {
-        set_once(&mut parsed.time_field, field_ident, meta, "time")?;
-    } else if meta.path.is_ident("geo") || meta.path.is_ident("geospatial") {
-        set_once(&mut parsed.geo_field, field_ident, meta, "geo")?;
-    } else if meta.path.is_ident("tag") {
-        parsed.tag_fields.push(named(meta, field_ident)?);
-    } else if meta.path.is_ident("blob") || meta.path.is_ident("blobs") {
-        parsed.blob_fields.push(field_ident.clone());
-    } else if meta.path.is_ident("tokens") || meta.path.is_ident("sparse") {
-        parsed.tokens_field = Some(field_ident.clone());
-    } else {
-        return Err(syn::Error::new(
-            meta.path.span(),
-            format!(
-                "unrecognized #[graph(...)] attribute: `{}`",
-                meta.path
-                    .get_ident()
-                    .map(|i| i.to_string())
-                    .unwrap_or_default()
-            ),
-        ));
-    }
-    Ok(())
+    let name = meta
+        .path
+        .get_ident()
+        .map(|i| i.to_string())
+        .unwrap_or_default();
+    parse_single_valued(&name, meta, field_ident, parsed)
+        .or_else(|| parse_multi_valued(&name, meta, field_ident, parsed))
+        .unwrap_or_else(|| {
+            Err(syn::Error::new(
+                meta.path.span(),
+                format!("unrecognized #[graph(...)] attribute: `{name}`"),
+            ))
+        })
+}
+
+/// The attributes that may appear once per struct: `key`, `time` and `geo`.
+fn parse_single_valued(
+    name: &str,
+    meta: &syn::meta::ParseNestedMeta,
+    field_ident: &Ident,
+    parsed: &mut ParsedFields,
+) -> Option<syn::Result<()>> {
+    let (slot, label) = match name {
+        "key" => (&mut parsed.key_field, "key"),
+        "time" | "temporal" => (&mut parsed.time_field, "time"),
+        "geo" | "geospatial" => (&mut parsed.geo_field, "geo"),
+        _ => return None,
+    };
+    Some(set_once(slot, field_ident, meta, label))
+}
+
+/// The attributes that collect fields: `text`, `scalar`, `tag`, `blob` and `tokens`.
+fn parse_multi_valued(
+    name: &str,
+    meta: &syn::meta::ParseNestedMeta,
+    field_ident: &Ident,
+    parsed: &mut ParsedFields,
+) -> Option<syn::Result<()>> {
+    Some(match name {
+        "text" => Ok(parsed.text_fields.push(field_ident.clone())),
+        "scalar" => named(meta, field_ident).map(|n| parsed.scalar_fields.push(n)),
+        "tag" => named(meta, field_ident).map(|n| parsed.tag_fields.push(n)),
+        "blob" | "blobs" => Ok(parsed.blob_fields.push(field_ident.clone())),
+        "tokens" | "sparse" => Ok(parsed.tokens_field = Some(field_ident.clone())),
+        _ => return None,
+    })
 }
 
 fn parse_field(field: &Field, parsed: &mut ParsedFields) -> syn::Result<()> {

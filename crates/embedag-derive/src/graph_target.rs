@@ -18,48 +18,55 @@ enum TargetVariantKind {
     Ambiguous,
 }
 
-fn detect_kind(variant: &Variant) -> Option<TargetVariantKind> {
-    for attr in &variant.attrs {
-        if attr.path().is_ident("target") {
-            let mut detected = None;
-            let _ = attr.parse_nested_meta(|meta| {
-                if meta.path.is_ident("exact") {
-                    detected = Some(TargetVariantKind::Exact);
-                } else if meta.path.is_ident("fuzzy") {
-                    detected = Some(TargetVariantKind::Fuzzy);
-                } else if meta.path.is_ident("child") {
-                    detected = Some(TargetVariantKind::Child);
-                } else if meta.path.is_ident("multi_child") {
-                    detected = Some(TargetVariantKind::MultiChild);
-                } else if meta.path.is_ident("root") {
-                    detected = Some(TargetVariantKind::Root);
-                } else if meta.path.is_ident("ambiguous") {
-                    detected = Some(TargetVariantKind::Ambiguous);
-                }
-                Ok(())
-            });
-            if detected.is_some() {
-                return detected;
-            }
-        }
-    }
+/// Attribute keys: `#[target(exact)]` and so on.
+const ATTRIBUTE_KINDS: [(&str, TargetVariantKind); 6] = [
+    ("exact", TargetVariantKind::Exact),
+    ("fuzzy", TargetVariantKind::Fuzzy),
+    ("child", TargetVariantKind::Child),
+    ("multi_child", TargetVariantKind::MultiChild),
+    ("root", TargetVariantKind::Root),
+    ("ambiguous", TargetVariantKind::Ambiguous),
+];
 
-    let name = variant.ident.to_string().to_lowercase();
-    if name.contains("exact") {
-        Some(TargetVariantKind::Exact)
-    } else if name.contains("fuzzy") {
-        Some(TargetVariantKind::Fuzzy)
-    } else if name.contains("multi") {
-        Some(TargetVariantKind::MultiChild)
-    } else if name.contains("child") {
-        Some(TargetVariantKind::Child)
-    } else if name.contains("root") {
-        Some(TargetVariantKind::Root)
-    } else if name.contains("ambiguous") {
-        Some(TargetVariantKind::Ambiguous)
-    } else {
-        None
-    }
+/// Variant-name fragments, checked in this order (`multi` before `child`).
+const NAME_KINDS: [(&str, TargetVariantKind); 6] = [
+    ("exact", TargetVariantKind::Exact),
+    ("fuzzy", TargetVariantKind::Fuzzy),
+    ("multi", TargetVariantKind::MultiChild),
+    ("child", TargetVariantKind::Child),
+    ("root", TargetVariantKind::Root),
+    ("ambiguous", TargetVariantKind::Ambiguous),
+];
+
+/// The kind named by a `#[target(..)]` attribute, else the one the variant's name suggests.
+fn detect_kind(variant: &Variant) -> Option<TargetVariantKind> {
+    variant
+        .attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("target"))
+        .find_map(attribute_kind)
+        .or_else(|| name_kind(&variant.ident.to_string().to_lowercase()))
+}
+
+fn attribute_kind(attr: &syn::Attribute) -> Option<TargetVariantKind> {
+    let mut detected = None;
+    let _ = attr.parse_nested_meta(|meta| {
+        if let Some(&(_, kind)) = ATTRIBUTE_KINDS
+            .iter()
+            .find(|(key, _)| meta.path.is_ident(key))
+        {
+            detected = Some(kind);
+        }
+        Ok(())
+    });
+    detected
+}
+
+fn name_kind(lowercase_name: &str) -> Option<TargetVariantKind> {
+    NAME_KINDS
+        .iter()
+        .find(|(fragment, _)| lowercase_name.contains(fragment))
+        .map(|&(_, kind)| kind)
 }
 
 fn build_into_arm(

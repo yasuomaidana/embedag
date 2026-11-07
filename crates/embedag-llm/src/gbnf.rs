@@ -23,47 +23,44 @@ pub enum GbnfError {
 /// and normalizes objects for grammar synthesis.
 pub fn dereference_schema(schema: &Value) -> Value {
     let defs = schema.get("$defs").or_else(|| schema.get("definitions"));
-
-    fn resolve_node(val: &Value, root_defs: Option<&Value>) -> Value {
-        match val {
-            Value::Object(map) => {
-                if let Some(Value::String(ref_str)) = map.get("$ref") {
-                    let target_key = ref_str
-                        .strip_prefix("#/$defs/")
-                        .or_else(|| ref_str.strip_prefix("#/definitions/"));
-                    if let Some(key) = target_key
-                        && let Some(defs_obj) = root_defs
-                        && let Some(target_val) = defs_obj.get(key)
-                    {
-                        return resolve_node(target_val, root_defs);
-                    }
-                }
-
-                let mut resolved_map = serde_json::Map::new();
-                for (k, v) in map {
-                    if k != "$defs" && k != "definitions" {
-                        resolved_map.insert(k.clone(), resolve_node(v, root_defs));
-                    }
-                }
-
-                // Normalization: gbnf requires "properties" on object types
-                if let Some(Value::String(t)) = resolved_map.get("type")
-                    && t == "object"
-                    && !resolved_map.contains_key("properties")
-                {
-                    resolved_map.insert("properties".into(), Value::Object(serde_json::Map::new()));
-                }
-
-                Value::Object(resolved_map)
-            }
-            Value::Array(items) => {
-                Value::Array(items.iter().map(|it| resolve_node(it, root_defs)).collect())
-            }
-            other => other.clone(),
-        }
-    }
-
     resolve_node(schema, defs)
+}
+
+fn resolve_node(val: &Value, root_defs: Option<&Value>) -> Value {
+    match val {
+        Value::Object(map) => {
+            resolve_ref(map, root_defs).unwrap_or_else(|| resolve_object(map, root_defs))
+        }
+        Value::Array(items) => {
+            Value::Array(items.iter().map(|it| resolve_node(it, root_defs)).collect())
+        }
+        other => other.clone(),
+    }
+}
+
+/// The resolved target of a local `$ref`, when the object has one that exists.
+fn resolve_ref(map: &serde_json::Map<String, Value>, root_defs: Option<&Value>) -> Option<Value> {
+    let ref_str = map.get("$ref").and_then(Value::as_str)?;
+    let key = ref_str
+        .strip_prefix("#/$defs/")
+        .or_else(|| ref_str.strip_prefix("#/definitions/"))?;
+    let target = root_defs?.get(key)?;
+    Some(resolve_node(target, root_defs))
+}
+
+/// Resolves every member except the definitions themselves, then normalizes the object.
+fn resolve_object(map: &serde_json::Map<String, Value>, root_defs: Option<&Value>) -> Value {
+    let mut resolved: serde_json::Map<String, Value> = map
+        .iter()
+        .filter(|(k, _)| !matches!(k.as_str(), "$defs" | "definitions"))
+        .map(|(k, v)| (k.clone(), resolve_node(v, root_defs)))
+        .collect();
+    // Normalization: gbnf requires "properties" on object types
+    let is_object = resolved.get("type").and_then(Value::as_str) == Some("object");
+    if is_object && !resolved.contains_key("properties") {
+        resolved.insert("properties".into(), Value::Object(serde_json::Map::new()));
+    }
+    Value::Object(resolved)
 }
 
 /// Compiles a JSON Schema `Value` into a GBNF grammar string compatible with pure-Rust samplers.
@@ -173,50 +170,60 @@ impl PushdownAutomaton {
         if trimmed.is_empty() {
             return true;
         }
-
-        // Check quotes and brackets balance
-        let mut in_string = false;
-        let mut escaped = false;
-        let mut braces = 0isize;
-        let mut brackets = 0isize;
-
-        for ch in trimmed.chars() {
-            if in_string {
-                if escaped {
-                    escaped = false;
-                } else if ch == '\\' {
-                    escaped = true;
-                } else if ch == '"' {
-                    in_string = false;
-                }
-            } else {
-                match ch {
-                    '"' => in_string = true,
-                    '{' => braces += 1,
-                    '}' => {
-                        braces -= 1;
-                        if braces < 0 {
-                            return false;
-                        }
-                    }
-                    '[' => brackets += 1,
-                    ']' => {
-                        brackets -= 1;
-                        if brackets < 0 {
-                            return false;
-                        }
-                    }
-                    _ => {}
-                }
-            }
+        let mut balance = Balance::default();
+        if !trimmed.chars().all(|ch| balance.feed(ch)) {
+            return false;
         }
-
         // If closed completely, it must deserialize cleanly or be capable of closing
-        if braces == 0 && brackets == 0 && !in_string && !trimmed.is_empty() {
-            serde_json::from_str::<Value>(trimmed).is_ok()
-        } else {
-            braces >= 0 && brackets >= 0
+        !balance.is_closed() || serde_json::from_str::<Value>(trimmed).is_ok()
+    }
+}
+
+/// Quote and bracket balance of a JSON prefix.
+#[derive(Default)]
+struct Balance {
+    in_string: bool,
+    escaped: bool,
+    braces: isize,
+    brackets: isize,
+}
+
+impl Balance {
+    /// Consumes one character; false when it closes something that was never opened.
+    fn feed(&mut self, ch: char) -> bool {
+        if self.in_string {
+            self.feed_in_string(ch);
+            return true;
         }
+        match ch {
+            '"' => self.in_string = true,
+            '{' => self.braces += 1,
+            '}' => {
+                self.braces -= 1;
+                return self.braces >= 0;
+            }
+            '[' => self.brackets += 1,
+            ']' => {
+                self.brackets -= 1;
+                return self.brackets >= 0;
+            }
+            _ => {}
+        }
+        true
+    }
+
+    fn feed_in_string(&mut self, ch: char) {
+        if self.escaped {
+            self.escaped = false;
+        } else if ch == '\\' {
+            self.escaped = true;
+        } else if ch == '"' {
+            self.in_string = false;
+        }
+    }
+
+    fn is_closed(&self) -> bool {
+        self.braces == 0 && self.brackets == 0 && !self.in_string
     }
 }
 
