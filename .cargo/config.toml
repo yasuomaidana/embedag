@@ -1,0 +1,5 @@
+# SurrealDB's embedded engine recurses deeply in unoptimized builds and overflows
+# the default 2 MiB test-thread stack (test_graph_relate_traversal). Applies to
+# `cargo test` / `cargo run`; CI inherits it from this file.
+[env]
+RUST_MIN_STACK = "16777216"

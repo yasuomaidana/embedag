@@ -17,4 +17,4 @@ oxirag = { workspace = true }
 [dev-dependencies]
 embedag-core = { workspace = true, features = ["testing"] }
 tokio = { workspace = true }
-rstest = { workspace = true }
+#rstest = { workspace = true }

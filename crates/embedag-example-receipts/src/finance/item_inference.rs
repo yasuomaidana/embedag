@@ -1,4 +1,6 @@
+use embedag_core::dag::MemoryDag;
 use embedag_core::model::{EdgePayload, ProvenanceKind};
+use embedag_core::traits::NodePayload;
 use embedag_llm::diff::ChangesetDiffEngine;
 use embedag_llm::prompt::PromptFormatter;
 use embedag_llm::provider::{LlmError, LlmProvider};
@@ -8,6 +10,18 @@ use super::dto::InvoiceItem;
 use super::engine::FinanceCategorizationEngine;
 use super::nodes::{ItemCategoryNode, PurchaseCategoryNode};
 use super::temporal::sanitize_slug;
+
+/// Adds a `SUB_CATEGORY_OF` edge `parent -> child`; a failed insertion is deliberately ignored.
+fn link_sub_category<T: NodePayload<Key = String>>(
+    dag: &mut MemoryDag<T>,
+    parent: &str,
+    child: &str,
+    provenance: ProvenanceKind,
+) {
+    if let Ok(edge) = EdgePayload::new("SUB_CATEGORY_OF", 1.0, provenance) {
+        let _ = dag.add_edge_by_keys(&parent.to_string(), &child.to_string(), edge);
+    }
+}
 
 impl<P: LlmProvider> FinanceCategorizationEngine<P> {
     /// Infers intrinsic product category (e.g. Chocolate -> Hazelnut Chocolate, Snickers -> Chocolate, T-Shirt -> Apparel).
@@ -47,15 +61,12 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
                 entity_level: "sub_category".into(),
             });
 
-            if let Ok(edge) =
-                EdgePayload::new("SUB_CATEGORY_OF", 1.0, ProvenanceKind::HumanVerified)
-            {
-                let _ = self.item_dag.add_edge_by_keys(
-                    &root_cat.to_string(),
-                    &child_key.to_string(),
-                    edge,
-                );
-            }
+            link_sub_category(
+                &mut self.item_dag,
+                root_cat,
+                child_key,
+                ProvenanceKind::HumanVerified,
+            );
 
             return Ok((child_key.into(), child_name.into()));
         }
@@ -83,15 +94,12 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
                 entity_level: "sub_category".into(),
             });
 
-            if let Ok(edge) =
-                EdgePayload::new("SUB_CATEGORY_OF", 1.0, ProvenanceKind::HumanVerified)
-            {
-                let _ = self.item_dag.add_edge_by_keys(
-                    &root_cat.to_string(),
-                    &child_key.to_string(),
-                    edge,
-                );
-            }
+            link_sub_category(
+                &mut self.item_dag,
+                root_cat,
+                child_key,
+                ProvenanceKind::HumanVerified,
+            );
 
             return Ok((child_key.into(), child_name.into()));
         }
@@ -129,13 +137,12 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
                     category_name: entity_name.clone(),
                     entity_level: "sub_category".into(),
                 });
-                if let Ok(edge) = EdgePayload::new(
-                    "SUB_CATEGORY_OF",
-                    1.0,
+                link_sub_category(
+                    &mut self.item_dag,
+                    &parent_key,
+                    &key,
                     ProvenanceKind::LlmConstrainedInference,
-                ) {
-                    let _ = self.item_dag.add_edge_by_keys(&parent_key, &key, edge);
-                }
+                );
                 Ok((key, entity_name))
             }
             _ => Ok(("cat_general".into(), "General Item".into())),
@@ -157,13 +164,13 @@ impl<P: LlmProvider> FinanceCategorizationEngine<P> {
             entity_level: level.into(),
         });
 
-        if let Some(parent) = parent_key
-            && let Ok(edge) =
-                EdgePayload::new("SUB_CATEGORY_OF", 1.0, ProvenanceKind::HumanVerified)
-        {
-            let _ = self
-                .purchase_dag
-                .add_edge_by_keys(&parent.to_string(), &key.to_string(), edge);
+        if let Some(parent) = parent_key {
+            link_sub_category(
+                &mut self.purchase_dag,
+                parent,
+                key,
+                ProvenanceKind::HumanVerified,
+            );
         }
 
         (key.into(), name.into())

@@ -18,13 +18,13 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 parking_lot = { workspace = true }
-petgraph = { workspace = true }
-uuid = { workspace = true }
+#petgraph = { workspace = true }
+#uuid = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
 embedag-core = { workspace = true, features = ["testing"] }
-tempfile = { workspace = true }
-testcontainers = { workspace = true }
-testcontainers-modules = { workspace = true }
-rstest = { workspace = true }
+#tempfile = { workspace = true }
+#testcontainers = { workspace = true }
+#testcontainers-modules = { workspace = true }
+#rstest = { workspace = true }

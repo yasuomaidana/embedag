@@ -25,5 +25,5 @@ async-trait = { workspace = true }
 h3o = { workspace = true, optional = true }
 
 [dev-dependencies]
-proptest = { workspace = true }
+#proptest = { workspace = true }
 rstest = { workspace = true }

@@ -26,7 +26,7 @@ fn test_macro_generated_table_config_and_context_for_llm() {
 
 #[test]
 fn test_macro_generated_crud_operations_on_receipt_categories() {
-    let mut conn = diesel::SqliteConnection::establish(":memory:").expect("in-memory sqlite");
+    let mut conn = SqliteConnection::establish(":memory:").expect("in-memory sqlite");
     run_receipt_categories_sqlite_migration(&mut conn).expect("custom receipt migration");
 
     // 1. Single Insert via macro-generated method
@@ -76,7 +76,7 @@ fn test_macro_generated_crud_operations_on_receipt_categories() {
 
 #[test]
 fn test_developer_custom_migration_and_invoice_categorization_cte_sqlite() {
-    let mut conn = diesel::SqliteConnection::establish(":memory:").expect("in-memory sqlite");
+    let mut conn = SqliteConnection::establish(":memory:").expect("in-memory sqlite");
 
     // 1. Run developer's custom migration (does NOT use hardcoded semantic_nodes/edges)
     run_receipt_categories_sqlite_migration(&mut conn).expect("custom receipt migration");
@@ -172,7 +172,7 @@ fn test_developer_custom_migration_and_invoice_categorization_cte_sqlite() {
 
 #[test]
 fn test_diamond_dag_deduplication_with_recursive_not_all() {
-    let mut conn = diesel::SqliteConnection::establish(":memory:").expect("in-memory sqlite");
+    let mut conn = SqliteConnection::establish(":memory:").expect("in-memory sqlite");
     run_receipt_categories_sqlite_migration(&mut conn).expect("custom receipt migration");
 
     let diamond_rows = vec![
@@ -295,7 +295,7 @@ async fn test_developer_custom_migration_and_invoice_categorization_cte_postgres
 
 #[test]
 fn test_degree_bounded_descendant_cte_sqlite() {
-    let mut conn = diesel::SqliteConnection::establish(":memory:").expect("in-memory sqlite");
+    let mut conn = SqliteConnection::establish(":memory:").expect("in-memory sqlite");
     run_receipt_categories_sqlite_migration(&mut conn).expect("custom receipt migration");
 
     let mut rows = vec![ReceiptCategoryRecord {

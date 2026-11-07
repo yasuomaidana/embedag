@@ -59,6 +59,21 @@ impl Default for SubgraphExpander {
     }
 }
 
+/// Whether a node reached at `hops`/`weight` improves on its recorded visit (or is unvisited).
+fn should_visit(
+    visited: &HashMap<NodeIndex, (usize, f32, SeedRelationship)>,
+    idx: NodeIndex,
+    hops: usize,
+    weight: f32,
+) -> bool {
+    match visited.get(&idx) {
+        Some(&(existing_hops, existing_w, _)) => {
+            hops < existing_hops || (hops == existing_hops && weight > existing_w)
+        }
+        None => true,
+    }
+}
+
 impl SubgraphExpander {
     pub fn new(decay_gamma: f32, max_hops: usize, include_siblings: bool) -> Self {
         Self {
@@ -118,15 +133,7 @@ impl SubgraphExpander {
             // 1. Ancestors (parents)
             if matches!(dir, Dir::Both | Dir::AncestorsOnly) {
                 for parent_idx in dag.parent_indices(curr_idx) {
-                    let should_visit = match visited.get(&parent_idx) {
-                        Some(&(existing_hops, existing_w, _)) => {
-                            next_hops < existing_hops
-                                || (next_hops == existing_hops && next_weight > existing_w)
-                        }
-                        None => true,
-                    };
-
-                    if should_visit {
+                    if should_visit(&visited, parent_idx, next_hops, next_weight) {
                         visited.insert(
                             parent_idx,
                             (next_hops, next_weight, SeedRelationship::Ancestor),
@@ -149,15 +156,7 @@ impl SubgraphExpander {
             // 2. Descendants (children)
             if matches!(dir, Dir::Both | Dir::DescendantsOnly) {
                 for child_idx in dag.child_indices(curr_idx) {
-                    let should_visit = match visited.get(&child_idx) {
-                        Some(&(existing_hops, existing_w, _)) => {
-                            next_hops < existing_hops
-                                || (next_hops == existing_hops && next_weight > existing_w)
-                        }
-                        None => true,
-                    };
-
-                    if should_visit {
+                    if should_visit(&visited, child_idx, next_hops, next_weight) {
                         visited.insert(
                             child_idx,
                             (next_hops, next_weight, SeedRelationship::Descendant),

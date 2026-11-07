@@ -28,7 +28,7 @@ diesel-libsql = { workspace = true, optional = true }
 libsql = { workspace = true, optional = true }
 tempfile = { workspace = true, optional = true }
 testcontainers = { workspace = true, optional = true }
-async-trait = { workspace = true }
+#async-trait = { workspace = true }
 tokio = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
@@ -40,6 +40,6 @@ thiserror = { workspace = true }
 futures-util = "0.3"
 tempfile = { workspace = true }
 testcontainers = { workspace = true }
-testcontainers-modules = { workspace = true }
+#testcontainers-modules = { workspace = true }
 tokio-postgres = { workspace = true }
 rstest = { workspace = true }

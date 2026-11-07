@@ -52,17 +52,20 @@ impl TursoConnectionMode {
         match self {
             Self::InMemory => ":memory:".to_string(),
             Self::LocalFile(path) => path.to_string_lossy().to_string(),
-            Self::Remote { url, auth_token } => {
-                if url.contains("authToken=") {
-                    url.clone()
-                } else if url.contains('?') {
-                    format!("{url}&authToken={auth_token}")
-                } else {
-                    format!("{url}?authToken={auth_token}")
-                }
-            }
+            Self::Remote { url, auth_token } => remote_connection_url(url, auth_token),
             Self::Replica { local_path, .. } => local_path.to_string_lossy().to_string(),
         }
+    }
+}
+
+/// Appends `authToken` to a remote URL unless it already carries one.
+fn remote_connection_url(url: &str, auth_token: &str) -> String {
+    if url.contains("authToken=") {
+        url.to_string()
+    } else if url.contains('?') {
+        format!("{url}&authToken={auth_token}")
+    } else {
+        format!("{url}?authToken={auth_token}")
     }
 }
 
@@ -113,14 +116,7 @@ pub fn establish_turso_sync(
             diesel_libsql::LibSqlConnection::establish(&p.to_string_lossy())?
         }
         TursoConnectionMode::Remote { url, auth_token } => {
-            let conn_url = if url.contains("authToken=") {
-                url.clone()
-            } else if url.contains('?') {
-                format!("{url}&authToken={auth_token}")
-            } else {
-                format!("{url}?authToken={auth_token}")
-            };
-            diesel_libsql::LibSqlConnection::establish(&conn_url)?
+            diesel_libsql::LibSqlConnection::establish(&remote_connection_url(url, auth_token))?
         }
         TursoConnectionMode::Replica {
             local_path,

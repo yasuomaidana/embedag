@@ -47,6 +47,20 @@ fn infer(
     execute_constrained_semantic_inference(prompt, schema, runtime, entity_keys)
 }
 
+/// Defines the `with_entity_keys` builder method on a provider with an `entity_keys` field.
+macro_rules! with_entity_keys_method {
+    () => {
+        /// Configures application-specific priority keys for entity text extraction.
+        pub fn with_entity_keys(
+            mut self,
+            keys: impl IntoIterator<Item = impl Into<String>>,
+        ) -> Self {
+            self.entity_keys = Some(keys.into_iter().map(Into::into).collect());
+            self
+        }
+    };
+}
+
 /// Implements [`LlmProvider`] for a quantized pure-Rust runtime provider with `model_id`,
 /// `quantization`, `simulated_directive` and `entity_keys` fields.
 macro_rules! quantized_provider {
@@ -143,11 +157,7 @@ impl OxillamaProvider {
         self
     }
 
-    /// Configures application-specific priority keys for entity text extraction.
-    pub fn with_entity_keys(mut self, keys: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        self.entity_keys = Some(keys.into_iter().map(Into::into).collect());
-        self
-    }
+    with_entity_keys_method!();
 
     /// Configures an explicit directive override for deterministic boundary testing.
     pub fn with_simulated_output(
@@ -190,11 +200,7 @@ impl CandleProvider {
         }
     }
 
-    /// Configures application-specific priority keys for entity text extraction.
-    pub fn with_entity_keys(mut self, keys: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        self.entity_keys = Some(keys.into_iter().map(Into::into).collect());
-        self
-    }
+    with_entity_keys_method!();
 
     /// Configures an explicit directive override for deterministic boundary testing.
     pub fn with_simulated_output(
@@ -260,11 +266,7 @@ impl OxibonsaiProvider {
         }
     }
 
-    /// Configures application-specific priority keys for entity text extraction.
-    pub fn with_entity_keys(mut self, keys: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        self.entity_keys = Some(keys.into_iter().map(Into::into).collect());
-        self
-    }
+    with_entity_keys_method!();
 
     /// Creates an in-memory `OxibonsaiProvider` with a simulated output.
     pub fn with_simulated_output(

@@ -67,7 +67,7 @@ fn test_macro_generated_hierarchical_node_trait() {
 
 #[test]
 fn test_macro_generated_crud_operations() {
-    let mut conn = diesel::SqliteConnection::establish(":memory:").expect("in-memory sqlite");
+    let mut conn = SqliteConnection::establish(":memory:").expect("in-memory sqlite");
 
     conn.batch_execute(
         r#"
@@ -123,7 +123,7 @@ fn test_macro_generated_crud_operations() {
 
 #[test]
 fn test_macro_generated_sqlite_traversal_execution() {
-    let mut conn = diesel::SqliteConnection::establish(":memory:").expect("in-memory sqlite");
+    let mut conn = SqliteConnection::establish(":memory:").expect("in-memory sqlite");
 
     // Developer creates their own table in their own migration
     conn.batch_execute(
