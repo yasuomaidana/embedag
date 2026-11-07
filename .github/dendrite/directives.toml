@@ -19,12 +19,12 @@ min_lines = 5
 include_tests = true
 
 [complexity]
-max_cyclomatic = 54
-max_cognitive = 67
+max_cyclomatic = 26
+max_cognitive = 48
 exclude = []
 
 [structure]
-max_files_per_dir = 16
+max_files_per_dir = 12
 max_dir_production_lines = 3000
 max_prefix_group = 4
 require_docs = true

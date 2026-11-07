@@ -4,7 +4,13 @@
 //! `embedag-core` provides zero-database, zero-heavy-runtime domain abstractions
 //! for directed acyclic graph (DAG) multi-modal knowledge representations.
 //!
+//! # Groups
+//! - [`graph`]: the arena, traversal, strongly connected components, resolution and pagination.
+//! - [`change`]: mutation plans, schema migrations and Merkle diffing.
+//! - [`contract`]: typed errors, core value types and the traits ports implement.
+//!
 //! # Modules
+//! Every module below is also reachable at the crate root.
 //! - [`dag`]: In-memory directed acyclic graph arena backed by `petgraph`.
 //! - [`dag_iter`]: Pull-based streaming traversal iterators.
 //! - [`pagination`]: Topological degree pagination contracts and types for high-degree hubs.
@@ -27,23 +33,20 @@
 pub use async_trait;
 #[doc(hidden)]
 pub use serde_json;
-pub mod dag;
-pub mod dag_iter;
+pub mod change;
+pub mod contract;
 pub mod encoder;
-pub mod error;
 pub mod export;
+pub mod graph;
 mod macros;
-pub mod merkle;
-pub mod migration;
-pub mod model;
-pub mod mutation;
-pub mod pagination;
-pub mod resolve;
-pub mod scc;
 pub mod similarity;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
-pub mod traits;
+
+// The modules keep their short paths (`embedag_core::dag`, `embedag_core::traits`, ...).
+pub use change::{merkle, migration, mutation};
+pub use contract::{error, model, traits};
+pub use graph::{dag, dag_iter, pagination, resolve, scc};
 
 // Re-exports for clean prelude access
 pub use dag::MemoryDag;
