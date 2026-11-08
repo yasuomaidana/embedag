@@ -6,6 +6,10 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 readme = "README.md"
+keywords = ["rag","retrieval","graph-rag","dag","embedag"]
+categories = ["algorithms","text-processing"]
+homepage.workspace = true
+documentation = "https://docs.rs/embedag-rag"
 
 [dependencies]
 embedag-core = { workspace = true }

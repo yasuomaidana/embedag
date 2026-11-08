@@ -11,7 +11,7 @@ Use `embedag-oxirs` when you need:
 - Direct SPARQL 1.1/1.2 queries (`OxiRsTdbEngine::query_sparql`) alongside `ReadOnlyGraphRepository`, `VectorSearchRepository`, and `TransactionalGraphRepository` trait implementations.
 - Fast cold starts via memory-mapped snapshots (`save_snapshot`, `build_snapshot`).
 
-Do not use `embedag-oxirs` when your application requires relational SQL foreign keys and `WITH RECURSIVE` SQL CTEs on existing application tables (use [`embedag-diesel`](../embedag-diesel/README.md)), a multi-model document/graph server (use [`embedag-surrealdb`](../embedag-surrealdb/README.md)), or an OpenCypher/Bolt property graph server (use [`embedag-neo4j`](../embedag-neo4j/README.md)).
+Do not use `embedag-oxirs` when your application requires relational SQL foreign keys and `WITH RECURSIVE` SQL CTEs on existing application tables (use [`embedag-diesel`](https://docs.rs/embedag-diesel)), a multi-model document/graph server (use [`embedag-surrealdb`](https://docs.rs/embedag-surrealdb)), or an OpenCypher/Bolt property graph server (use [`embedag-neo4j`](https://docs.rs/embedag-neo4j)).
 
 ## Main types and functions
 
@@ -66,8 +66,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Within the workspace:
 
-- `embedag-oxirs` depends on [`embedag-core`](../embedag-core/README.md) (`MemoryDag`, `NodePayload`, `EdgePayload`, `rank_by_cosine`, repository traits) and `oxirs-core`.
-- [`embedag`](../embedag/README.md) re-exports `embedag-oxirs` under `embedag::oxirs` and `embedag::prelude` when the `oxirs-tdb` feature is enabled.
+- `embedag-oxirs` depends on [`embedag-core`](https://docs.rs/embedag-core) (`MemoryDag`, `NodePayload`, `EdgePayload`, `rank_by_cosine`, repository traits) and `oxirs-core`.
+- [`embedag`](https://docs.rs/embedag) re-exports `embedag-oxirs` under `embedag::oxirs` and `embedag::prelude` when the `oxirs-tdb` feature is enabled.
 
 
 ## Build and test
@@ -79,5 +79,5 @@ cargo test -p embedag-oxirs
 
 ## Specifications
 
-- [`doc/19_External_Ecosystem_and_KitaSan_Stack.md`](../../doc/19_External_Ecosystem_and_KitaSan_Stack.md) — `oxirs-core` integration within the workspace stack.
-- [`doc/20_Multi_Database_Extensibility_and_Future_Adapters.md`](../../doc/20_Multi_Database_Extensibility_and_Future_Adapters.md) — Multi-database capability traits and `embedag-oxirs` architecture.
+- [`doc/19_External_Ecosystem_and_KitaSan_Stack.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/19_External_Ecosystem_and_KitaSan_Stack.md) — `oxirs-core` integration within the workspace stack.
+- [`doc/20_Multi_Database_Extensibility_and_Future_Adapters.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/20_Multi_Database_Extensibility_and_Future_Adapters.md) — Multi-database capability traits and `embedag-oxirs` architecture.

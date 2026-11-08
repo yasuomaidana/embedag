@@ -19,6 +19,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/yasuomaidana/embedag"
+homepage = "https://github.com/yasuomaidana/embedag"
 
 [workspace.dependencies]
 # Internal crates
@@ -56,7 +57,7 @@ oxirs-core = "0.4.1"
 
 # Native Graph & Multi-Model Backends
 surrealdb = { version = "4", default-features = false, features = ["kv-mem", "protocol-ws", "rustls"] }
-neo4rs = { version = "0.8.0" }
+neo4rs = { version = "0.9.0-rc.11" }
 
 # Relational Persistence
 diesel = { version = "2.3", features = ["postgres_backend", "sqlite", "returning_clauses_for_sqlite_3_35", "chrono", "uuid", "serde_json"] }
@@ -79,7 +80,22 @@ parking_lot = "0.13.0"
 # Testing
 proptest = "1.12.0"
 rstest = "0.28.0"
-jsonschema = "0.60.2"
+jsonschema = "0.61"
 tempfile = "3.27.0"
 testcontainers = "0.28.0"
 testcontainers-modules = { version = "0.15", features = ["postgres", "surrealdb", "neo4j"] }
+
+[workspace.metadata.release]
+# Keep all workspace crates at the same version
+shared-version = true
+
+# Create a single unified Git tag instead of 10 individual tags
+tag-name = "v{{version}}"
+tag-message = "Release v{{version}}"
+
+# Git commit message for version bumps
+pre-release-commit-message = "chore: release v{{version}}"
+
+# Automatically push commit and tags to origin
+push = true
+publish = true

@@ -6,6 +6,10 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 readme = "README.md"
+keywords = ["llm","gbnf","structured-output","extraction","embedag"]
+categories = ["algorithms","text-processing"]
+homepage.workspace = true
+documentation = "https://docs.rs/embedag-llm"
 
 [features]
 default = ["candle", "oxillama"]

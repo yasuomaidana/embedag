@@ -6,6 +6,10 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 readme = "README.md"
+keywords = ["rdf","sparql","graph","storage","embedag"]
+categories = ["database","data-structures"]
+homepage.workspace = true
+documentation = "https://docs.rs/embedag-oxirs"
 
 [features]
 default = []

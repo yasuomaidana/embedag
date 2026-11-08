@@ -1,9 +1,4 @@
-//! Native OxiRS TDB2 Persistent Storage Engine for embedag.
-//!
-//! Provides pure-Rust, zero-daemon graph persistence backed by OxiRS RDF store,
-//! append-only N-Quads durability (`data.nq`), fast memory-mapped snapshots
-//! (`snapshot.oxsnap`), SPARQL 1.1/1.2 query execution, and seamless `MemoryDag`
-//! synchronization.
+#![doc = include_str!("../README.md")]
 
 pub mod config;
 pub mod engine;
@@ -16,8 +11,3 @@ pub use engine::OxiRsTdbEngine;
 pub use error::OxiRsStorageError;
 pub use mapping::{SchemaVocab, make_graph_name, make_node_iri};
 pub use oxirs_core::rdf_store::{OxirsQueryResults, QueryResults};
-
-/// Compiles the Rust examples of the crate README as doctests, so they cannot drift from the code.
-#[cfg(doctest)]
-#[doc = include_str!("../README.md")]
-struct ReadmeDoctests;

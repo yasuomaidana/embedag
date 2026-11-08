@@ -10,7 +10,7 @@ Use `embedag-surrealdb` when your application targets SurrealDB as its multi-mod
 - Configurable namespace, database, node table, and edge table names (`SurrealDbConfig`).
 - Bidirectional `MemoryDag<T>` synchronization (`export_dag`, `load_dag`) and `GraphRepository<T>` trait compatibility.
 
-Do not use `embedag-surrealdb` when you need SQL `WITH RECURSIVE` CTEs over existing PostgreSQL/SQLite tables (use [`embedag-diesel`](../embedag-diesel/README.md)), W3C RDF/SPARQL queries (use [`embedag-oxirs`](../embedag-oxirs/README.md)), or OpenCypher over Bolt (use [`embedag-neo4j`](../embedag-neo4j/README.md)).
+Do not use `embedag-surrealdb` when you need SQL `WITH RECURSIVE` CTEs over existing PostgreSQL/SQLite tables (use [`embedag-diesel`](https://docs.rs/embedag-diesel)), W3C RDF/SPARQL queries (use [`embedag-oxirs`](https://docs.rs/embedag-oxirs)), or OpenCypher over Bolt (use [`embedag-neo4j`](https://docs.rs/embedag-neo4j)).
 
 ## Main types and functions
 
@@ -67,8 +67,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Within the workspace:
 
-- `embedag-surrealdb` depends on [`embedag-core`](../embedag-core/README.md) (`MemoryDag`, `NodePayload`, `EdgePayload`, `MutationDirective`, `rank_by_cosine`, repository traits) and `surrealdb`.
-- [`embedag`](../embedag/README.md) re-exports `embedag-surrealdb` under `embedag::surrealdb` and `embedag::prelude` when the `surrealdb` feature is enabled.
+- `embedag-surrealdb` depends on [`embedag-core`](https://docs.rs/embedag-core) (`MemoryDag`, `NodePayload`, `EdgePayload`, `MutationDirective`, `rank_by_cosine`, repository traits) and `surrealdb`.
+- [`embedag`](https://docs.rs/embedag) re-exports `embedag-surrealdb` under `embedag::surrealdb` and `embedag::prelude` when the `surrealdb` feature is enabled.
 
 
 ## Build and test
@@ -83,4 +83,4 @@ cargo test -p embedag-surrealdb --test surrealdb_testcontainers -- --include-ign
 
 ## Specifications
 
-- [`doc/20_Multi_Database_Extensibility_and_Future_Adapters.md`](../../doc/20_Multi_Database_Extensibility_and_Future_Adapters.md) — Section 2 ("SurrealDB Multi-Model Engine (`embedag-surrealdb`)").
+- [`doc/20_Multi_Database_Extensibility_and_Future_Adapters.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/20_Multi_Database_Extensibility_and_Future_Adapters.md) — Section 2 ("SurrealDB Multi-Model Engine (`embedag-surrealdb`)").

@@ -15,7 +15,7 @@ Do not depend on `embedag-example-receipts` in production libraries or unrelated
 
 ### Planned extensions
 
-- **Merchant normalization, kNN categorization, and recurring expense cadence**: [`doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md`](../../doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md) (§5, Tickets 10.2.1–10.2.3) specifies deterministic payment-processor prefix stripping, weighted kNN category voting, and recurring subscription cadence detection to extend this reference domain in Milestone 10.
+- **Merchant normalization, kNN categorization, and recurring expense cadence**: [`doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md) (§5, Tickets 10.2.1–10.2.3) specifies deterministic payment-processor prefix stripping, weighted kNN category voting, and recurring subscription cadence detection to extend this reference domain in Milestone 10.
 
 ## Main types and functions
 
@@ -80,7 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Workspace relationship
 
-Within the workspace, `embedag-example-receipts` is a leaf example crate that exercises [`embedag-core`](../embedag-core/README.md), [`embedag-derive`](../embedag-derive/README.md), [`embedag-diesel`](../embedag-diesel/README.md), and [`embedag-llm`](../embedag-llm/README.md) together in end-to-end SQLite and Testcontainers PostgreSQL tests (`tests/finance_categorization_e2e.rs`, `tests/postgres_Categorization_e2e.rs`).
+Within the workspace, `embedag-example-receipts` is a leaf example crate that exercises [`embedag-core`](https://docs.rs/embedag-core), [`embedag-derive`](https://docs.rs/embedag-derive), [`embedag-diesel`](https://docs.rs/embedag-diesel), and [`embedag-llm`](https://docs.rs/embedag-llm) together in end-to-end SQLite and Testcontainers PostgreSQL tests (`tests/finance_categorization_e2e.rs`, `tests/postgres_Categorization_e2e.rs`).
 
 
 ## Build and test
@@ -95,7 +95,7 @@ cargo test -p embedag-example-receipts --test postgres_Categorization_e2e -- --i
 
 ## Specifications
 
-- [`doc/06_Procedural_Derive_Macros.md`](../../doc/06_Procedural_Derive_Macros.md) — `AsGraphContext`, `GraphTarget`, and `HierarchicalModel` usage.
-- [`doc/14_Dynamic_Graph_Mutations_and_Diffing.md`](../../doc/14_Dynamic_Graph_Mutations_and_Diffing.md) — Packaging hierarchy and semantic delta synthesis examples.
-- [`doc/16_Hierarchical_Recursive_CTE_Traversals.md`](../../doc/16_Hierarchical_Recursive_CTE_Traversals.md) — Custom table schemas and recursive CTE lineage queries.
-- [`doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md`](../../doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md) — Planned merchant normalization, kNN categorization, and recurring expense extensions.
+- [`doc/06_Procedural_Derive_Macros.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/06_Procedural_Derive_Macros.md) — `AsGraphContext`, `GraphTarget`, and `HierarchicalModel` usage.
+- [`doc/14_Dynamic_Graph_Mutations_and_Diffing.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/14_Dynamic_Graph_Mutations_and_Diffing.md) — Packaging hierarchy and semantic delta synthesis examples.
+- [`doc/16_Hierarchical_Recursive_CTE_Traversals.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/16_Hierarchical_Recursive_CTE_Traversals.md) — Custom table schemas and recursive CTE lineage queries.
+- [`doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md) — Planned merchant normalization, kNN categorization, and recurring expense extensions.

@@ -271,7 +271,6 @@ impl Neo4jEngine {
                     .map_err(|e| Neo4jStorageError::Connection(e.to_string()))?;
 
                 let graph = neo4rs::Graph::connect(bolt_config)
-                    .await
                     .map_err(|e| Neo4jStorageError::Connection(e.to_string()))?;
 
                 Ok(Self {
