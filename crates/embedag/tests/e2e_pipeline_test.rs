@@ -16,20 +16,15 @@ struct GroceryItem {
     pub level: String,
 }
 
-impl NodePayload for GroceryItem {
-    type Key = String;
-    fn key(&self) -> &Self::Key {
-        &self.sku
-    }
-    fn name(&self) -> &str {
-        &self.title
-    }
-    fn entity_level(&self) -> &str {
-        &self.level
-    }
-}
+embedag_core::impl_node_payload!(
+    GroceryItem,
+    key = |n| &n.sku,
+    name = |n| &n.title,
+    level = |n| &n.level
+);
 
 #[tokio::test]
+#[ignore = "starts a Postgres container: runs in the persistence-testcontainers and coverage jobs"]
 async fn test_end_to_end_pipeline() {
     // 1. Initialize Testcontainers ephemeral PostgreSQL + pgvector container
     let harness = PostgresHarness::start()
@@ -112,28 +107,19 @@ async fn test_end_to_end_pipeline() {
     // 3. Persist DAG nodes and edges into containerized PostgreSQL
     let node_records = vec![
         NodeUpsertRecord {
-            id: root_cat_id,
-            business_key: root_cat.sku.clone(),
-            entity_level: root_cat.level.clone(),
-            name: root_cat.title.clone(),
             attributes: serde_json::json!({ "department": "Beverages" }),
             embedding: None,
+            ..NodeUpsertRecord::new(root_cat_id, &root_cat.sku, &root_cat.level, &root_cat.title)
         },
         NodeUpsertRecord {
-            id: subcat_id,
-            business_key: subcat.sku.clone(),
-            entity_level: subcat.level.clone(),
-            name: subcat.title.clone(),
             attributes: serde_json::json!({ "roast": "Various" }),
             embedding: None,
+            ..NodeUpsertRecord::new(subcat_id, &subcat.sku, &subcat.level, &subcat.title)
         },
         NodeUpsertRecord {
-            id: product_id,
-            business_key: product.sku.clone(),
-            entity_level: product.level.clone(),
-            name: product.title.clone(),
             attributes: serde_json::json!({ "weight_grams": 250, "origin": "Colombia" }),
             embedding: None,
+            ..NodeUpsertRecord::new(product_id, &product.sku, &product.level, &product.title)
         },
     ];
     batch_upsert_nodes(&client, &node_records)

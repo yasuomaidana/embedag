@@ -261,37 +261,47 @@ pub fn categorize_ticket_invoice(ticket: &FinanceInvoice) -> Vec<ReceiptCategory
         let (dept_id, dept_name, cat_id, cat_name) = classify_item_heuristics(&item.item_name);
 
         let full_dept_id = format!("{}_{}", store_root_id, dept_id);
-        if !records.iter().any(|r| r.category_id == full_dept_id) {
-            records.push(ReceiptCategoryRecord {
+        push_unique(
+            &mut records,
+            ReceiptCategoryRecord {
                 category_id: full_dept_id.clone(),
                 parent_category_id: Some(store_root_id.clone()),
                 category_name: dept_name.into(),
                 entity_level: "department".into(),
-            });
-        }
+            },
+        );
 
         let full_cat_id = format!("{}_{}", full_dept_id, cat_id);
-        if !records.iter().any(|r| r.category_id == full_cat_id) {
-            records.push(ReceiptCategoryRecord {
+        push_unique(
+            &mut records,
+            ReceiptCategoryRecord {
                 category_id: full_cat_id.clone(),
                 parent_category_id: Some(full_dept_id.clone()),
                 category_name: cat_name.into(),
                 entity_level: "category".into(),
-            });
-        }
+            },
+        );
 
         let item_node_id = format!("{}_{}", full_cat_id, sanitize_id(&item.item_name));
-        if !records.iter().any(|r| r.category_id == item_node_id) {
-            records.push(ReceiptCategoryRecord {
+        push_unique(
+            &mut records,
+            ReceiptCategoryRecord {
                 category_id: item_node_id,
                 parent_category_id: Some(full_cat_id),
                 category_name: item.item_name.clone(),
                 entity_level: "item".into(),
-            });
-        }
+            },
+        );
     }
 
     records
+}
+
+/// Adds `record` unless a record with the same category id is already there.
+fn push_unique(records: &mut Vec<ReceiptCategoryRecord>, record: ReceiptCategoryRecord) {
+    if !records.iter().any(|r| r.category_id == record.category_id) {
+        records.push(record);
+    }
 }
 
 pub fn sanitize_id(raw: &str) -> String {
@@ -303,44 +313,65 @@ pub fn sanitize_id(raw: &str) -> String {
         .to_string()
 }
 
-fn classify_item_heuristics(
-    name: &str,
-) -> (&'static str, &'static str, &'static str, &'static str) {
-    let lower = name.to_lowercase();
-    if lower.contains("milk") || lower.contains("cheese") || lower.contains("yogurt") {
+/// `(department id, department name, category id, category name)`.
+type Heuristic = (&'static str, &'static str, &'static str, &'static str);
+
+/// Keyword rules, checked in order.
+const ITEM_HEURISTICS: [(&[&str], Heuristic); 4] = [
+    (
+        &["milk", "cheese", "yogurt"],
         (
             "dept_dairy",
             "Dairy & Plant Alternatives",
             "cat_milk_products",
             "Milk & Dairy",
-        )
-    } else if lower.contains("bread") || lower.contains("croissant") || lower.contains("bagel") {
+        ),
+    ),
+    (
+        &["bread", "croissant", "bagel"],
         (
             "dept_bakery",
             "Fresh Bakery",
             "cat_artisan_breads",
             "Breads & Bagels",
-        )
-    } else if lower.contains("paper") || lower.contains("towel") || lower.contains("soap") {
+        ),
+    ),
+    (
+        &["paper", "towel", "soap"],
         (
             "dept_household",
             "Household & Cleaning",
             "cat_paper_goods",
             "Paper & Cleaning",
-        )
-    } else if lower.contains("apple") || lower.contains("banana") || lower.contains("salad") {
+        ),
+    ),
+    (
+        &["apple", "banana", "salad"],
         (
             "dept_produce",
             "Fresh Produce",
             "cat_fruits_veg",
             "Fruits & Vegetables",
-        )
-    } else {
-        (
-            "dept_general",
-            "General Groceries",
-            "cat_packaged",
-            "Packaged Goods",
-        )
-    }
+        ),
+    ),
+];
+
+const DEFAULT_HEURISTIC: Heuristic = (
+    "dept_general",
+    "General Groceries",
+    "cat_packaged",
+    "Packaged Goods",
+);
+
+fn classify_item_heuristics(name: &str) -> Heuristic {
+    let lower = name.to_lowercase();
+    ITEM_HEURISTICS
+        .iter()
+        .find(|(words, _)| words.iter().any(|word| lower.contains(word)))
+        .map_or(DEFAULT_HEURISTIC, |&(_, heuristic)| heuristic)
 }
+
+/// Compiles the Rust examples of the crate README as doctests, so they cannot drift from the code.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;

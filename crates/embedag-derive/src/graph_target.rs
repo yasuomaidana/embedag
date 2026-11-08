@@ -18,48 +18,43 @@ enum TargetVariantKind {
     Ambiguous,
 }
 
-fn detect_kind(variant: &Variant) -> Option<TargetVariantKind> {
-    for attr in &variant.attrs {
-        if attr.path().is_ident("target") {
-            let mut detected = None;
-            let _ = attr.parse_nested_meta(|meta| {
-                if meta.path.is_ident("exact") {
-                    detected = Some(TargetVariantKind::Exact);
-                } else if meta.path.is_ident("fuzzy") {
-                    detected = Some(TargetVariantKind::Fuzzy);
-                } else if meta.path.is_ident("child") {
-                    detected = Some(TargetVariantKind::Child);
-                } else if meta.path.is_ident("multi_child") {
-                    detected = Some(TargetVariantKind::MultiChild);
-                } else if meta.path.is_ident("root") {
-                    detected = Some(TargetVariantKind::Root);
-                } else if meta.path.is_ident("ambiguous") {
-                    detected = Some(TargetVariantKind::Ambiguous);
-                }
-                Ok(())
-            });
-            if detected.is_some() {
-                return detected;
-            }
-        }
-    }
+/// `(attribute key, variant-name fragment, kind)`; fragments are checked in this order, so `multi`
+/// comes before `child`.
+const KINDS: [(&str, &str, TargetVariantKind); 6] = [
+    ("exact", "exact", TargetVariantKind::Exact),
+    ("fuzzy", "fuzzy", TargetVariantKind::Fuzzy),
+    ("multi_child", "multi", TargetVariantKind::MultiChild),
+    ("child", "child", TargetVariantKind::Child),
+    ("root", "root", TargetVariantKind::Root),
+    ("ambiguous", "ambiguous", TargetVariantKind::Ambiguous),
+];
 
-    let name = variant.ident.to_string().to_lowercase();
-    if name.contains("exact") {
-        Some(TargetVariantKind::Exact)
-    } else if name.contains("fuzzy") {
-        Some(TargetVariantKind::Fuzzy)
-    } else if name.contains("multi") {
-        Some(TargetVariantKind::MultiChild)
-    } else if name.contains("child") {
-        Some(TargetVariantKind::Child)
-    } else if name.contains("root") {
-        Some(TargetVariantKind::Root)
-    } else if name.contains("ambiguous") {
-        Some(TargetVariantKind::Ambiguous)
-    } else {
-        None
-    }
+/// The kind named by a `#[target(..)]` attribute, else the one the variant's name suggests.
+fn detect_kind(variant: &Variant) -> Option<TargetVariantKind> {
+    variant
+        .attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("target"))
+        .find_map(attribute_kind)
+        .or_else(|| name_kind(&variant.ident.to_string().to_lowercase()))
+}
+
+fn attribute_kind(attr: &syn::Attribute) -> Option<TargetVariantKind> {
+    let mut detected = None;
+    let _ = attr.parse_nested_meta(|meta| {
+        if let Some(&(.., kind)) = KINDS.iter().find(|(key, ..)| meta.path.is_ident(key)) {
+            detected = Some(kind);
+        }
+        Ok(())
+    });
+    detected
+}
+
+fn name_kind(lowercase_name: &str) -> Option<TargetVariantKind> {
+    KINDS
+        .iter()
+        .find(|(_, fragment, _)| lowercase_name.contains(fragment))
+        .map(|&(.., kind)| kind)
 }
 
 fn build_into_arm(
@@ -128,34 +123,34 @@ pub fn derive_graph_target_impl(input: DeriveInput) -> syn::Result<TokenStream> 
 
     let data_enum = match &input.data {
         Data::Enum(e) => e,
-        Data::Struct(s) => match &s.fields {
-            Fields::Named(f) => {
-                let target_field = f.named.iter().find(|field| {
-                    field.attrs.iter().any(|a| a.path().is_ident("target"))
-                        || field.ident.as_ref().map(|i| i == "target").unwrap_or(false)
-                });
-                if let Some(field) = target_field {
-                    let f_ident = field.ident.as_ref().unwrap();
-                    return Ok(quote! {
-                        impl #impl_generics #ident #ty_generics #where_clause {
-                            pub fn into_graph_target(self) -> #core::model::GraphTarget<String> {
-                                self.#f_ident
-                            }
-                        }
+        Data::Struct(s) => {
+            return match &s.fields {
+                Fields::Named(f) => {
+                    let target_field = f.named.iter().find(|field| {
+                        field.attrs.iter().any(|a| a.path().is_ident("target"))
+                            || field.ident.as_ref().map(|i| i == "target").unwrap_or(false)
                     });
+                    if let Some(field) = target_field {
+                        let f_ident = field.ident.as_ref().unwrap();
+                        return Ok(quote! {
+                            impl #impl_generics #ident #ty_generics #where_clause {
+                                pub fn into_graph_target(self) -> #core::model::GraphTarget<String> {
+                                    self.#f_ident
+                                }
+                            }
+                        });
+                    }
+                    Err(syn::Error::new(
+                        struct_span,
+                        "#[derive(GraphTarget)] on struct requires a `target` field or #[target] attribute",
+                    ))
                 }
-                return Err(syn::Error::new(
-                    struct_span,
-                    "#[derive(GraphTarget)] on struct requires a `target` field or #[target] attribute",
-                ));
-            }
-            _ => {
-                return Err(syn::Error::new(
+                _ => Err(syn::Error::new(
                     struct_span,
                     "#[derive(GraphTarget)] requires an enum or struct with named fields",
-                ));
-            }
-        },
+                )),
+            };
+        }
         _ => {
             return Err(syn::Error::new(
                 struct_span,
@@ -217,4 +212,85 @@ pub fn derive_graph_target_impl(input: DeriveInput) -> syn::Result<TokenStream> 
             }
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+    use syn::parse_quote;
+
+    fn expand(input: DeriveInput) -> syn::Result<String> {
+        derive_graph_target_impl(input).map(|tokens| tokens.to_string())
+    }
+
+    #[test]
+    fn every_kind_can_be_chosen_by_attribute() {
+        let out = expand(parse_quote! {
+            enum Placement {
+                #[target(exact)] A(String),
+                #[target(fuzzy)] B { key: String, similarity: f32 },
+                #[target(child)] C { parent_key: String, relationship: String },
+                #[target(multi_child)] D { parent_keys: Vec<String> },
+                #[target(root)] E,
+                #[target(ambiguous)] F(Vec<String>),
+            }
+        })
+        .unwrap();
+        for part in [
+            "ExactMatch",
+            "FuzzyCandidate",
+            "NewChildOf",
+            "NewMultiParentChild",
+            "NewRoot",
+            "Ambiguous",
+        ] {
+            assert!(out.contains(part), "{part} missing");
+        }
+    }
+
+    #[test]
+    fn variants_without_attributes_are_recognized_by_name() {
+        let out = expand(parse_quote! {
+            enum Placement {
+                ExactHit(String),
+                FuzzyHit { key: String, similarity: f32 },
+                MultiParents { parent_keys: Vec<String> },
+                ChildOfParent { parent_key: String, relationship: String },
+                RootNode,
+                AmbiguousMatch(Vec<String>),
+                Unrelated,
+            }
+        })
+        .unwrap();
+        assert!(out.contains("NewMultiParentChild") && out.contains("NewChildOf"));
+        // The variant nothing recognizes gets no arm.
+        assert!(!out.contains("Unrelated"));
+    }
+
+    #[rstest]
+    #[case::nothing_recognizable(parse_quote!(enum E { Foo, Bar }), "could not detect")]
+    #[case::union(parse_quote!(union U { a: u32 }), "only supports enums or structs")]
+    #[case::tuple_struct(parse_quote!(struct S(u32);), "named fields")]
+    #[case::struct_without_target(parse_quote!(struct S { a: u32 }), "requires a `target` field")]
+    fn unsupported_shapes_are_errors(#[case] input: DeriveInput, #[case] message: &str) {
+        let err = expand(input).unwrap_err().to_string();
+        assert!(err.contains(message), "{err}");
+    }
+
+    #[rstest]
+    #[case::by_field_name(parse_quote!(struct S { target: GraphTarget<String> }))]
+    #[case::by_attribute(parse_quote!(struct S { #[target] placement: GraphTarget<String> }))]
+    fn structs_expose_their_target_field(#[case] input: DeriveInput) {
+        assert!(expand(input).unwrap().contains("into_graph_target"));
+    }
+
+    #[test]
+    fn an_unknown_target_attribute_key_is_ignored() {
+        let out = expand(parse_quote! {
+            enum E { #[target(sideways)] Root }
+        })
+        .unwrap();
+        assert!(out.contains("NewRoot"));
+    }
 }

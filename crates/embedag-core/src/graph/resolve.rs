@@ -1,0 +1,501 @@
+//! Deterministic dependency resolution, topological sorting, parallel execution levels,
+//! reverse dependency impact analysis, and critical path calculation for [`MemoryDag`].
+
+use std::collections::{BTreeMap, HashMap, HashSet};
+
+use petgraph::graph::NodeIndex;
+
+use crate::dag::MemoryDag;
+use crate::error::DagError;
+use crate::traits::NodePayload;
+
+/// Nodes ready to be visited, ordered by display key then index.
+type Ready = BTreeMap<(String, usize), NodeIndex>;
+
+/// The bookkeeping of a Kahn sweep: unvisited parents per node and each node's display key.
+struct Sweep {
+    in_degree: HashMap<NodeIndex, usize>,
+    display_keys: HashMap<NodeIndex, String>,
+}
+
+impl Sweep {
+    /// Starts a sweep of a non-empty `dag`; the returned set holds its roots.
+    fn start<T: NodePayload>(dag: &MemoryDag<T>) -> (Self, Ready) {
+        let node_count = dag.node_count();
+        let mut in_degree = HashMap::with_capacity(node_count);
+        let mut display_keys = HashMap::with_capacity(node_count);
+        let mut ready = Ready::new();
+        for idx in dag.inner().node_indices() {
+            let deg = dag.parent_indices(idx).len();
+            in_degree.insert(idx, deg);
+            let disp = dag.inner()[idx].key().to_string();
+            if deg == 0 {
+                ready.insert((disp.clone(), idx.index()), idx);
+            }
+            display_keys.insert(idx, disp);
+        }
+        (
+            Self {
+                in_degree,
+                display_keys,
+            },
+            ready,
+        )
+    }
+
+    /// Marks `idx` visited: each child whose parents are all visited joins `ready`.
+    fn visit<T: NodePayload>(&mut self, dag: &MemoryDag<T>, idx: NodeIndex, ready: &mut Ready) {
+        for child_idx in dag.child_indices(idx) {
+            let deg = self.in_degree.entry(child_idx).or_insert(1);
+            *deg -= 1;
+            if *deg == 0 {
+                let disp = self.display_keys[&child_idx].clone();
+                ready.insert((disp, child_idx.index()), child_idx);
+            }
+        }
+    }
+
+    /// The error for a sweep that left nodes unvisited: unvisited nodes always sit on a cycle.
+    fn cycle_error<T: NodePayload>(dag: &MemoryDag<T>) -> DagError {
+        dag.validate_acyclic()
+            .expect_err("a sweep that leaves nodes unvisited has met a cycle")
+    }
+}
+
+/// Computes a deterministic topological ordering of all nodes in `dag` using Kahn's algorithm.
+///
+/// Edges follow the [`MemoryDag`] convention (`parent -> child`), so every parent appears
+/// before all of its children in the returned vector. Ties among ready nodes are broken
+/// deterministically by the [`Display`](std::fmt::Display) string order of `T::Key`.
+///
+/// # Errors
+/// Returns [`DagError::CycleDetected`] containing the cycle participant node indices if
+/// the graph is not acyclic.
+pub fn toposort<T: NodePayload>(dag: &MemoryDag<T>) -> Result<Vec<T::Key>, DagError> {
+    let node_count = dag.node_count();
+    if node_count == 0 {
+        return Ok(Vec::new());
+    }
+
+    let (mut sweep, mut ready) = Sweep::start(dag);
+    let mut order = Vec::with_capacity(node_count);
+    while let Some((_sort_key, idx)) = ready.pop_first() {
+        order.push(dag.inner()[idx].key().clone());
+        sweep.visit(dag, idx, &mut ready);
+    }
+
+    if order.len() != node_count {
+        return Err(Sweep::cycle_error(dag));
+    }
+
+    Ok(order)
+}
+
+/// Groups nodes in `dag` into deterministic parallel execution levels.
+///
+/// Level `0` contains all root nodes (nodes with no parents). Each subsequent level contains
+/// nodes whose parents all appear in earlier levels. Keys within each level are sorted by
+/// their [`Display`](std::fmt::Display) string representation.
+///
+/// # Errors
+/// Returns [`DagError::CycleDetected`] if the graph contains a cycle.
+pub fn levels<T: NodePayload>(dag: &MemoryDag<T>) -> Result<Vec<Vec<T::Key>>, DagError> {
+    let node_count = dag.node_count();
+    if node_count == 0 {
+        return Ok(Vec::new());
+    }
+
+    let (mut sweep, mut current_ready) = Sweep::start(dag);
+    let mut result = Vec::new();
+    let mut visited = 0usize;
+
+    while !current_ready.is_empty() {
+        let mut next_ready = Ready::new();
+        let mut level_keys = Vec::with_capacity(current_ready.len());
+
+        for (_sort_key, idx) in current_ready {
+            visited += 1;
+            level_keys.push(dag.inner()[idx].key().clone());
+            sweep.visit(dag, idx, &mut next_ready);
+        }
+
+        result.push(level_keys);
+        current_ready = next_ready;
+    }
+
+    if visited != node_count {
+        return Err(Sweep::cycle_error(dag));
+    }
+
+    Ok(result)
+}
+
+/// Returns every node that transitively depends on `key` (its transitive descendants),
+/// ordered deterministically in topological order.
+///
+/// This represents the ordered rebuild set when `key` changes (excluding `key` itself).
+///
+/// # Errors
+/// - Returns [`DagError::NodeNotFound`] if `key` does not exist in `dag`.
+/// - Returns [`DagError::CycleDetected`] if the graph contains a cycle.
+pub fn reverse_deps<T: NodePayload>(
+    dag: &MemoryDag<T>,
+    key: &T::Key,
+) -> Result<Vec<T::Key>, DagError> {
+    if !dag.contains_key(key) {
+        return Err(DagError::NodeNotFound {
+            key: key.to_string(),
+        });
+    }
+
+    let topo = toposort(dag)?;
+    let descendants: HashSet<T::Key> = dag
+        .transitive_descendants(key)
+        .into_iter()
+        .map(|node| node.key().clone())
+        .collect();
+
+    Ok(topo
+        .into_iter()
+        .filter(|k| descendants.contains(k))
+        .collect())
+}
+
+/// Computes the longest weighted path (critical path) through `dag`.
+///
+/// Returns `(total_weight, path_keys)` in topological order from start root to end node.
+/// Ties are broken deterministically by [`Display`](std::fmt::Display) string order.
+/// For an empty DAG, returns `Ok((0, Vec::new()))`.
+///
+/// # Errors
+/// Returns [`DagError::CycleDetected`] if the graph contains a cycle.
+pub fn critical_path<T: NodePayload, F: Fn(&T) -> u64>(
+    dag: &MemoryDag<T>,
+    weight: F,
+) -> Result<(u64, Vec<T::Key>), DagError> {
+    let topo_keys = toposort(dag)?;
+    let order: Vec<NodeIndex> = topo_keys.iter().filter_map(|k| dag.node_index(k)).collect();
+    let display_keys = display_keys(dag, &order);
+    let (dist, prev) = longest_distances(dag, &order, &display_keys, &weight);
+    let Some((max_weight, end_idx)) = best_end(&order, &dist, &prev, &display_keys) else {
+        return Ok((0, Vec::new()));
+    };
+    Ok((max_weight, path_keys(dag, end_idx, &prev)))
+}
+
+/// Whether `new` beats `current`: longer, or equal and earlier in tie-break order.
+fn beats<D: PartialOrd + ?Sized>(new: (u64, &D), current: (u64, &D)) -> bool {
+    new.0 > current.0 || (new.0 == current.0 && new.1 < current.1)
+}
+
+fn display_keys<T: NodePayload>(
+    dag: &MemoryDag<T>,
+    order: &[NodeIndex],
+) -> HashMap<NodeIndex, String> {
+    order
+        .iter()
+        .map(|&idx| (idx, dag.inner()[idx].key().to_string()))
+        .collect()
+}
+
+/// Longest distance to every node, and the parent each distance came through.
+fn longest_distances<T: NodePayload, F: Fn(&T) -> u64>(
+    dag: &MemoryDag<T>,
+    order: &[NodeIndex],
+    display_keys: &HashMap<NodeIndex, String>,
+    weight: &F,
+) -> (HashMap<NodeIndex, u64>, HashMap<NodeIndex, NodeIndex>) {
+    let mut dist: HashMap<NodeIndex, u64> = HashMap::with_capacity(order.len());
+    let mut prev: HashMap<NodeIndex, NodeIndex> = HashMap::with_capacity(order.len());
+    for &idx in order {
+        let node_w = weight(&dag.inner()[idx]);
+        match best_parent(dag, idx, &dist, display_keys) {
+            Some((p_dist, p_idx)) => {
+                dist.insert(idx, p_dist.saturating_add(node_w));
+                prev.insert(idx, p_idx);
+            }
+            None => {
+                dist.insert(idx, node_w);
+            }
+        }
+    }
+    (dist, prev)
+}
+
+/// The already-measured parent with the longest distance (ties: smallest display string).
+fn best_parent<T: NodePayload>(
+    dag: &MemoryDag<T>,
+    idx: NodeIndex,
+    dist: &HashMap<NodeIndex, u64>,
+    display_keys: &HashMap<NodeIndex, String>,
+) -> Option<(u64, NodeIndex)> {
+    let mut best: Option<(u64, &str, NodeIndex)> = None;
+    // Parents come earlier in topological order, so they are all measured already.
+    for p_idx in dag.parent_indices(idx) {
+        let (p_dist, p_disp) = (dist[&p_idx], display_keys[&p_idx].as_str());
+        if best.is_none_or(|(cur, disp, _)| beats((p_dist, p_disp), (cur, disp))) {
+            best = Some((p_dist, p_disp, p_idx));
+        }
+    }
+    best.map(|(d, _, i)| (d, i))
+}
+
+/// The end node of the critical path: longest distance (ties: smallest display path).
+fn best_end(
+    order: &[NodeIndex],
+    dist: &HashMap<NodeIndex, u64>,
+    prev: &HashMap<NodeIndex, NodeIndex>,
+    display_keys: &HashMap<NodeIndex, String>,
+) -> Option<(u64, NodeIndex)> {
+    let mut best: Option<(u64, Vec<String>, NodeIndex)> = None;
+    for &idx in order {
+        let d = dist[&idx];
+        let path_disp = reconstruct_display_path(idx, prev, display_keys);
+        if best
+            .as_ref()
+            .is_none_or(|(cur, cur_path, _)| beats((d, &path_disp), (*cur, cur_path)))
+        {
+            best = Some((d, path_disp, idx));
+        }
+    }
+    best.map(|(d, _, idx)| (d, idx))
+}
+
+/// The keys from the start root to `end_idx`.
+fn path_keys<T: NodePayload>(
+    dag: &MemoryDag<T>,
+    end_idx: NodeIndex,
+    prev: &HashMap<NodeIndex, NodeIndex>,
+) -> Vec<T::Key> {
+    let mut path_indices = Vec::new();
+    let mut curr = Some(end_idx);
+    while let Some(idx) = curr {
+        path_indices.push(idx);
+        curr = prev.get(&idx).copied();
+    }
+    path_indices
+        .into_iter()
+        .rev()
+        .map(|idx| dag.inner()[idx].key().clone())
+        .collect()
+}
+
+fn reconstruct_display_path(
+    end_idx: NodeIndex,
+    prev: &HashMap<NodeIndex, NodeIndex>,
+    display_keys: &HashMap<NodeIndex, String>,
+) -> Vec<String> {
+    let mut path = Vec::new();
+    let mut curr = Some(end_idx);
+    while let Some(idx) = curr {
+        path.push(display_keys[&idx].clone());
+        curr = prev.get(&idx).copied();
+    }
+    path.reverse();
+    path
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{EdgePayload, ProvenanceKind};
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct TaskUnit {
+        id: String,
+        cost: u64,
+    }
+
+    impl TaskUnit {
+        fn new(id: &str, cost: u64) -> Self {
+            Self {
+                id: id.to_string(),
+                cost,
+            }
+        }
+    }
+
+    crate::impl_node_payload!(
+        TaskUnit,
+        key = |n| &n.id,
+        name = |n| &n.id,
+        level = |_| "Task"
+    );
+
+    fn dep_edge() -> EdgePayload {
+        EdgePayload::new("depends_on", 1.0, ProvenanceKind::DeterministicRule).unwrap()
+    }
+
+    #[test]
+    fn test_empty_dag() {
+        let dag: MemoryDag<TaskUnit> = MemoryDag::new();
+        assert_eq!(toposort(&dag).unwrap(), Vec::<String>::new());
+        assert_eq!(levels(&dag).unwrap(), Vec::<Vec<String>>::new());
+        assert_eq!(critical_path(&dag, |t| t.cost).unwrap(), (0, Vec::new()));
+        assert!(matches!(
+            reverse_deps(&dag, &"missing".to_string()),
+            Err(DagError::NodeNotFound { key }) if key == "missing"
+        ));
+    }
+
+    #[test]
+    fn test_diamond_graph() {
+        let mut dag = MemoryDag::new();
+        dag.upsert_node(TaskUnit::new("A", 1));
+        dag.upsert_node(TaskUnit::new("B", 2));
+        dag.upsert_node(TaskUnit::new("C", 3));
+        dag.upsert_node(TaskUnit::new("D", 4));
+
+        dag.add_edge_by_keys(&"A".into(), &"B".into(), dep_edge())
+            .unwrap();
+        dag.add_edge_by_keys(&"A".into(), &"C".into(), dep_edge())
+            .unwrap();
+        dag.add_edge_by_keys(&"B".into(), &"D".into(), dep_edge())
+            .unwrap();
+        dag.add_edge_by_keys(&"C".into(), &"D".into(), dep_edge())
+            .unwrap();
+
+        let order = toposort(&dag).unwrap();
+        assert_eq!(order, vec!["A", "B", "C", "D"]);
+
+        let lvls = levels(&dag).unwrap();
+        assert_eq!(
+            lvls,
+            vec![
+                vec!["A".to_string()],
+                vec!["B".to_string(), "C".to_string()],
+                vec!["D".to_string()],
+            ]
+        );
+    }
+
+    #[test]
+    fn test_deterministic_tie_order() {
+        let mut dag1 = MemoryDag::new();
+        for k in ["delta", "alpha", "charlie", "bravo"] {
+            dag1.upsert_node(TaskUnit::new(k, 1));
+        }
+
+        let mut dag2 = MemoryDag::new();
+        for k in ["bravo", "charlie", "alpha", "delta"] {
+            dag2.upsert_node(TaskUnit::new(k, 1));
+        }
+
+        let expected = vec![
+            "alpha".to_string(),
+            "bravo".to_string(),
+            "charlie".to_string(),
+            "delta".to_string(),
+        ];
+        assert_eq!(toposort(&dag1).unwrap(), expected);
+        assert_eq!(toposort(&dag2).unwrap(), expected);
+        assert_eq!(levels(&dag1).unwrap(), vec![expected.clone()]);
+        assert_eq!(levels(&dag2).unwrap(), vec![expected]);
+    }
+
+    #[test]
+    fn test_cycle_error_via_unguarded_add_edge() {
+        let mut dag = MemoryDag::new();
+        let idx_a = dag.upsert_node(TaskUnit::new("A", 1));
+        let idx_b = dag.upsert_node(TaskUnit::new("B", 1));
+        let idx_c = dag.upsert_node(TaskUnit::new("C", 1));
+
+        dag.add_edge(idx_a, idx_b, dep_edge());
+        dag.add_edge(idx_b, idx_c, dep_edge());
+        dag.add_edge(idx_c, idx_a, dep_edge());
+
+        let err = toposort(&dag).unwrap_err();
+        assert!(matches!(
+            &err,
+            DagError::CycleDetected { node_indices }
+                if [idx_a, idx_b, idx_c].iter().all(|i| node_indices.contains(&i.index()))
+        ));
+
+        assert!(matches!(levels(&dag), Err(DagError::CycleDetected { .. })));
+        assert!(matches!(
+            critical_path(&dag, |n| n.cost),
+            Err(DagError::CycleDetected { .. })
+        ));
+    }
+
+    #[test]
+    fn test_reverse_deps_chain_and_diamond() {
+        // Chain: A -> B -> C -> D
+        let mut chain = MemoryDag::new();
+        for k in ["A", "B", "C", "D"] {
+            chain.upsert_node(TaskUnit::new(k, 1));
+        }
+        chain
+            .add_edge_by_keys(&"A".into(), &"B".into(), dep_edge())
+            .unwrap();
+        chain
+            .add_edge_by_keys(&"B".into(), &"C".into(), dep_edge())
+            .unwrap();
+        chain
+            .add_edge_by_keys(&"C".into(), &"D".into(), dep_edge())
+            .unwrap();
+
+        assert_eq!(
+            reverse_deps(&chain, &"A".to_string()).unwrap(),
+            vec!["B", "C", "D"]
+        );
+        assert_eq!(
+            reverse_deps(&chain, &"B".to_string()).unwrap(),
+            vec!["C", "D"]
+        );
+        assert_eq!(
+            reverse_deps(&chain, &"D".to_string()).unwrap(),
+            Vec::<String>::new()
+        );
+
+        // Diamond: A -> B, A -> C, B -> D, C -> D, plus unrelated E
+        let mut diamond = MemoryDag::new();
+        for k in ["A", "B", "C", "D", "E"] {
+            diamond.upsert_node(TaskUnit::new(k, 1));
+        }
+        diamond
+            .add_edge_by_keys(&"A".into(), &"B".into(), dep_edge())
+            .unwrap();
+        diamond
+            .add_edge_by_keys(&"A".into(), &"C".into(), dep_edge())
+            .unwrap();
+        diamond
+            .add_edge_by_keys(&"B".into(), &"D".into(), dep_edge())
+            .unwrap();
+        diamond
+            .add_edge_by_keys(&"C".into(), &"D".into(), dep_edge())
+            .unwrap();
+
+        assert_eq!(
+            reverse_deps(&diamond, &"A".to_string()).unwrap(),
+            vec!["B", "C", "D"]
+        );
+        assert_eq!(reverse_deps(&diamond, &"B".to_string()).unwrap(), vec!["D"]);
+        assert!(matches!(
+            reverse_deps(&diamond, &"UNKNOWN".to_string()),
+            Err(DagError::NodeNotFound { .. })
+        ));
+    }
+
+    #[test]
+    fn test_critical_path() {
+        let mut dag = MemoryDag::new();
+        dag.upsert_node(TaskUnit::new("A", 10));
+        dag.upsert_node(TaskUnit::new("B", 25));
+        dag.upsert_node(TaskUnit::new("C", 5));
+        dag.upsert_node(TaskUnit::new("D", 15));
+
+        dag.add_edge_by_keys(&"A".into(), &"B".into(), dep_edge())
+            .unwrap();
+        dag.add_edge_by_keys(&"A".into(), &"C".into(), dep_edge())
+            .unwrap();
+        dag.add_edge_by_keys(&"B".into(), &"D".into(), dep_edge())
+            .unwrap();
+        dag.add_edge_by_keys(&"C".into(), &"D".into(), dep_edge())
+            .unwrap();
+
+        let (total, path) = critical_path(&dag, |t| t.cost).unwrap();
+        assert_eq!(total, 50);
+        assert_eq!(path, vec!["A", "B", "D"]);
+    }
+}

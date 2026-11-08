@@ -1,0 +1,26 @@
+name: audit ignores
+
+# Fails when an advisory ignored in .cargo/audit.toml no longer applies, so the list only shrinks (issue #2).
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  push:
+    branches: [ develop, main ]
+    paths: [ 'Cargo.lock', '.cargo/audit.toml', 'scripts/check-audit-ignores.sh' ]
+  pull_request:
+    paths: [ 'Cargo.lock', '.cargo/audit.toml', 'scripts/check-audit-ignores.sh' ]
+  workflow_dispatch:
+
+jobs:
+  stale-ignores:
+    name: No stale audit ignores
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@cargo-audit
+
+      - name: Check the ignore list
+        run: bash scripts/check-audit-ignores.sh

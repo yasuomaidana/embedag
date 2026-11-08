@@ -27,6 +27,20 @@ impl RrfRanker {
         Self { smoothing_k }
     }
 
+    /// Adds each id of `list` its reciprocal-rank score and records its 1-indexed rank in `ranks`.
+    fn accumulate(
+        &self,
+        list: &[Uuid],
+        scores: &mut HashMap<Uuid, f32>,
+        ranks: &mut HashMap<Uuid, usize>,
+    ) {
+        for (idx, &id) in list.iter().enumerate() {
+            let rank = idx + 1;
+            *scores.entry(id).or_insert(0.0) += 1.0 / (self.smoothing_k + rank as f32);
+            ranks.insert(id, rank);
+        }
+    }
+
     /// Merges dense and sparse ranked lists into a unified scored candidate list.
     pub fn fuse(&self, dense_results: &[Uuid], sparse_results: &[Uuid]) -> Vec<RrfCandidate> {
         let mut scores: HashMap<Uuid, f32> = HashMap::new();
@@ -34,20 +48,10 @@ impl RrfRanker {
         let mut sparse_ranks: HashMap<Uuid, usize> = HashMap::new();
 
         // 1. Accumulate dense scores (1-indexed rank)
-        for (idx, &id) in dense_results.iter().enumerate() {
-            let rank = idx + 1;
-            let score = 1.0 / (self.smoothing_k + rank as f32);
-            *scores.entry(id).or_insert(0.0) += score;
-            dense_ranks.insert(id, rank);
-        }
+        self.accumulate(dense_results, &mut scores, &mut dense_ranks);
 
         // 2. Accumulate sparse scores (1-indexed rank)
-        for (idx, &id) in sparse_results.iter().enumerate() {
-            let rank = idx + 1;
-            let score = 1.0 / (self.smoothing_k + rank as f32);
-            *scores.entry(id).or_insert(0.0) += score;
-            sparse_ranks.insert(id, rank);
-        }
+        self.accumulate(sparse_results, &mut scores, &mut sparse_ranks);
 
         let mut candidates: Vec<RrfCandidate> = scores
             .into_iter()
@@ -75,11 +79,7 @@ impl RrfRanker {
         let mut scores: HashMap<Uuid, f32> = HashMap::new();
 
         for list in ranked_lists {
-            for (idx, &id) in list.iter().enumerate() {
-                let rank = idx + 1;
-                let score = 1.0 / (self.smoothing_k + rank as f32);
-                *scores.entry(id).or_insert(0.0) += score;
-            }
+            self.accumulate(list, &mut scores, &mut HashMap::new());
         }
 
         let mut results: Vec<(Uuid, f32)> = scores.into_iter().collect();
@@ -132,5 +132,26 @@ mod tests {
         assert!((fused[0].score - expected_b_score).abs() < 1e-6);
         assert_eq!(fused[0].dense_rank, Some(2));
         assert_eq!(fused[0].sparse_rank, Some(1));
+    }
+
+    #[test]
+    fn fusing_many_lists_sums_reciprocal_ranks_and_breaks_ties_by_id() {
+        let ranker = RrfRanker::new(10.0);
+        let (a, b, c) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        let first = [a, b];
+        let second = [a, c];
+        let fused = ranker.fuse_multi(&[&first, &second]);
+
+        assert_eq!(fused[0].0, a);
+        assert!((fused[0].1 - 2.0 / 11.0).abs() < 1e-6);
+        // `b` and `c` both rank 2nd in one list, so their scores tie: the smaller id comes first.
+        let tied = [fused[1].0, fused[2].0];
+        assert_eq!(tied, if b < c { [b, c] } else { [c, b] });
+    }
+
+    #[test]
+    fn fusing_nothing_yields_nothing() {
+        assert!(RrfRanker::default().fuse(&[], &[]).is_empty());
+        assert!(RrfRanker::default().fuse_multi(&[]).is_empty());
     }
 }

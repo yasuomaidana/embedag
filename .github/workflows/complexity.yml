@@ -1,0 +1,37 @@
+# Second opinion on function complexity, using the standard tools for Rust (clippy, lizard).
+# Limits come from [complexity] in .github/dendrite/directives.toml (defaults: cyclomatic 10, cognitive 15).
+name: complexity (second opinion)
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+jobs:
+  rust:
+    name: Rust (clippy cognitive_complexity, lizard)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Limits from the project directives
+        id: limits
+        run: |
+          f=.github/dendrite/directives.toml
+          pick() { awk -v key="$1" '/^\[complexity\]/{t=1;next} /^\[/{t=0} t && $1==key {print $3; exit}' "$f" 2>/dev/null || true; }
+          cyc=$(pick max_cyclomatic); cog=$(pick max_cognitive)
+          echo "cyc=${cyc:-10}" >> "$GITHUB_OUTPUT"
+          echo "cog=${cog:-15}" >> "$GITHUB_OUTPUT"
+      - name: Clippy configuration with the cognitive limit
+        run: |
+          mkdir -p "$RUNNER_TEMP/clippy"
+          echo "cognitive-complexity-threshold = ${{ steps.limits.outputs.cog }}" > "$RUNNER_TEMP/clippy/clippy.toml"
+      - name: clippy cognitive_complexity
+        env:
+          CLIPPY_CONF_DIR: ${{ runner.temp }}/clippy
+        run: cargo clippy --workspace --all-targets -- -A clippy::all -D clippy::cognitive_complexity
+      - name: lizard (cyclomatic)
+        run: |
+          python3 -m pip install --quiet lizard==1.17.10
+          python3 -m lizard -l rust -C "${{ steps.limits.outputs.cyc }}" -w -x "*/target/*" .

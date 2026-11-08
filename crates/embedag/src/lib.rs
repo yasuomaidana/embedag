@@ -39,12 +39,13 @@
 #[cfg(feature = "core")]
 pub use embedag_core as core;
 
-/// Dependency-graph API consumed by Dendrite: DAG arena, resolution, and Merkle deltas.
+/// Dependency-graph API: DAG arena, deterministic resolution, strongly connected components, and Merkle deltas.
 #[cfg(feature = "core")]
 pub mod dag {
     pub use embedag_core::dag::*;
     pub use embedag_core::error::DagError;
     pub use embedag_core::resolve::{critical_path, levels, reverse_deps, toposort};
+    pub use embedag_core::scc::{Condensation, condense, strongly_connected_components};
     /// Content-addressed Merkle trees for change detection.
     pub mod merkle {
         pub use embedag_core::merkle::*;
@@ -83,6 +84,7 @@ pub use embedag_core::{
     error::DagError,
     model::{EdgePayload, GraphTarget, MultimodalBlob, ProvenanceKind},
     mutation::{Committed, CycleValidated, MutationDirective, MutationPlan, Unverified},
+    scc::Condensation,
     traits::{
         AsGraphContext, NodePayload, ReadOnlyGraphRepository, TransactionalGraphRepository,
         VectorSearchRepository,
@@ -173,3 +175,8 @@ pub mod prelude {
     #[cfg(feature = "neo4j")]
     pub use embedag_neo4j::{Neo4jConfig, Neo4jEngine};
 }
+
+/// Compiles the Rust examples of the crate README as doctests, so they cannot drift from the code.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;

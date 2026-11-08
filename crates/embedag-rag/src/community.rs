@@ -49,56 +49,62 @@ impl CommunityDetector {
     where
         T::Key: std::hash::Hash + Eq + Clone + Ord,
     {
-        let inner = dag.inner();
         let mut visited: HashSet<NodeIndex> = HashSet::new();
-        let mut node_to_community = HashMap::new();
-        let mut community_to_nodes: HashMap<usize, Vec<T::Key>> = HashMap::new();
-
-        let mut community_counter = 0;
+        let mut partition = CommunityPartition {
+            node_to_community: HashMap::new(),
+            community_to_nodes: HashMap::new(),
+        };
 
         // Sort indices for deterministic community ID assignment
-        let mut all_indices: Vec<NodeIndex> = inner.node_indices().collect();
+        let mut all_indices: Vec<NodeIndex> = dag.inner().node_indices().collect();
         all_indices.sort_by_key(|n| n.index());
 
+        let mut community_id = 0;
         for start_idx in all_indices {
-            if visited.contains(&start_idx) {
-                continue;
-            }
-
-            let community_id = community_counter;
-            community_counter += 1;
-
-            let mut queue = VecDeque::new();
-            queue.push_back(start_idx);
-            visited.insert(start_idx);
-
-            while let Some(curr) = queue.pop_front() {
-                if let Some(payload) = inner.node_weight(curr) {
-                    let key = payload.key().clone();
-                    node_to_community.insert(key.clone(), community_id);
-                    community_to_nodes
-                        .entry(community_id)
-                        .or_default()
-                        .push(key);
-                }
-
-                // Traverse both incoming (parents) and outgoing (children) for undirected cluster reachability
-                for p_idx in inner.neighbors_directed(curr, Direction::Incoming) {
-                    if visited.insert(p_idx) {
-                        queue.push_back(p_idx);
-                    }
-                }
-                for c_idx in inner.neighbors_directed(curr, Direction::Outgoing) {
-                    if visited.insert(c_idx) {
-                        queue.push_back(c_idx);
-                    }
-                }
+            if !visited.contains(&start_idx) {
+                collect_component(dag, start_idx, community_id, &mut visited, &mut partition);
+                community_id += 1;
             }
         }
+        partition
+    }
+}
 
-        CommunityPartition {
-            node_to_community,
-            community_to_nodes,
+/// Assigns `community_id` to every node reachable from `start` ignoring edge direction.
+fn collect_component<T: NodePayload>(
+    dag: &MemoryDag<T>,
+    start: NodeIndex,
+    community_id: usize,
+    visited: &mut HashSet<NodeIndex>,
+    partition: &mut CommunityPartition<T::Key>,
+) where
+    T::Key: std::hash::Hash + Eq + Clone,
+{
+    let inner = dag.inner();
+    let mut queue = VecDeque::from([start]);
+    visited.insert(start);
+
+    while let Some(curr) = queue.pop_front() {
+        if let Some(payload) = inner.node_weight(curr) {
+            let key = payload.key().clone();
+            partition
+                .node_to_community
+                .insert(key.clone(), community_id);
+            partition
+                .community_to_nodes
+                .entry(community_id)
+                .or_default()
+                .push(key);
+        }
+
+        // Traverse both incoming (parents) and outgoing (children) for undirected cluster reachability
+        let neighbours = inner
+            .neighbors_directed(curr, Direction::Incoming)
+            .chain(inner.neighbors_directed(curr, Direction::Outgoing));
+        for next in neighbours {
+            if visited.insert(next) {
+                queue.push_back(next);
+            }
         }
     }
 }
@@ -123,18 +129,12 @@ mod tests {
         }
     }
 
-    impl NodePayload for MockClusterNode {
-        type Key = String;
-        fn key(&self) -> &Self::Key {
-            &self.id
-        }
-        fn name(&self) -> &str {
-            &self.label
-        }
-        fn entity_level(&self) -> &str {
-            "ClusterItem"
-        }
-    }
+    embedag_core::impl_node_payload!(
+        MockClusterNode,
+        key = |n| &n.id,
+        name = |n| &n.label,
+        level = |_| "ClusterItem"
+    );
 
     fn edge() -> EdgePayload {
         EdgePayload::new("CONNECTS", 1.0, ProvenanceKind::DeterministicRule).unwrap()
@@ -193,5 +193,18 @@ mod tests {
             b1_comm, a1_comm,
             "Beverage and Apparel communities must be distinct"
         );
+    }
+
+    #[test]
+    fn partitions_answer_membership_queries() {
+        let mut dag = MemoryDag::new();
+        dag.upsert_node(MockClusterNode::new("a", "A"));
+        dag.upsert_node(MockClusterNode::new("b", "B"));
+        let partition = CommunityDetector::new().detect(&dag);
+
+        let community = partition.community_of(&"a".to_string()).unwrap();
+        assert_eq!(partition.members(community), Some(&["a".to_string()][..]));
+        assert_eq!(partition.community_of(&"missing".to_string()), None);
+        assert_eq!(partition.members(99), None);
     }
 }

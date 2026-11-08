@@ -59,6 +59,16 @@ impl Default for SubgraphExpander {
     }
 }
 
+/// Whether a node reached at `hops`/`weight` improves on its recorded visit (or is unvisited).
+fn should_visit(visited: &Visited, idx: NodeIndex, hops: usize, weight: f32) -> bool {
+    match visited.get(&idx) {
+        Some(&(existing_hops, existing_w, _)) => {
+            hops < existing_hops || (hops == existing_hops && weight > existing_w)
+        }
+        None => true,
+    }
+}
+
 impl SubgraphExpander {
     pub fn new(decay_gamma: f32, max_hops: usize, include_siblings: bool) -> Self {
         Self {
@@ -86,240 +96,300 @@ impl SubgraphExpander {
     where
         T::Key: std::fmt::Debug + std::hash::Hash + Eq + Clone,
     {
-        let mut visited: HashMap<NodeIndex, (usize, f32, SeedRelationship)> = HashMap::new();
+        let mut walk = Walk {
+            expander: self,
+            dag,
+            visited: Visited::new(),
+            queue: VecDeque::new(),
+        };
+        let seeds = walk.seed(seed_candidates);
+        walk.run();
+        ExpandedSubgraph {
+            seeds,
+            nodes: collect_nodes(dag, &walk.visited),
+            edges: collect_edges(dag, &walk.visited),
+        }
+    }
+}
+
+/// Hops, weight and relationship recorded for every reached node.
+type Visited = HashMap<NodeIndex, (usize, f32, SeedRelationship)>;
+
+/// Direction indicator for BFS exploration.
+#[derive(Clone, Copy)]
+enum Dir {
+    Both,
+    AncestorsOnly,
+    DescendantsOnly,
+}
+
+impl Dir {
+    fn goes_up(self) -> bool {
+        matches!(self, Self::Both | Self::AncestorsOnly)
+    }
+
+    fn goes_down(self) -> bool {
+        matches!(self, Self::Both | Self::DescendantsOnly)
+    }
+}
+
+/// A node waiting in the BFS queue.
+struct Frontier {
+    idx: NodeIndex,
+    hops: usize,
+    base_weight: f32,
+    dir: Dir,
+}
+
+/// How a neighbour is reached from the node being expanded.
+struct Arrival {
+    hops: usize,
+    weight: f32,
+    relationship: SeedRelationship,
+    dir: Dir,
+}
+
+/// Attenuation of a sibling's weight relative to its parent's.
+const SIBLING_FACTOR: f32 = 0.70;
+
+/// The breadth-first walk around the seeds.
+struct Walk<'a, T: NodePayload> {
+    expander: &'a SubgraphExpander,
+    dag: &'a MemoryDag<T>,
+    visited: Visited,
+    queue: VecDeque<Frontier>,
+}
+
+impl<T: NodePayload> Walk<'_, T> {
+    /// Queues every seed that exists in the graph and returns their keys.
+    fn seed(&mut self, candidates: &[(T::Key, f32)]) -> Vec<T::Key>
+    where
+        T::Key: Clone,
+    {
         let mut seeds = Vec::new();
-
-        // Direction indicator for BFS exploration
-        #[derive(Clone, Copy)]
-        enum Dir {
-            Both,
-            AncestorsOnly,
-            DescendantsOnly,
-        }
-
-        let mut queue: VecDeque<(NodeIndex, usize, f32, Dir)> = VecDeque::new();
-
-        for (seed_key, weight) in seed_candidates {
-            if let Some(idx) = dag.node_index(seed_key) {
-                seeds.push(seed_key.clone());
-                visited.insert(idx, (0, *weight, SeedRelationship::Seed));
-                queue.push_back((idx, 0, *weight, Dir::Both));
-            }
-        }
-
-        while let Some((curr_idx, curr_hops, base_weight, dir)) = queue.pop_front() {
-            if curr_hops >= self.max_hops {
-                continue;
-            }
-
-            let next_hops = curr_hops + 1;
-            let next_weight = self.compute_weight(base_weight, next_hops);
-
-            // 1. Ancestors (parents)
-            if matches!(dir, Dir::Both | Dir::AncestorsOnly) {
-                for parent_idx in dag.parent_indices(curr_idx) {
-                    let should_visit = match visited.get(&parent_idx) {
-                        Some(&(existing_hops, existing_w, _)) => {
-                            next_hops < existing_hops
-                                || (next_hops == existing_hops && next_weight > existing_w)
-                        }
-                        None => true,
-                    };
-
-                    if should_visit {
-                        visited.insert(
-                            parent_idx,
-                            (next_hops, next_weight, SeedRelationship::Ancestor),
-                        );
-                        queue.push_back((parent_idx, next_hops, base_weight, Dir::AncestorsOnly));
-                    }
-
-                    // 1-Hop Sibling expansion: other children of direct parent
-                    if self.include_siblings && curr_hops == 0 {
-                        let sib_weight = next_weight * 0.70; // attenuated sibling factor
-                        for sib_idx in dag.child_indices(parent_idx) {
-                            if sib_idx != curr_idx && !visited.contains_key(&sib_idx) {
-                                visited.insert(sib_idx, (1, sib_weight, SeedRelationship::Sibling));
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 2. Descendants (children)
-            if matches!(dir, Dir::Both | Dir::DescendantsOnly) {
-                for child_idx in dag.child_indices(curr_idx) {
-                    let should_visit = match visited.get(&child_idx) {
-                        Some(&(existing_hops, existing_w, _)) => {
-                            next_hops < existing_hops
-                                || (next_hops == existing_hops && next_weight > existing_w)
-                        }
-                        None => true,
-                    };
-
-                    if should_visit {
-                        visited.insert(
-                            child_idx,
-                            (next_hops, next_weight, SeedRelationship::Descendant),
-                        );
-                        queue.push_back((child_idx, next_hops, base_weight, Dir::DescendantsOnly));
-                    }
-                }
-            }
-        }
-
-        // Map collected NodeIndices back to business keys and build nodes map
-        let mut nodes: HashMap<T::Key, ExpandedNode<T::Key>> = HashMap::new();
-        for (&idx, &(hop_distance, weight, relationship)) in &visited {
-            if let Some(payload) = dag.node_by_index(idx) {
-                let key = payload.key().clone();
-                nodes.insert(
-                    key.clone(),
-                    ExpandedNode {
-                        key,
-                        hop_distance,
-                        weight,
-                        relationship,
-                    },
-                );
-            }
-        }
-
-        // Collect all edges connecting visited nodes
-        let mut edges = Vec::new();
-        for edge in dag.inner().edge_references() {
-            let src = edge.source();
-            let target = edge.target();
-            if visited.contains_key(&src)
-                && visited.contains_key(&target)
-                && let (Some(p_node), Some(c_node)) =
-                    (dag.node_by_index(src), dag.node_by_index(target))
-            {
-                let weight = edge.weight();
-                edges.push(ExpandedEdge {
-                    parent_key: p_node.key().clone(),
-                    child_key: c_node.key().clone(),
-                    relationship: weight.relationship.clone(),
-                    confidence: weight.confidence,
-                    provenance: weight.provenance,
+        for (key, weight) in candidates {
+            if let Some(idx) = self.dag.node_index(key) {
+                seeds.push(key.clone());
+                self.visited
+                    .insert(idx, (0, *weight, SeedRelationship::Seed));
+                self.queue.push_back(Frontier {
+                    idx,
+                    hops: 0,
+                    base_weight: *weight,
+                    dir: Dir::Both,
                 });
             }
         }
+        seeds
+    }
 
-        ExpandedSubgraph {
-            seeds,
-            nodes,
-            edges,
+    fn run(&mut self) {
+        while let Some(frontier) = self.queue.pop_front() {
+            if frontier.hops < self.expander.max_hops {
+                self.step(&frontier);
+            }
         }
     }
+
+    fn step(&mut self, frontier: &Frontier) {
+        let hops = frontier.hops + 1;
+        let weight = self.expander.compute_weight(frontier.base_weight, hops);
+        if frontier.dir.goes_up() {
+            self.climb(frontier, hops, weight);
+        }
+        if frontier.dir.goes_down() {
+            self.descend(frontier, hops, weight);
+        }
+    }
+
+    /// Visits the parents and, for a seed's direct parents, their other children.
+    fn climb(&mut self, frontier: &Frontier, hops: usize, weight: f32) {
+        let dag = self.dag;
+        for parent in dag.parent_indices(frontier.idx) {
+            let arrival = Arrival {
+                hops,
+                weight,
+                relationship: SeedRelationship::Ancestor,
+                dir: Dir::AncestorsOnly,
+            };
+            self.discover(parent, frontier.base_weight, &arrival);
+            if self.expander.include_siblings && frontier.hops == 0 {
+                self.add_siblings(parent, frontier.idx, weight * SIBLING_FACTOR);
+            }
+        }
+    }
+
+    fn descend(&mut self, frontier: &Frontier, hops: usize, weight: f32) {
+        let dag = self.dag;
+        for child in dag.child_indices(frontier.idx) {
+            let arrival = Arrival {
+                hops,
+                weight,
+                relationship: SeedRelationship::Descendant,
+                dir: Dir::DescendantsOnly,
+            };
+            self.discover(child, frontier.base_weight, &arrival);
+        }
+    }
+
+    /// Records and queues `idx` when this arrival improves on what is known.
+    fn discover(&mut self, idx: NodeIndex, base_weight: f32, arrival: &Arrival) {
+        if should_visit(&self.visited, idx, arrival.hops, arrival.weight) {
+            self.visited
+                .insert(idx, (arrival.hops, arrival.weight, arrival.relationship));
+            self.queue.push_back(Frontier {
+                idx,
+                hops: arrival.hops,
+                base_weight,
+                dir: arrival.dir,
+            });
+        }
+    }
+
+    /// 1-hop sibling expansion: the other, still unvisited, children of a direct parent.
+    fn add_siblings(&mut self, parent: NodeIndex, origin: NodeIndex, weight: f32) {
+        let dag = self.dag;
+        for sibling in dag.child_indices(parent) {
+            if sibling != origin && !self.visited.contains_key(&sibling) {
+                self.visited
+                    .insert(sibling, (1, weight, SeedRelationship::Sibling));
+            }
+        }
+    }
+}
+
+/// Maps the collected node indices back to business keys.
+fn collect_nodes<T: NodePayload>(
+    dag: &MemoryDag<T>,
+    visited: &Visited,
+) -> HashMap<T::Key, ExpandedNode<T::Key>>
+where
+    T::Key: std::hash::Hash + Eq + Clone,
+{
+    let mut nodes = HashMap::new();
+    for (&idx, &(hop_distance, weight, relationship)) in visited {
+        if let Some(payload) = dag.node_by_index(idx) {
+            let key = payload.key().clone();
+            nodes.insert(
+                key.clone(),
+                ExpandedNode {
+                    key,
+                    hop_distance,
+                    weight,
+                    relationship,
+                },
+            );
+        }
+    }
+    nodes
+}
+
+/// Every edge connecting two visited nodes.
+fn collect_edges<T: NodePayload>(dag: &MemoryDag<T>, visited: &Visited) -> Vec<ExpandedEdge<T::Key>>
+where
+    T::Key: Clone,
+{
+    let mut edges = Vec::new();
+    for edge in dag.inner().edge_references() {
+        let (src, target) = (edge.source(), edge.target());
+        if visited.contains_key(&src)
+            && visited.contains_key(&target)
+            && let (Some(p_node), Some(c_node)) =
+                (dag.node_by_index(src), dag.node_by_index(target))
+        {
+            let weight = edge.weight();
+            edges.push(ExpandedEdge {
+                parent_key: p_node.key().clone(),
+                child_key: c_node.key().clone(),
+                relationship: weight.relationship.clone(),
+                confidence: weight.confidence,
+                provenance: weight.provenance,
+            });
+        }
+    }
+    edges
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use embedag_core::model::EdgePayload;
-
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    struct ProductNode {
-        id: String,
-        name: String,
-        level: String,
-    }
-
-    impl ProductNode {
-        fn new(id: &str, name: &str, level: &str) -> Self {
-            Self {
-                id: id.into(),
-                name: name.into(),
-                level: level.into(),
-            }
-        }
-    }
-
-    impl NodePayload for ProductNode {
-        type Key = String;
-        fn key(&self) -> &Self::Key {
-            &self.id
-        }
-        fn name(&self) -> &str {
-            &self.name
-        }
-        fn entity_level(&self) -> &str {
-            &self.level
-        }
-    }
+    use embedag_core::testing::TestNode;
+    use rstest::{fixture, rstest};
 
     fn edge(rel: &str) -> EdgePayload {
         EdgePayload::new(rel, 1.0, ProvenanceKind::DeterministicRule).unwrap()
     }
 
-    #[test]
-    fn test_subgraph_expansion_with_decay() {
+    /// Hierarchy: Dept (L1) -> Brand (L2) -> SKU_A (L3)
+    ///                                   \-> SKU_B (L3, sibling)
+    /// SKU_A -> Variant_A1 (L4, child)
+    #[fixture]
+    fn dag() -> MemoryDag<TestNode> {
         let mut dag = MemoryDag::new();
+        for (key, name, level) in [
+            ("dept", "Confectionery", "Department"),
+            ("brand", "Carlos V", "Brand"),
+            ("sku_a", "Carlos V Dark 50g", "SKU"),
+            ("sku_b", "Carlos V Milk 50g", "SKU"),
+            ("variant", "Carlos V Dark 50g 10-Pack", "Bundle"),
+        ] {
+            dag.upsert_node(TestNode::new(key, name, level));
+        }
+        for (parent, child, rel) in [
+            ("dept", "brand", "PARENT_OF"),
+            ("brand", "sku_a", "PARENT_OF"),
+            ("brand", "sku_b", "PARENT_OF"),
+            ("sku_a", "variant", "HAS_VARIANT"),
+        ] {
+            dag.add_edge_by_keys(&parent.into(), &child.into(), edge(rel))
+                .unwrap();
+        }
+        dag
+    }
 
-        // Hierarchy: Dept (L1) -> Brand (L2) -> SKU_A (L3)
-        //                                   \-> SKU_B (L3, sibling)
-        // SKU_A -> Variant_A1 (L4, child)
-        let dept = ProductNode::new("dept", "Confectionery", "Department");
-        let brand = ProductNode::new("brand", "Carlos V", "Brand");
-        let sku_a = ProductNode::new("sku_a", "Carlos V Dark 50g", "SKU");
-        let sku_b = ProductNode::new("sku_b", "Carlos V Milk 50g", "SKU");
-        let variant = ProductNode::new("variant", "Carlos V Dark 50g 10-Pack", "Bundle");
-
-        dag.upsert_node(dept);
-        dag.upsert_node(brand);
-        dag.upsert_node(sku_a);
-        dag.upsert_node(sku_b);
-        dag.upsert_node(variant);
-
-        dag.add_edge_by_keys(&"dept".into(), &"brand".into(), edge("PARENT_OF"))
-            .unwrap();
-        dag.add_edge_by_keys(&"brand".into(), &"sku_a".into(), edge("PARENT_OF"))
-            .unwrap();
-        dag.add_edge_by_keys(&"brand".into(), &"sku_b".into(), edge("PARENT_OF"))
-            .unwrap();
-        dag.add_edge_by_keys(&"sku_a".into(), &"variant".into(), edge("HAS_VARIANT"))
-            .unwrap();
-
+    #[fixture]
+    fn subgraph(dag: MemoryDag<TestNode>) -> ExpandedSubgraph<String> {
         let expander = SubgraphExpander {
             decay_gamma: 0.70,
             max_hops: 2,
             include_siblings: true,
         };
+        expander.expand(&dag, &[("sku_a".to_string(), 1.0)])
+    }
 
-        let seed_candidates = vec![("sku_a".to_string(), 1.0)];
-        let subgraph = expander.expand(&dag, &seed_candidates);
+    #[rstest]
+    #[case::seed("sku_a", 0, Some(1.0), SeedRelationship::Seed)]
+    #[case::one_hop_ancestor("brand", 1, Some(0.70), SeedRelationship::Ancestor)]
+    #[case::two_hop_ancestor("dept", 2, Some(0.49), SeedRelationship::Ancestor)]
+    #[case::one_hop_descendant("variant", 1, Some(0.70), SeedRelationship::Descendant)]
+    #[case::one_hop_sibling("sku_b", 1, None, SeedRelationship::Sibling)]
+    fn expands_around_the_seed(
+        subgraph: ExpandedSubgraph<String>,
+        #[case] key: &str,
+        #[case] hops: usize,
+        #[case] weight: Option<f32>,
+        #[case] relationship: SeedRelationship,
+    ) {
+        let node = subgraph.nodes.get(key).unwrap();
+        assert_eq!(node.hop_distance, hops);
+        assert_eq!(node.relationship, relationship);
+        if let Some(expected) = weight {
+            assert!((node.weight - expected).abs() < 1e-4);
+        }
+    }
 
-        // 1. Seed
-        let seed_node = subgraph.nodes.get("sku_a").unwrap();
-        assert_eq!(seed_node.hop_distance, 0);
-        assert_eq!(seed_node.weight, 1.0);
-        assert_eq!(seed_node.relationship, SeedRelationship::Seed);
-
-        // 2. 1-hop Ancestor (brand)
-        let brand_node = subgraph.nodes.get("brand").unwrap();
-        assert_eq!(brand_node.hop_distance, 1);
-        assert!((brand_node.weight - 0.70).abs() < 1e-4);
-        assert_eq!(brand_node.relationship, SeedRelationship::Ancestor);
-
-        // 3. 2-hop Ancestor (dept)
-        let dept_node = subgraph.nodes.get("dept").unwrap();
-        assert_eq!(dept_node.hop_distance, 2);
-        assert!((dept_node.weight - 0.49).abs() < 1e-4);
-        assert_eq!(dept_node.relationship, SeedRelationship::Ancestor);
-
-        // 4. 1-hop Descendant (variant)
-        let var_node = subgraph.nodes.get("variant").unwrap();
-        assert_eq!(var_node.hop_distance, 1);
-        assert!((var_node.weight - 0.70).abs() < 1e-4);
-        assert_eq!(var_node.relationship, SeedRelationship::Descendant);
-
-        // 5. 1-hop Sibling (sku_b)
-        let sib_node = subgraph.nodes.get("sku_b").unwrap();
-        assert_eq!(sib_node.hop_distance, 1);
-        assert_eq!(sib_node.relationship, SeedRelationship::Sibling);
-
-        // 6. Edges captured
+    #[rstest]
+    fn captures_the_edges_between_visited_nodes(subgraph: ExpandedSubgraph<String>) {
         assert!(!subgraph.edges.is_empty());
+    }
+
+    #[rstest]
+    #[case::within_reach(1, 0.7)]
+    #[case::at_the_limit(2, 0.49)]
+    #[case::beyond_the_limit(3, 0.0)]
+    fn weights_decay_per_hop_and_vanish_past_the_limit(#[case] hops: usize, #[case] expected: f32) {
+        let expander = SubgraphExpander::new(0.7, 2, true);
+        assert!((expander.compute_weight(1.0, hops) - expected).abs() < 1e-4);
     }
 }

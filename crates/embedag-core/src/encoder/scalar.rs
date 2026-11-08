@@ -73,15 +73,12 @@ pub fn encode_log(val: f64, min: f64, max: f64) -> f64 {
         return 0.0;
     }
     let range = max - min;
-    if range.abs() < f64::EPSILON || range <= 0.0 {
+    if range < f64::EPSILON {
         return 0.0;
     }
     let delta = (val - min).max(0.0);
     let numerator = (1.0 + delta).ln();
     let denominator = (1.0 + range).ln();
-    if denominator.abs() < f64::EPSILON {
-        return 0.0;
-    }
     (numerator / denominator).clamp(0.0, 1.0)
 }
 
@@ -173,5 +170,24 @@ mod tests {
             std_dev: 1.0,
         };
         assert_eq!(sigmoid.transform(0.0), 0.5);
+    }
+
+    #[rstest::rstest]
+    #[case::nan_value(f64::NAN, 0.0, 10.0)]
+    #[case::nan_bound(1.0, f64::NAN, 10.0)]
+    #[case::empty_range(5.0, 3.0, 3.0)]
+    #[case::inverted_range(5.0, 10.0, 3.0)]
+    fn log_encoding_of_degenerate_input_is_zero(
+        #[case] val: f64,
+        #[case] min: f64,
+        #[case] max: f64,
+    ) {
+        assert_eq!(encode_log(val, min, max), 0.0);
+    }
+
+    #[test]
+    fn standard_score_of_nan_is_neutral() {
+        assert_eq!(encode_standard_score(f64::NAN, 0.0, 1.0), 0.5);
+        assert_eq!(encode_standard_score(1.0, f64::NAN, 1.0), 0.5);
     }
 }

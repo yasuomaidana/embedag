@@ -3,3 +3,8 @@
 graphify-out/
 # Per-machine Dendrite runtime state
 .dendrite/jobs/
+.dendrite/
+skills/system/
+
+# Written by the coverage job (cargo llvm-cov --lcov); never committed
+lcov.info

@@ -7,10 +7,12 @@ use std::sync::Arc;
 
 use embedag_core::dag::MemoryDag;
 use embedag_core::model::{EdgePayload, ProvenanceKind};
+use embedag_core::similarity::rank_by_cosine;
 use embedag_core::traits::NodePayload;
-use oxirs_core::model::{Object, Predicate, Quad, Subject};
+use oxirs_core::model::{NamedNode, Object, Predicate, Quad, Subject};
 use oxirs_core::rdf_store::{OxirsQueryResults, RdfStore, Store};
 use parking_lot::RwLock;
+use petgraph::graph::NodeIndex;
 use petgraph::visit::EdgeRef;
 use serde::{Serialize, de::DeserializeOwned};
 
@@ -194,64 +196,67 @@ impl OxiRsTdbEngine {
     ) -> Result<bool, OxiRsStorageError> {
         let parent_iri = make_node_iri(&self.config.base_iri, &parent.to_string())?;
         let child_iri = make_node_iri(&self.config.base_iri, &child.to_string())?;
+        let removed = self.remove_direct_edges(&parent_iri, &child_iri, relationship)?;
+        self.remove_reified_edges(parent_iri, &child_iri, relationship)?;
+        Ok(removed)
+    }
 
-        let pred = if let Some(rel) = relationship {
-            Some(Predicate::NamedNode(self.vocab.custom_relation(rel)?))
-        } else {
-            None
-        };
-
-        let quads = self.find_quads(
-            Some(&Subject::NamedNode(parent_iri.clone())),
-            pred.as_ref(),
-            Some(&Object::NamedNode(child_iri.clone())),
-        )?;
-
+    /// Removes the `parent --relationship--> child` triples; true when any existed.
+    fn remove_direct_edges(
+        &self,
+        parent_iri: &NamedNode,
+        child_iri: &NamedNode,
+        relationship: Option<&str>,
+    ) -> Result<bool, OxiRsStorageError> {
+        let pred = relationship
+            .map(|rel| self.vocab.custom_relation(rel).map(Predicate::NamedNode))
+            .transpose()?;
+        let (parent, child) = (parent_iri.clone(), child_iri.clone());
+        let quads = self.find_quads(Some(&parent.into()), pred.as_ref(), Some(&child.into()))?;
         let mut removed = false;
         for q in &quads {
-            if self.remove_quad(q)? {
-                removed = true;
-            }
+            removed |= self.remove_quad(q)?;
         }
+        Ok(removed)
+    }
 
-        // Also clean up reified edge entities
-        let edge_quads = self.find_quads(
-            None,
-            Some(&Predicate::NamedNode(self.vocab.parent_rel.clone())),
-            Some(&Object::NamedNode(parent_iri)),
-        )?;
-
+    /// Cleans up the reified edge entities that connect `parent_iri` to `child_iri`.
+    fn remove_reified_edges(
+        &self,
+        parent_iri: NamedNode,
+        child_iri: &NamedNode,
+        relationship: Option<&str>,
+    ) -> Result<(), OxiRsStorageError> {
+        let parent_rel = Predicate::NamedNode(self.vocab.parent_rel.clone());
+        let edge_quads = self.find_quads(None, Some(&parent_rel), Some(&parent_iri.into()))?;
         for eq in edge_quads {
             let edge_subj = eq.subject();
-            // Check if child matches
-            let child_matches = self.find_quads(
-                Some(edge_subj),
-                Some(&Predicate::NamedNode(self.vocab.child_rel.clone())),
-                Some(&Object::NamedNode(child_iri.clone())),
-            )?;
-
-            if !child_matches.is_empty() {
-                // If relationship filter is specified, check relationship
-                if let Some(rel) = relationship {
-                    let rel_matches = self.find_quads(
-                        Some(edge_subj),
-                        Some(&Predicate::NamedNode(self.vocab.relationship.clone())),
-                        Some(&Object::Literal(oxirs_core::model::Literal::new(rel))),
-                    )?;
-                    if rel_matches.is_empty() {
-                        continue;
-                    }
-                }
-
-                // Delete all triples belonging to this edge subject
-                let all_edge_triples = self.find_quads(Some(edge_subj), None, None)?;
-                for t in &all_edge_triples {
+            if self.reified_edge_matches(edge_subj, child_iri, relationship)? {
+                for t in &self.find_quads(Some(edge_subj), None, None)? {
                     self.remove_quad(t)?;
                 }
             }
         }
+        Ok(())
+    }
 
-        Ok(removed)
+    /// Whether the edge entity points at `child_iri` and, when given, carries `relationship`.
+    fn reified_edge_matches(
+        &self,
+        edge_subj: &Subject,
+        child_iri: &NamedNode,
+        relationship: Option<&str>,
+    ) -> Result<bool, OxiRsStorageError> {
+        let child_rel = Predicate::NamedNode(self.vocab.child_rel.clone());
+        let child = Object::NamedNode(child_iri.clone());
+        let child_matches = self.find_quads(Some(edge_subj), Some(&child_rel), Some(&child))?;
+        let Some(rel) = relationship.filter(|_| !child_matches.is_empty()) else {
+            return Ok(!child_matches.is_empty());
+        };
+        let rel_pred = Predicate::NamedNode(self.vocab.relationship.clone());
+        let rel_literal = Object::Literal(oxirs_core::model::Literal::new(rel));
+        let rel_matches = self.find_quads(Some(edge_subj), Some(&rel_pred), Some(&rel_literal))?;
+        Ok(!rel_matches.is_empty())
     }
 
     /// Fetches a node by its business key.
@@ -329,34 +334,7 @@ impl OxiRsTdbEngine {
         query: &[f32],
         limit: usize,
     ) -> Result<Vec<(T, f32)>, OxiRsStorageError> {
-        let index = self.vector_index.read();
-        let mut scored: Vec<(String, f32)> = Vec::with_capacity(index.len());
-
-        let q_norm = query.iter().map(|v| v * v).sum::<f32>().sqrt();
-        if q_norm == 0.0 {
-            return Ok(Vec::new());
-        }
-
-        for (key, vec) in index.iter() {
-            if vec.len() != query.len() {
-                continue;
-            }
-            let dot = query
-                .iter()
-                .zip(vec.iter())
-                .map(|(a, b)| a * b)
-                .sum::<f32>();
-            let v_norm = vec.iter().map(|v| v * v).sum::<f32>().sqrt();
-            let score = if v_norm > 0.0 {
-                dot / (q_norm * v_norm)
-            } else {
-                0.0
-            };
-            scored.push((key.clone(), score));
-        }
-
-        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        scored.truncate(limit);
+        let scored = rank_by_cosine(&self.vector_index.read(), query, limit);
 
         let mut results = Vec::with_capacity(scored.len());
         for (key_str, score) in scored {
@@ -380,11 +358,8 @@ impl OxiRsTdbEngine {
         let mut all_quads = Vec::new();
 
         // 1. Export all nodes
-        for idx in inner.node_indices() {
-            if let Some(payload) = inner.node_weight(idx) {
-                let quads = node_to_quads(&self.config, &self.vocab, payload)?;
-                all_quads.extend(quads);
-            }
+        for payload in inner.node_weights() {
+            all_quads.extend(node_to_quads(&self.config, &self.vocab, payload)?);
         }
 
         // 2. Export all directed edges
@@ -406,14 +381,19 @@ impl OxiRsTdbEngine {
         &self,
     ) -> Result<MemoryDag<T>, OxiRsStorageError> {
         let mut dag = MemoryDag::new();
+        let node_keys = self.load_nodes(&mut dag)?;
+        self.load_edges(&node_keys, &mut dag)?;
+        dag.validate_acyclic()?;
+        Ok(dag)
+    }
 
-        // 1. Query all nodes having embedag:payload
-        let node_quads = self.find_quads(
-            None,
-            Some(&Predicate::NamedNode(self.vocab.payload.clone())),
-            None,
-        )?;
-
+    /// Loads every node that has an `embedag:payload` and returns its index by business key.
+    fn load_nodes<T: NodePayload + DeserializeOwned>(
+        &self,
+        dag: &mut MemoryDag<T>,
+    ) -> Result<HashMap<String, NodeIndex>, OxiRsStorageError> {
+        let payload_pred = Predicate::NamedNode(self.vocab.payload.clone());
+        let node_quads = self.find_quads(None, Some(&payload_pred), None)?;
         let mut node_keys = HashMap::new();
         for q in node_quads {
             if let Subject::NamedNode(_subj) = q.subject()
@@ -421,73 +401,82 @@ impl OxiRsTdbEngine {
             {
                 let node: T = serde_json::from_str(lit.value())?;
                 let key_str = node.key().to_string();
-                let idx = dag.upsert_node(node);
-                node_keys.insert(key_str, idx);
+                node_keys.insert(key_str, dag.upsert_node(node));
             }
         }
-
-        // 2. Query all reified edges (type embedag:Edge)
-        let edge_quads = self.find_quads(
-            None,
-            Some(&Predicate::NamedNode(self.vocab.rdf_type.clone())),
-            Some(&Object::NamedNode(self.vocab.edge_type.clone())),
-        )?;
-
-        for eq in edge_quads {
-            let edge_subj = eq.subject();
-
-            // Fetch parent IRI, child IRI, relationship, confidence, provenance
-            let parent_quads = self.find_quads(
-                Some(edge_subj),
-                Some(&Predicate::NamedNode(self.vocab.parent_rel.clone())),
-                None,
-            )?;
-            let child_quads = self.find_quads(
-                Some(edge_subj),
-                Some(&Predicate::NamedNode(self.vocab.child_rel.clone())),
-                None,
-            )?;
-            let rel_quads = self.find_quads(
-                Some(edge_subj),
-                Some(&Predicate::NamedNode(self.vocab.relationship.clone())),
-                None,
-            )?;
-            let conf_quads = self.find_quads(
-                Some(edge_subj),
-                Some(&Predicate::NamedNode(self.vocab.confidence.clone())),
-                None,
-            )?;
-
-            if let (Some(pq), Some(cq), Some(rq), Some(cfq)) = (
-                parent_quads.first(),
-                child_quads.first(),
-                rel_quads.first(),
-                conf_quads.first(),
-            ) && let (Object::NamedNode(p_node), Object::NamedNode(c_node)) =
-                (pq.object(), cq.object())
-            {
-                let p_key = extract_key_from_iri(p_node.as_str());
-                let c_key = extract_key_from_iri(c_node.as_str());
-                let rel = rq.object().to_string().replace('"', "");
-                let conf: f32 = cfq
-                    .object()
-                    .to_string()
-                    .replace('"', "")
-                    .parse()
-                    .unwrap_or(1.0);
-
-                if let (Some(&p_idx), Some(&c_idx)) = (node_keys.get(&p_key), node_keys.get(&c_key))
-                {
-                    let payload = EdgePayload::new(rel, conf, ProvenanceKind::DeterministicRule)?;
-                    dag.add_edge(p_idx, c_idx, payload);
-                }
-            }
-        }
-
-        // Validate acyclic invariants
-        dag.validate_acyclic()?;
-        Ok(dag)
+        Ok(node_keys)
     }
+
+    /// Loads the reified edges whose endpoints were loaded as nodes.
+    fn load_edges<T: NodePayload>(
+        &self,
+        node_keys: &HashMap<String, NodeIndex>,
+        dag: &mut MemoryDag<T>,
+    ) -> Result<(), OxiRsStorageError> {
+        let rdf_type = Predicate::NamedNode(self.vocab.rdf_type.clone());
+        let edge_type = Object::NamedNode(self.vocab.edge_type.clone());
+        let edge_quads = self.find_quads(None, Some(&rdf_type), Some(&edge_type))?;
+        for eq in edge_quads {
+            let Some(edge) = self.read_reified_edge(eq.subject())? else {
+                continue;
+            };
+            if let (Some(&p_idx), Some(&c_idx)) =
+                (node_keys.get(&edge.parent), node_keys.get(&edge.child))
+            {
+                let provenance = ProvenanceKind::DeterministicRule;
+                let payload = EdgePayload::new(edge.relationship, edge.confidence, provenance)?;
+                dag.add_edge(p_idx, c_idx, payload);
+            }
+        }
+        Ok(())
+    }
+
+    /// The first object of `edge_subj` under `predicate`.
+    fn first_object(
+        &self,
+        edge_subj: &Subject,
+        predicate: &NamedNode,
+    ) -> Result<Option<Object>, OxiRsStorageError> {
+        let predicate = Predicate::NamedNode(predicate.clone());
+        let quads = self.find_quads(Some(edge_subj), Some(&predicate), None)?;
+        Ok(quads.first().map(|q| q.object().clone()))
+    }
+
+    /// Reads parent, child, relationship and confidence of one reified edge entity.
+    fn read_reified_edge(
+        &self,
+        edge_subj: &Subject,
+    ) -> Result<Option<ReifiedEdge>, OxiRsStorageError> {
+        let vocab = &self.vocab;
+        let parent = self.first_object(edge_subj, &vocab.parent_rel)?;
+        let child = self.first_object(edge_subj, &vocab.child_rel)?;
+        let relationship = self.first_object(edge_subj, &vocab.relationship)?;
+        let confidence = self.first_object(edge_subj, &vocab.confidence)?;
+        let (Some(Object::NamedNode(p)), Some(Object::NamedNode(c))) = (parent, child) else {
+            return Ok(None);
+        };
+        let (Some(relationship), Some(confidence)) = (relationship, confidence) else {
+            return Ok(None);
+        };
+        Ok(Some(ReifiedEdge {
+            parent: extract_key_from_iri(p.as_str()),
+            child: extract_key_from_iri(c.as_str()),
+            relationship: relationship.to_string().replace('"', ""),
+            confidence: confidence
+                .to_string()
+                .replace('"', "")
+                .parse()
+                .unwrap_or(1.0),
+        }))
+    }
+}
+
+/// The parts of a reified edge entity that `load_dag` needs.
+struct ReifiedEdge {
+    parent: String,
+    child: String,
+    relationship: String,
+    confidence: f32,
 }
 
 fn extract_key_from_iri(iri: &str) -> String {
@@ -497,5 +486,19 @@ fn extract_key_from_iri(iri: &str) -> String {
         iri[idx + 1..].to_string()
     } else {
         iri.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_key_from_iri;
+    use rstest::rstest;
+
+    #[rstest]
+    #[case::slash("https://example.org/node/KEY", "KEY")]
+    #[case::colon("urn:embedag:node:KEY", "KEY")]
+    #[case::neither("KEY", "KEY")]
+    fn key_is_the_last_segment_of_the_iri(#[case] iri: &str, #[case] expected: &str) {
+        assert_eq!(extract_key_from_iri(iri), expected);
     }
 }

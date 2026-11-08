@@ -1,7 +1,19 @@
 use embedag_diesel::ops::{ConflictStrategy, UpsertDescriptor, UpsertProcessor};
+use rstest::rstest;
 
-#[test]
-fn test_upsert_descriptor_sqlite_generation() {
+#[rstest]
+#[case::sqlite(
+    UpsertDescriptor::build_sqlite_sql,
+    "INSERT INTO custom_catalog (id, sku, title, price) VALUES (?, ?, ?, ?) ON CONFLICT (sku) DO UPDATE SET title = excluded.title, price = excluded.price;"
+)]
+#[case::postgres(
+    UpsertDescriptor::build_postgres_sql,
+    "INSERT INTO custom_catalog (id, sku, title, price) VALUES ($1, $2, $3, $4) ON CONFLICT (sku) DO UPDATE SET title = EXCLUDED.title, price = EXCLUDED.price;"
+)]
+fn test_upsert_descriptor_generation(
+    #[case] build: fn(&UpsertDescriptor) -> String,
+    #[case] expected: &str,
+) {
     let descriptor = UpsertDescriptor::new(
         "custom_catalog",
         vec!["id", "sku", "title", "price"],
@@ -11,29 +23,7 @@ fn test_upsert_descriptor_sqlite_generation() {
         },
     );
 
-    let sql = descriptor.build_sqlite_sql();
-    assert_eq!(
-        sql,
-        "INSERT INTO custom_catalog (id, sku, title, price) VALUES (?, ?, ?, ?) ON CONFLICT (sku) DO UPDATE SET title = excluded.title, price = excluded.price;"
-    );
-}
-
-#[test]
-fn test_upsert_descriptor_postgres_generation() {
-    let descriptor = UpsertDescriptor::new(
-        "custom_catalog",
-        vec!["id", "sku", "title", "price"],
-        vec!["sku"],
-        ConflictStrategy::DoUpdate {
-            columns: vec!["title".into(), "price".into()],
-        },
-    );
-
-    let sql = descriptor.build_postgres_sql();
-    assert_eq!(
-        sql,
-        "INSERT INTO custom_catalog (id, sku, title, price) VALUES ($1, $2, $3, $4) ON CONFLICT (sku) DO UPDATE SET title = EXCLUDED.title, price = EXCLUDED.price;"
-    );
+    assert_eq!(build(&descriptor), expected);
 }
 
 #[test]

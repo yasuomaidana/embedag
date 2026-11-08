@@ -72,7 +72,7 @@ impl OxiRagEngine {
             .with_speculator(speculator)
             .with_judge(judge)
             .build()
-            .map_err(|e| RagError::IndexError(format!("Failed to build OxiRAG pipeline: {e:?}")))?;
+            .expect("the echo, speculator and judge layers are all configured");
 
         for &chunk in corpus {
             pipeline
@@ -139,5 +139,87 @@ mod tests {
             .expect("verified query succeeds");
 
         assert!(!result.is_empty());
+    }
+
+    use crate::expansion::{ExpandedEdge, ExpandedNode, SeedRelationship};
+    use embedag_core::model::ProvenanceKind;
+    use rstest::rstest;
+    use std::collections::HashMap;
+
+    #[test]
+    fn the_engine_reports_its_dimensions_and_defaults_to_minilm() {
+        assert_eq!(OxiRagEngine::default().embedding_dim(), 384);
+        assert_eq!(OxiRagEngine::new(8).embedding_dim(), 8);
+    }
+
+    #[rstest]
+    #[case::empty_chunk(&[""], "anything", "Failed to index")]
+    #[case::empty_query(&["some text"], "", "query failed")]
+    #[tokio::test]
+    async fn empty_chunks_and_queries_are_rejected(
+        #[case] corpus: &[&str],
+        #[case] query: &str,
+        #[case] message: &str,
+    ) {
+        let err = OxiRagEngine::new(8)
+            .query_verified(corpus, query)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, RagError::IndexError(ref m) if m.contains(message)));
+    }
+
+    #[test]
+    fn errors_describe_themselves() {
+        let cases = [
+            (
+                RagError::IndexError("a".into()),
+                "indexing or query error: a",
+            ),
+            (
+                RagError::VerificationFailure("b".into()),
+                "Verification failed: b",
+            ),
+            (
+                RagError::TopologyError("c".into()),
+                "Graph topology error: c",
+            ),
+        ];
+        for (error, expected) in cases {
+            assert!(error.to_string().contains(expected), "{error}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_subgraph_is_verbalized_and_queried() {
+        let node = |key: &str, hops, relationship| {
+            (
+                key.to_string(),
+                ExpandedNode {
+                    key: key.to_string(),
+                    hop_distance: hops,
+                    weight: 1.0,
+                    relationship,
+                },
+            )
+        };
+        let subgraph = ExpandedSubgraph {
+            seeds: vec!["sku".to_string()],
+            nodes: HashMap::from([
+                node("sku", 0, SeedRelationship::Seed),
+                node("brand", 1, SeedRelationship::Ancestor),
+            ]),
+            edges: vec![ExpandedEdge {
+                parent_key: "brand".to_string(),
+                child_key: "sku".to_string(),
+                relationship: "PARENT_OF".to_string(),
+                confidence: 0.9,
+                provenance: ProvenanceKind::DeterministicRule,
+            }],
+        };
+        let answer = OxiRagEngine::new(32)
+            .query_graph_verified(&subgraph, "Which brand owns the sku?")
+            .await
+            .unwrap();
+        assert!(!answer.is_empty());
     }
 }

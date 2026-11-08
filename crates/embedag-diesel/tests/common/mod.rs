@@ -1,3 +1,6 @@
+//! Helpers shared by the integration tests; each test binary uses only some of them.
+#![allow(dead_code)]
+
 /// Shared test fixture schema for graph operations tests.
 pub async fn setup_graph_test_schema(client: &tokio_postgres::Client) {
     client
@@ -26,4 +29,46 @@ pub async fn setup_graph_test_schema(client: &tokio_postgres::Client) {
         )
         .await
         .expect("setup graph test schema");
+}
+
+use embedag_diesel::cte::{HierarchicalModel, HierarchyItem};
+use embedag_diesel::ops::{MutationDirectiveRecord, NodeUpsertRecord};
+use uuid::Uuid;
+
+/// A model over the table `dept(id, parent_id, name)`.
+pub struct Dept;
+
+impl HierarchicalModel for Dept {
+    fn table_name() -> &'static str {
+        "dept"
+    }
+    fn id_column() -> &'static str {
+        "id"
+    }
+    fn parent_column() -> &'static str {
+        "parent_id"
+    }
+    fn name_column() -> &'static str {
+        "name"
+    }
+}
+
+/// The names of the items, in order.
+pub fn names(items: &[HierarchyItem]) -> Vec<&str> {
+    items.iter().map(|i| i.name.as_str()).collect()
+}
+
+/// Two inserted nodes and the directive that attaches the second under the first.
+pub fn attach_directives(parent: Uuid, child: Uuid) -> [MutationDirectiveRecord; 3] {
+    [
+        MutationDirectiveRecord::InsertNode(NodeUpsertRecord::new(parent, "p", "dept", "P")),
+        MutationDirectiveRecord::InsertNode(NodeUpsertRecord::new(child, "c", "sku", "C")),
+        MutationDirectiveRecord::AttachParent {
+            parent_id: parent,
+            child_id: child,
+            relationship_type: "PARENT_OF".into(),
+            confidence: 1.0,
+            provenance: "test".into(),
+        },
+    ]
 }

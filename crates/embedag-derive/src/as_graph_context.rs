@@ -19,70 +19,96 @@ struct ParsedFields {
     tokens_field: Option<Ident>,
 }
 
+/// Records `field` in `slot`, which only one field may fill through `#[graph(attr)]`.
+fn set_once(
+    slot: &mut Option<Ident>,
+    field: &Ident,
+    meta: &syn::meta::ParseNestedMeta,
+    attr: &str,
+) -> syn::Result<()> {
+    if slot.is_some() {
+        return Err(syn::Error::new(
+            meta.path.span(),
+            format!("Only one field may be annotated with #[graph({attr})]"),
+        ));
+    }
+    *slot = Some(field.clone());
+    Ok(())
+}
+
+/// `field` with its name: the `= "name"` of the attribute, else the field's own name.
+fn named(meta: &syn::meta::ParseNestedMeta, field: &Ident) -> syn::Result<(Ident, String)> {
+    let mut custom_name = None;
+    if meta.input.peek(syn::Token![=]) {
+        let lit: syn::LitStr = meta.value()?.parse()?;
+        custom_name = Some(lit.value());
+    }
+    Ok((
+        field.clone(),
+        custom_name.unwrap_or_else(|| field.to_string()),
+    ))
+}
+
 fn parse_single_attr(
     meta: &syn::meta::ParseNestedMeta,
     field_ident: &Ident,
     parsed: &mut ParsedFields,
 ) -> syn::Result<()> {
-    if meta.path.is_ident("key") {
-        if parsed.key_field.is_some() {
-            return Err(syn::Error::new(
+    let name = meta
+        .path
+        .get_ident()
+        .map(|i| i.to_string())
+        .unwrap_or_default();
+    parse_single_valued(&name, meta, field_ident, parsed)
+        .or_else(|| parse_multi_valued(&name, meta, field_ident, parsed))
+        .unwrap_or_else(|| {
+            Err(syn::Error::new(
                 meta.path.span(),
-                "Only one field may be annotated with #[graph(key)]",
-            ));
+                format!("unrecognized #[graph(...)] attribute: `{name}`"),
+            ))
+        })
+}
+
+/// The attributes that may appear once per struct: `key`, `time` and `geo`.
+fn parse_single_valued(
+    name: &str,
+    meta: &syn::meta::ParseNestedMeta,
+    field_ident: &Ident,
+    parsed: &mut ParsedFields,
+) -> Option<syn::Result<()>> {
+    let (slot, label) = match name {
+        "key" => (&mut parsed.key_field, "key"),
+        "time" | "temporal" => (&mut parsed.time_field, "time"),
+        "geo" | "geospatial" => (&mut parsed.geo_field, "geo"),
+        _ => return None,
+    };
+    Some(set_once(slot, field_ident, meta, label))
+}
+
+/// The attributes that collect fields: `text`, `scalar`, `tag`, `blob` and `tokens`.
+fn parse_multi_valued(
+    name: &str,
+    meta: &syn::meta::ParseNestedMeta,
+    field_ident: &Ident,
+    parsed: &mut ParsedFields,
+) -> Option<syn::Result<()>> {
+    Some(match name {
+        "text" => {
+            parsed.text_fields.push(field_ident.clone());
+            Ok(())
         }
-        parsed.key_field = Some(field_ident.clone());
-    } else if meta.path.is_ident("text") {
-        parsed.text_fields.push(field_ident.clone());
-    } else if meta.path.is_ident("scalar") {
-        let mut custom_name = None;
-        if meta.input.peek(syn::Token![=]) {
-            let lit: syn::LitStr = meta.value()?.parse()?;
-            custom_name = Some(lit.value());
+        "scalar" => named(meta, field_ident).map(|n| parsed.scalar_fields.push(n)),
+        "tag" => named(meta, field_ident).map(|n| parsed.tag_fields.push(n)),
+        "blob" | "blobs" => {
+            parsed.blob_fields.push(field_ident.clone());
+            Ok(())
         }
-        let name = custom_name.unwrap_or_else(|| field_ident.to_string());
-        parsed.scalar_fields.push((field_ident.clone(), name));
-    } else if meta.path.is_ident("time") || meta.path.is_ident("temporal") {
-        if parsed.time_field.is_some() {
-            return Err(syn::Error::new(
-                meta.path.span(),
-                "Only one field may be annotated with #[graph(time)]",
-            ));
+        "tokens" | "sparse" => {
+            parsed.tokens_field = Some(field_ident.clone());
+            Ok(())
         }
-        parsed.time_field = Some(field_ident.clone());
-    } else if meta.path.is_ident("geo") || meta.path.is_ident("geospatial") {
-        if parsed.geo_field.is_some() {
-            return Err(syn::Error::new(
-                meta.path.span(),
-                "Only one field may be annotated with #[graph(geo)]",
-            ));
-        }
-        parsed.geo_field = Some(field_ident.clone());
-    } else if meta.path.is_ident("tag") {
-        let mut custom_name = None;
-        if meta.input.peek(syn::Token![=]) {
-            let lit: syn::LitStr = meta.value()?.parse()?;
-            custom_name = Some(lit.value());
-        }
-        let name = custom_name.unwrap_or_else(|| field_ident.to_string());
-        parsed.tag_fields.push((field_ident.clone(), name));
-    } else if meta.path.is_ident("blob") || meta.path.is_ident("blobs") {
-        parsed.blob_fields.push(field_ident.clone());
-    } else if meta.path.is_ident("tokens") || meta.path.is_ident("sparse") {
-        parsed.tokens_field = Some(field_ident.clone());
-    } else {
-        return Err(syn::Error::new(
-            meta.path.span(),
-            format!(
-                "unrecognized #[graph(...)] attribute: `{}`",
-                meta.path
-                    .get_ident()
-                    .map(|i| i.to_string())
-                    .unwrap_or_default()
-            ),
-        ));
-    }
-    Ok(())
+        _ => return None,
+    })
 }
 
 fn parse_field(field: &Field, parsed: &mut ParsedFields) -> syn::Result<()> {
@@ -202,4 +228,76 @@ pub fn derive_as_graph_context_impl(input: DeriveInput) -> syn::Result<TokenStre
             fn multimodal_blobs(&self) -> ::std::vec::Vec<#core_crate::model::MultimodalBlob> { #blob_impl }
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+    use syn::parse_quote;
+
+    fn expand(input: DeriveInput) -> syn::Result<String> {
+        derive_as_graph_context_impl(input).map(|tokens| tokens.to_string())
+    }
+
+    #[test]
+    fn a_fully_annotated_struct_maps_every_modality() {
+        let out = expand(parse_quote! {
+            struct Record {
+                #[graph(key)] id: String,
+                #[graph(text)] title: String,
+                #[graph(text)] body: String,
+                #[graph(scalar)] weight: f64,
+                #[graph(scalar = "price_eur")] price: f64,
+                #[graph(time)] at: DateTime<Utc>,
+                #[graph(geo)] position: (f64, f64),
+                #[graph(tag)] brand: String,
+                #[graph(tag = "maker")] vendor: String,
+                #[graph(blob)] image: MultimodalBlob,
+                #[graph(tokens)] tokens: Vec<(u32, f32)>,
+                #[allow(dead_code)] ignored: u8,
+            }
+        })
+        .unwrap();
+        for part in [
+            "\"price_eur\"",
+            "\"maker\"",
+            "Some (self . at)",
+            "join",
+            "self . tokens . clone",
+        ] {
+            assert!(out.contains(part), "{part} missing from {out}");
+        }
+    }
+
+    #[rstest]
+    #[case::temporal_alias(parse_quote!(struct R { #[graph(key)] k: String, #[graph(text)] t: String, #[graph(temporal)] at: u8 }))]
+    #[case::geospatial_alias(parse_quote!(struct R { #[graph(key)] k: String, #[graph(text)] t: String, #[graph(geospatial)] g: u8 }))]
+    #[case::blobs_alias(parse_quote!(struct R { #[graph(key)] k: String, #[graph(text)] t: String, #[graph(blobs)] b: u8 }))]
+    #[case::sparse_alias(parse_quote!(struct R { #[graph(key)] k: String, #[graph(text)] t: String, #[graph(sparse)] s: u8 }))]
+    fn attribute_aliases_are_accepted(#[case] input: DeriveInput) {
+        assert!(expand(input).is_ok());
+    }
+
+    #[rstest]
+    #[case::two_keys(
+        parse_quote!(struct R { #[graph(key)] a: String, #[graph(key)] b: String, #[graph(text)] t: String }),
+        "Only one field"
+    )]
+    #[case::two_times(
+        parse_quote!(struct R { #[graph(key)] k: String, #[graph(text)] t: String, #[graph(time)] a: u8, #[graph(time)] b: u8 }),
+        "Only one field"
+    )]
+    #[case::unknown_attribute(
+        parse_quote!(struct R { #[graph(key)] k: String, #[graph(text)] t: String, #[graph(bogus)] x: u8 }),
+        "unrecognized #[graph(...)] attribute: `bogus`"
+    )]
+    #[case::no_key(parse_quote!(struct R { #[graph(text)] t: String }), "exactly one #[graph(key)]")]
+    #[case::no_text(parse_quote!(struct R { #[graph(key)] k: String }), "at least one #[graph(text)]")]
+    #[case::enum_input(parse_quote!(enum E { A }), "only supports structs")]
+    #[case::tuple_struct(parse_quote!(struct R(String);), "requires named fields")]
+    fn invalid_inputs_are_errors(#[case] input: DeriveInput, #[case] message: &str) {
+        let err = expand(input).unwrap_err().to_string();
+        assert!(err.contains(message), "{err}");
+    }
 }

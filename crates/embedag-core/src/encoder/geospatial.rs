@@ -170,4 +170,45 @@ mod tests {
         let err = h3_distance(0, 1).unwrap_err();
         assert!(matches!(err, EncodingError::InvalidCellIndex(_)));
     }
+
+    #[test]
+    fn the_encoder_wraps_the_free_functions() {
+        let paris = GeospatialEncoder::encode(2.3522, 48.8566, 8).unwrap();
+        let nearby = GeospatialEncoder::encode(2.3550, 48.8566, 8).unwrap();
+        assert!(GeospatialEncoder::grid_distance(paris, nearby).unwrap() <= 2);
+        let normalized = GeospatialEncoder::normalized_distance(paris, nearby, 10).unwrap();
+        assert!((0.0..=1.0).contains(&normalized));
+    }
+
+    #[test]
+    fn distances_reject_invalid_and_incomparable_cells() {
+        let cell = h3_encode(2.3522, 48.8566, 8).unwrap();
+        assert!(matches!(
+            h3_distance(0, cell),
+            Err(EncodingError::InvalidCellIndex(0))
+        ));
+        assert!(matches!(
+            h3_distance(cell, 0),
+            Err(EncodingError::InvalidCellIndex(0))
+        ));
+        // Cells of different resolutions cannot be compared.
+        let coarse = h3_encode(2.3522, 48.8566, 3).unwrap();
+        assert!(matches!(
+            h3_distance(cell, coarse),
+            Err(EncodingError::GridDistanceUndefined { .. })
+        ));
+    }
+
+    #[rstest::rstest]
+    #[case::same_cell_without_rings(true, 0.0)]
+    #[case::other_cell_without_rings(false, 1.0)]
+    fn zero_rings_make_distance_all_or_nothing(#[case] same: bool, #[case] expected: f64) {
+        let cell = h3_encode(2.3522, 48.8566, 8).unwrap();
+        let other = if same {
+            cell
+        } else {
+            h3_encode(2.4522, 48.8566, 8).unwrap()
+        };
+        assert_eq!(h3_normalized_distance(cell, other, 0).unwrap(), expected);
+    }
 }

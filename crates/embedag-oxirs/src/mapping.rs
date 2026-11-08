@@ -28,6 +28,35 @@ pub struct SchemaVocab {
     pub schema_ns: String,
 }
 
+const RDF_TYPE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+const RDFS_LABEL: &str = "http://www.w3.org/2000/01/rdf-schema#label";
+
+/// Local names of the vocabulary terms that live in the schema namespace, in field order.
+const NAMESPACED_TERMS: [&str; 10] = [
+    "businessKey",
+    "entityLevel",
+    "attributes",
+    "payload",
+    "Edge",
+    "parent",
+    "child",
+    "relationship",
+    "confidence",
+    "provenance",
+];
+
+fn named_node(label: &str, iri: &str) -> Result<NamedNode, OxiRsStorageError> {
+    NamedNode::new(iri).map_err(|e| OxiRsStorageError::InvalidIri(label.into(), e.to_string()))
+}
+
+fn namespaced_nodes(ns: &str) -> Result<[NamedNode; 10], OxiRsStorageError> {
+    let nodes = NAMESPACED_TERMS
+        .iter()
+        .map(|term| named_node(term, &format!("{ns}{term}")))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(nodes.try_into().expect("one node per namespaced term"))
+}
+
 impl SchemaVocab {
     /// Creates a new schema vocabulary configured with the target schema namespace.
     pub fn new(schema_ns: &str) -> Result<Self, OxiRsStorageError> {
@@ -36,32 +65,32 @@ impl SchemaVocab {
         } else {
             format!("{schema_ns}#")
         };
+        let [
+            business_key,
+            entity_level,
+            attributes,
+            payload,
+            edge_type,
+            parent_rel,
+            child_rel,
+            relationship,
+            confidence,
+            provenance,
+        ] = namespaced_nodes(&ns)?;
 
         Ok(Self {
-            rdf_type: NamedNode::new("http://www.w3.org/1999/02/22-rdf-syntax-ns#type")
-                .map_err(|e| OxiRsStorageError::InvalidIri("rdf:type".into(), e.to_string()))?,
-            rdfs_label: NamedNode::new("http://www.w3.org/2000/01/rdf-schema#label")
-                .map_err(|e| OxiRsStorageError::InvalidIri("rdfs:label".into(), e.to_string()))?,
-            business_key: NamedNode::new(format!("{ns}businessKey"))
-                .map_err(|e| OxiRsStorageError::InvalidIri("businessKey".into(), e.to_string()))?,
-            entity_level: NamedNode::new(format!("{ns}entityLevel"))
-                .map_err(|e| OxiRsStorageError::InvalidIri("entityLevel".into(), e.to_string()))?,
-            attributes: NamedNode::new(format!("{ns}attributes"))
-                .map_err(|e| OxiRsStorageError::InvalidIri("attributes".into(), e.to_string()))?,
-            payload: NamedNode::new(format!("{ns}payload"))
-                .map_err(|e| OxiRsStorageError::InvalidIri("payload".into(), e.to_string()))?,
-            edge_type: NamedNode::new(format!("{ns}Edge"))
-                .map_err(|e| OxiRsStorageError::InvalidIri("Edge".into(), e.to_string()))?,
-            parent_rel: NamedNode::new(format!("{ns}parent"))
-                .map_err(|e| OxiRsStorageError::InvalidIri("parent".into(), e.to_string()))?,
-            child_rel: NamedNode::new(format!("{ns}child"))
-                .map_err(|e| OxiRsStorageError::InvalidIri("child".into(), e.to_string()))?,
-            relationship: NamedNode::new(format!("{ns}relationship"))
-                .map_err(|e| OxiRsStorageError::InvalidIri("relationship".into(), e.to_string()))?,
-            confidence: NamedNode::new(format!("{ns}confidence"))
-                .map_err(|e| OxiRsStorageError::InvalidIri("confidence".into(), e.to_string()))?,
-            provenance: NamedNode::new(format!("{ns}provenance"))
-                .map_err(|e| OxiRsStorageError::InvalidIri("provenance".into(), e.to_string()))?,
+            rdf_type: named_node("rdf:type", RDF_TYPE)?,
+            rdfs_label: named_node("rdfs:label", RDFS_LABEL)?,
+            business_key,
+            entity_level,
+            attributes,
+            payload,
+            edge_type,
+            parent_rel,
+            child_rel,
+            relationship,
+            confidence,
+            provenance,
             schema_ns: ns,
         })
     }
@@ -113,6 +142,21 @@ pub fn make_graph_name(config: &OxiRsTdbConfig) -> Result<GraphName, OxiRsStorag
     }
 }
 
+/// A quad stating `subject predicate "text"` in `graph`.
+fn literal_quad(
+    subject: &Subject,
+    predicate: &NamedNode,
+    text: impl Into<String>,
+    graph: &GraphName,
+) -> Quad {
+    Quad::new(
+        subject.clone(),
+        Predicate::NamedNode(predicate.clone()),
+        Object::Literal(Literal::new(text)),
+        graph.clone(),
+    )
+}
+
 /// Converts a domain node `T: NodePayload` into a set of RDF quads for OxiRS storage.
 pub fn node_to_quads<T: NodePayload + Serialize>(
     config: &OxiRsTdbConfig,
@@ -140,45 +184,40 @@ pub fn node_to_quads<T: NodePayload + Serialize>(
     ));
 
     // 2. rdfs:label Literal
-    quads.push(Quad::new(
-        subject.clone(),
-        Predicate::NamedNode(vocab.rdfs_label.clone()),
-        Object::Literal(Literal::new(node.name())),
-        graph.clone(),
+    quads.push(literal_quad(
+        &subject,
+        &vocab.rdfs_label,
+        node.name(),
+        &graph,
     ));
 
     // 3. embedag:businessKey Literal
-    quads.push(Quad::new(
-        subject.clone(),
-        Predicate::NamedNode(vocab.business_key.clone()),
-        Object::Literal(Literal::new(node.key().to_string())),
-        graph.clone(),
+    quads.push(literal_quad(
+        &subject,
+        &vocab.business_key,
+        node.key().to_string(),
+        &graph,
     ));
 
     // 4. embedag:entityLevel Literal
-    quads.push(Quad::new(
-        subject.clone(),
-        Predicate::NamedNode(vocab.entity_level.clone()),
-        Object::Literal(Literal::new(node.entity_level())),
-        graph.clone(),
+    quads.push(literal_quad(
+        &subject,
+        &vocab.entity_level,
+        node.entity_level(),
+        &graph,
     ));
 
     // 5. embedag:attributes Literal (serialized JSON)
-    quads.push(Quad::new(
-        subject.clone(),
-        Predicate::NamedNode(vocab.attributes.clone()),
-        Object::Literal(Literal::new(node.attributes().to_string())),
-        graph.clone(),
+    quads.push(literal_quad(
+        &subject,
+        &vocab.attributes,
+        node.attributes().to_string(),
+        &graph,
     ));
 
     // 6. embedag:payload Literal (exact JSON serialized node payload for 100% loss-less reconstruction)
     let payload_json = serde_json::to_string(node)?;
-    quads.push(Quad::new(
-        subject,
-        Predicate::NamedNode(vocab.payload.clone()),
-        Object::Literal(Literal::new(payload_json)),
-        graph,
-    ));
+    quads.push(literal_quad(&subject, &vocab.payload, payload_json, &graph));
 
     Ok(quads)
 }
@@ -246,19 +285,19 @@ pub fn edge_to_quads<K: Display>(
     ));
 
     // edge embedag:relationship relationship
-    quads.push(Quad::new(
-        edge_subj.clone(),
-        Predicate::NamedNode(vocab.relationship.clone()),
-        Object::Literal(Literal::new(&edge.relationship)),
-        graph.clone(),
+    quads.push(literal_quad(
+        &edge_subj,
+        &vocab.relationship,
+        &edge.relationship,
+        &graph,
     ));
 
     // edge embedag:confidence confidence
-    quads.push(Quad::new(
-        edge_subj.clone(),
-        Predicate::NamedNode(vocab.confidence.clone()),
-        Object::Literal(Literal::new(format!("{:.4}", edge.confidence))),
-        graph.clone(),
+    quads.push(literal_quad(
+        &edge_subj,
+        &vocab.confidence,
+        format!("{:.4}", edge.confidence),
+        &graph,
     ));
 
     // edge embedag:provenance provenance
@@ -268,11 +307,11 @@ pub fn edge_to_quads<K: Display>(
         ProvenanceKind::LlmConstrainedInference => "LlmConstrainedInference",
         ProvenanceKind::HumanVerified => "HumanVerified",
     };
-    quads.push(Quad::new(
-        edge_subj,
-        Predicate::NamedNode(vocab.provenance.clone()),
-        Object::Literal(Literal::new(prov_str)),
-        graph,
+    quads.push(literal_quad(
+        &edge_subj,
+        &vocab.provenance,
+        prov_str,
+        &graph,
     ));
 
     Ok(quads)

@@ -7,7 +7,6 @@
 
 use embedag_core::dag::MemoryDag;
 use embedag_core::model::{EdgePayload, ProvenanceKind};
-use embedag_core::traits::NodePayload;
 use embedag_oxirs::{OxiRsTdbConfig, OxiRsTdbEngine, SyncPolicy};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -33,45 +32,16 @@ impl MedicalConcept {
     }
 }
 
-impl NodePayload for MedicalConcept {
-    type Key = String;
+embedag_core::impl_node_payload!(
+    MedicalConcept,
+    key = |n| &n.code,
+    name = |n| &n.title,
+    level = |n| &n.domain,
+    attributes = |n| { serde_json::to_value(&n.metadata).unwrap_or(serde_json::Value::Null) }
+);
 
-    fn key(&self) -> &Self::Key {
-        &self.code
-    }
-
-    fn name(&self) -> &str {
-        &self.title
-    }
-
-    fn entity_level(&self) -> &str {
-        &self.domain
-    }
-
-    fn attributes(&self) -> serde_json::Value {
-        serde_json::to_value(&self.metadata).unwrap_or(serde_json::Value::Null)
-    }
-}
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== OxiRS TDB2 Persistent Storage Engine Demonstration ===");
-
-    let tmp = tempdir()?;
-    let db_path = tmp.path().join("medical_knowledge_tdb");
-
-    // 1. Developer configures custom base URI, durability, and on-disk directory
-    let config = OxiRsTdbConfig::persistent(&db_path)
-        .with_base_iri("https://health.example.org/ontology/concept/")
-        .with_schema_ns("https://health.example.org/schema#")
-        .with_sync_policy(SyncPolicy::EveryN(1));
-
-    println!("Dataset directory: {:?}", db_path);
-    println!("Base IRI: {}", config.base_iri);
-
-    // 2. Open persistent storage engine
-    let engine = OxiRsTdbEngine::open(config.clone())?;
-
-    // 3. Construct an in-memory DAG
+/// Builds the small disease hierarchy the demonstration persists.
+fn build_dag() -> Result<MemoryDag<MedicalConcept>, Box<dyn std::error::Error>> {
     let mut dag = MemoryDag::new();
 
     let root = MedicalConcept::new("DIS-001", "Cardiovascular Disease", "Disorder");
@@ -93,6 +63,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &"DIS-201".to_string(),
         EdgePayload::new("IS_A", 0.98, ProvenanceKind::DeterministicRule)?,
     )?;
+    Ok(dag)
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    println!("=== OxiRS TDB2 Persistent Storage Engine Demonstration ===");
+
+    let tmp = tempdir()?;
+    let db_path = tmp.path().join("medical_knowledge_tdb");
+
+    // 1. Developer configures custom base URI, durability, and on-disk directory
+    let config = OxiRsTdbConfig::persistent(&db_path)
+        .with_base_iri("https://health.example.org/ontology/concept/")
+        .with_schema_ns("https://health.example.org/schema#")
+        .with_sync_policy(SyncPolicy::EveryN(1));
+
+    println!("Dataset directory: {:?}", db_path);
+    println!("Base IRI: {}", config.base_iri);
+
+    // 2. Open persistent storage engine
+    let engine = OxiRsTdbEngine::open(config.clone())?;
+
+    // 3. Construct an in-memory DAG
+    let dag = build_dag()?;
 
     println!(
         "In-memory DAG constructed with {} nodes and {} edges.",

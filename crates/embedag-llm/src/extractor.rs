@@ -10,16 +10,27 @@ use serde_json::Value;
 /// Matches standard keys ("name", "title", "label", "id", "key") and common affix patterns
 /// (`_name`, `_title`, `_label`, `_id`, `_key`) case-insensitively when heuristics are enabled.
 pub fn is_heuristic_entity_key(key: &str) -> bool {
+    heuristic_rank(key).is_some()
+}
+
+/// How strongly a key names an entity: `Some(0)` for descriptive keys (`name`, `title`, `label` and
+/// their affixed forms), `Some(1)` for identifiers (`id`, `key`, `*_id`, `*_key`), `None` otherwise.
+/// Descriptive keys win over identifiers, so `{"category_id": 7, "name": "Milk"}` reads as `Milk`.
+fn heuristic_rank(key: &str) -> Option<u8> {
     let lower = key.to_lowercase();
-    matches!(lower.as_str(), "name" | "title" | "label" | "id" | "key")
+    let descriptive = matches!(lower.as_str(), "name" | "title" | "label")
         || lower.ends_with("_name")
         || lower.ends_with("_title")
         || lower.ends_with("_label")
-        || lower.ends_with("_id")
-        || lower.ends_with("_key")
         || lower.starts_with("name_")
         || lower.starts_with("title_")
-        || lower.starts_with("label_")
+        || lower.starts_with("label_");
+    if descriptive {
+        return Some(0);
+    }
+    let identifier =
+        matches!(lower.as_str(), "id" | "key") || lower.ends_with("_id") || lower.ends_with("_key");
+    identifier.then_some(1)
 }
 
 /// Extracts the raw record payload string from a prompt containing the `### INCOMING RECORD\n` section.
@@ -43,14 +54,9 @@ pub trait EntityExtractor: Send + Sync {
     /// Extracts a representative entity text label from a prompt string.
     fn extract_from_prompt(&self, prompt: &str) -> String {
         extract_record_slice(prompt)
-            .and_then(|slice| {
-                if let Ok(v) = serde_json::from_str::<Value>(slice) {
-                    self.extract_from_value(&v)
-                } else if !slice.is_empty() {
-                    Some(slice.to_string())
-                } else {
-                    None
-                }
+            .and_then(|slice| match serde_json::from_str::<Value>(slice) {
+                Ok(v) => self.extract_from_value(&v),
+                Err(_) => Some(slice.to_string()),
             })
             .unwrap_or_else(|| "Unidentified Entity".to_string())
     }
@@ -70,19 +76,21 @@ pub trait EntityProperties: Send + Sync {
             return None;
         };
         for key in self.property_keys() {
-            if let Some(val) = map.get(*key) {
-                if let Some(s) = val.as_str() {
-                    let trimmed = s.trim();
-                    if !trimmed.is_empty() {
-                        return Some(trimmed.to_string());
-                    }
-                } else if val.is_number() || val.is_boolean() {
-                    return Some(val.to_string());
-                }
+            if let Some(label) = map.get(*key).and_then(scalar_label) {
+                return Some(label);
             }
         }
         None
     }
+}
+
+/// The label a JSON scalar carries: a non-empty trimmed string, or a number or boolean as text.
+fn scalar_label(val: &Value) -> Option<String> {
+    if let Some(s) = val.as_str() {
+        let trimmed = s.trim();
+        return (!trimmed.is_empty()).then(|| trimmed.to_string());
+    }
+    (val.is_number() || val.is_boolean()).then(|| val.to_string())
 }
 
 /// Configuration governing entity text extraction strategies, key priorities, and fallbacks.
@@ -153,62 +161,52 @@ impl EntityExtractorConfig {
     }
 }
 
+impl EntityExtractorConfig {
+    /// The label of a JSON object: a configured priority key, else (when enabled) a heuristic key with
+    /// descriptive keys before identifiers, else (when enabled) any non-empty string.
+    fn extract_from_object(&self, map: &serde_json::Map<String, Value>) -> Option<String> {
+        let by_priority_key = self
+            .priority_keys
+            .iter()
+            .find_map(|key| map.get(key).and_then(scalar_label));
+        by_priority_key
+            .or_else(|| {
+                self.enable_suffix_heuristics
+                    .then(|| heuristic_label(map))
+                    .flatten()
+            })
+            .or_else(|| {
+                self.fallback_to_any_string
+                    .then(|| first_non_empty_string(map))
+                    .flatten()
+            })
+    }
+}
+
+/// The label under the best-ranked heuristic key (see [`heuristic_rank`]): `name`-like keys first, then
+/// `id`/`key`-like ones; within a rank, the first key in map order.
+fn heuristic_label(map: &serde_json::Map<String, Value>) -> Option<String> {
+    (0..=1).find_map(|rank| {
+        map.iter()
+            .filter(|(k, _)| heuristic_rank(k) == Some(rank))
+            .find_map(|(_, val)| scalar_label(val))
+    })
+}
+
+/// The first string member of `map` that is not blank, trimmed.
+fn first_non_empty_string(map: &serde_json::Map<String, Value>) -> Option<String> {
+    map.values()
+        .filter_map(Value::as_str)
+        .map(str::trim)
+        .find(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
 impl EntityExtractor for EntityExtractorConfig {
     fn extract_from_value(&self, value: &Value) -> Option<String> {
         match value {
-            Value::String(s) => {
-                let trimmed = s.trim();
-                if !trimmed.is_empty() {
-                    Some(trimmed.to_string())
-                } else {
-                    None
-                }
-            }
-            Value::Object(map) => {
-                // 1. Check user-configured priority keys first (100% developer control)
-                for key in &self.priority_keys {
-                    if let Some(val) = map.get(key) {
-                        if let Some(s) = val.as_str() {
-                            let trimmed = s.trim();
-                            if !trimmed.is_empty() {
-                                return Some(trimmed.to_string());
-                            }
-                        } else if val.is_number() || val.is_boolean() {
-                            return Some(val.to_string());
-                        }
-                    }
-                }
-
-                // 2. Check suffix heuristics (*_name, *_title, *_label, *_id, *_key) if enabled
-                if self.enable_suffix_heuristics {
-                    for (k, val) in map {
-                        if is_heuristic_entity_key(k) {
-                            if let Some(s) = val.as_str() {
-                                let trimmed = s.trim();
-                                if !trimmed.is_empty() {
-                                    return Some(trimmed.to_string());
-                                }
-                            } else if val.is_number() || val.is_boolean() {
-                                return Some(val.to_string());
-                            }
-                        }
-                    }
-                }
-
-                // 3. Fallback to any non-empty string in the object if enabled
-                if self.fallback_to_any_string {
-                    for (_k, val) in map {
-                        if let Some(s) = val.as_str() {
-                            let trimmed = s.trim();
-                            if !trimmed.is_empty() {
-                                return Some(trimmed.to_string());
-                            }
-                        }
-                    }
-                }
-
-                None
-            }
+            Value::String(s) => Some(s.trim()).filter(|t| !t.is_empty()).map(str::to_string),
+            Value::Object(map) => self.extract_from_object(map),
             Value::Number(n) => Some(n.to_string()),
             Value::Bool(b) => Some(b.to_string()),
             _ => None,
@@ -341,14 +339,9 @@ macro_rules! entity_properties {
                 $(fallback = $default_label;)?
 
                 $crate::extractor::extract_record_slice(prompt)
-                    .and_then(|slice| {
-                        if let Ok(v) = ::serde_json::from_str::<::serde_json::Value>(slice) {
-                            $crate::extractor::EntityProperties::extract_label(self, &v)
-                        } else if !slice.is_empty() {
-                            Some(slice.to_string())
-                        } else {
-                            None
-                        }
+                    .and_then(|slice| match ::serde_json::from_str::<::serde_json::Value>(slice) {
+                        Ok(v) => $crate::extractor::EntityProperties::extract_label(self, &v),
+                        Err(_) => Some(slice.to_string()),
                     })
                     .unwrap_or_else(|| fallback.to_string())
             }
@@ -380,43 +373,27 @@ macro_rules! define_entity_extractor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rstest::rstest;
 
-    #[test]
-    fn test_domain_agnostic_default_keys() {
-        let prompt_name = "### INCOMING RECORD\n{\"name\": \"Central Station\"}\n\n###";
-        assert_eq!(extract_incoming_entity_text(prompt_name), "Central Station");
-
-        let prompt_title = "### INCOMING RECORD\n{\"title\": \"Chief Architect\"}\n\n###";
-        assert_eq!(
-            extract_incoming_entity_text(prompt_title),
-            "Chief Architect"
-        );
-
-        let prompt_label = "### INCOMING RECORD\n{\"label\": \"High Priority\"}\n\n###";
-        assert_eq!(extract_incoming_entity_text(prompt_label), "High Priority");
-    }
-
-    #[test]
-    fn test_suffix_heuristics() {
-        // Domain-specific keys like item_name, category_name, product_title match automatically without hardcoding
-        let prompt_item = "### INCOMING RECORD\n{\"item_name\": \"Fairlife 2% Milk\"}\n\n###";
-        assert_eq!(
-            extract_incoming_entity_text(prompt_item),
-            "Fairlife 2% Milk"
-        );
-
-        let prompt_cat = "### INCOMING RECORD\n{\"category_name\": \"Dairy & Eggs\"}\n\n###";
-        assert_eq!(extract_incoming_entity_text(prompt_cat), "Dairy & Eggs");
-
-        let prompt_product =
-            "### INCOMING RECORD\n{\"product_title\": \"Mechanical Keyboard\"}\n\n###";
-        assert_eq!(
-            extract_incoming_entity_text(prompt_product),
-            "Mechanical Keyboard"
-        );
-
-        let prompt_id = "### INCOMING RECORD\n{\"device_id\": \"DEV-4091\"}\n\n###";
-        assert_eq!(extract_incoming_entity_text(prompt_id), "DEV-4091");
+    #[rstest]
+    #[case::name(r#"{"name": "Central Station"}"#, "Central Station")]
+    #[case::title(r#"{"title": "Chief Architect"}"#, "Chief Architect")]
+    #[case::label(r#"{"label": "High Priority"}"#, "High Priority")]
+    // Domain-specific keys like item_name, category_name, product_title match automatically
+    #[case::item_name(r#"{"item_name": "Fairlife 2% Milk"}"#, "Fairlife 2% Milk")]
+    #[case::category_name(r#"{"category_name": "Dairy & Eggs"}"#, "Dairy & Eggs")]
+    #[case::product_title(r#"{"product_title": "Mechanical Keyboard"}"#, "Mechanical Keyboard")]
+    #[case::device_id(r#"{"device_id": "DEV-4091"}"#, "DEV-4091")]
+    // A descriptive key wins over an identifier, whatever the map order.
+    #[case::name_over_id(r#"{"category_id": 7, "name": "Milk"}"#, "Milk")]
+    #[case::title_over_key(r#"{"api_key": "k-1", "title": "Chief Architect"}"#, "Chief Architect")]
+    #[case::item_label_over_id(r#"{"a_id": 1, "item_label": "Fresh"}"#, "Fresh")]
+    #[case::any_string(r#"{"arbitrary_key": "Something unique"}"#, "Something unique")]
+    #[case::raw_slice("Raw Unformatted Entity", "Raw Unformatted Entity")]
+    #[case::nothing_to_extract("", "Unidentified Entity")]
+    fn extracts_the_entity_text(#[case] record: &str, #[case] expected: &str) {
+        let prompt = format!("### INCOMING RECORD\n{record}\n\n###");
+        assert_eq!(extract_incoming_entity_text(&prompt), expected);
     }
 
     #[test]
@@ -429,27 +406,6 @@ mod tests {
         // Custom keys prioritize sku
         let extracted = extract_incoming_entity_text_with_keys(prompt, &["sku", "title"]);
         assert_eq!(extracted, "SKU-999");
-    }
-
-    #[test]
-    fn test_fallback_to_any_string_and_slice() {
-        let prompt_misc = "### INCOMING RECORD\n{\"arbitrary_key\": \"Something unique\"}\n\n###";
-        assert_eq!(
-            extract_incoming_entity_text(prompt_misc),
-            "Something unique"
-        );
-
-        let prompt_raw = "### INCOMING RECORD\nRaw Unformatted Entity\n\n###";
-        assert_eq!(
-            extract_incoming_entity_text(prompt_raw),
-            "Raw Unformatted Entity"
-        );
-
-        let prompt_empty = "### INCOMING RECORD\n\n\n###";
-        assert_eq!(
-            extract_incoming_entity_text(prompt_empty),
-            "Unidentified Entity"
-        );
     }
 
     #[test]
@@ -482,5 +438,169 @@ mod tests {
 
         let prompt_empty = "### INCOMING RECORD\n{}\n\n###";
         assert_eq!(record.extract_from_prompt(prompt_empty), "Unknown Patient");
+    }
+
+    use serde_json::json;
+
+    fn prompt_with(record: &str) -> String {
+        format!("### INCOMING RECORD\n{record}\n\n###")
+    }
+
+    #[rstest]
+    #[case::name("name", true)]
+    #[case::uppercase("TITLE", true)]
+    #[case::suffix("item_label", true)]
+    #[case::prefix("name_full", true)]
+    #[case::title_prefix("title_main", true)]
+    #[case::label_prefix("label_text", true)]
+    #[case::identifier("id", true)]
+    #[case::key_suffix("api_key", true)]
+    #[case::other("colour", false)]
+    fn recognizes_entity_keys(#[case] key: &str, #[case] expected: bool) {
+        assert_eq!(is_heuristic_entity_key(key), expected);
+    }
+
+    #[rstest]
+    #[case::missing_header("no header here", None)]
+    #[case::blank_record("### INCOMING RECORD\n   \n\n###", None)]
+    #[case::trimmed("### INCOMING RECORD\n  abc  \n\n###", Some("abc"))]
+    #[case::runs_to_the_end("### INCOMING RECORD\nabc", Some("abc"))]
+    fn finds_the_record_slice(#[case] prompt: &str, #[case] expected: Option<&str>) {
+        assert_eq!(extract_record_slice(prompt), expected);
+    }
+
+    #[rstest]
+    #[case::string(json!("  Milk  "), Some("Milk"))]
+    #[case::blank_string(json!("   "), None)]
+    #[case::number(json!(42), Some("42"))]
+    #[case::boolean(json!(true), Some("true"))]
+    #[case::null(json!(null), None)]
+    #[case::array(json!(["x"]), None)]
+    #[case::object_without_labels(json!({"n": null}), None)]
+    fn extracts_from_values(#[case] value: Value, #[case] expected: Option<&str>) {
+        let config = EntityExtractorConfig::new();
+        assert_eq!(config.extract_from_value(&value).as_deref(), expected);
+    }
+
+    #[test]
+    fn the_configuration_builders_steer_extraction() {
+        let config = EntityExtractorConfig::new()
+            .with_keys(["sku"])
+            .with_priority_key("barcode")
+            .enable_suffix_heuristics(false)
+            .fallback_to_any_string(false)
+            .with_default_label("Nothing");
+        assert_eq!(config.priority_keys, vec!["sku", "barcode"]);
+
+        let value = json!({"barcode": 12345, "name": "Ignored"});
+        assert_eq!(config.extract_from_value(&value).as_deref(), Some("12345"));
+        // With heuristics and the any-string fallback both off, an unlisted key finds nothing.
+        let unlisted = json!({"name": "Ignored", "other": "x"});
+        assert_eq!(config.extract_from_value(&unlisted), None);
+        assert_eq!(
+            extract_incoming_entity_text_with_config("no record", &config),
+            "Nothing"
+        );
+    }
+
+    #[test]
+    fn the_slice_fallback_can_be_switched_off() {
+        let config = EntityExtractorConfig {
+            fallback_to_slice: false,
+            ..EntityExtractorConfig::default()
+        };
+        assert_eq!(
+            config.extract_from_prompt(&prompt_with("plain text")),
+            "Unidentified Entity"
+        );
+        assert_eq!(
+            config.extract_from_prompt("no record at all"),
+            "Unidentified Entity"
+        );
+    }
+
+    #[test]
+    fn values_can_be_read_with_or_without_preferred_keys() {
+        let value = json!({"sku": "S-1", "name": "Milk"});
+        assert_eq!(
+            extract_entity_text_from_value(&value, None).as_deref(),
+            Some("Milk")
+        );
+        assert_eq!(
+            extract_entity_text_from_value(&value, Some(&["sku"])).as_deref(),
+            Some("S-1")
+        );
+    }
+
+    struct Fixed;
+
+    impl EntityExtractor for Fixed {
+        fn extract_from_value(&self, value: &Value) -> Option<String> {
+            value.get("x").and_then(Value::as_str).map(str::to_string)
+        }
+    }
+
+    #[rstest]
+    #[case::json(r#"{"x": "found"}"#, "found")]
+    #[case::json_without_the_key(r#"{"y": "nope"}"#, "Unidentified Entity")]
+    #[case::not_json("free text", "free text")]
+    fn the_default_prompt_extraction_uses_the_value_extractor(
+        #[case] record: &str,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(Fixed.extract_from_prompt(&prompt_with(record)), expected);
+        assert_eq!(
+            Fixed.extract_from_prompt("no record"),
+            "Unidentified Entity"
+        );
+    }
+
+    struct Keyed;
+
+    impl EntityProperties for Keyed {
+        fn property_keys(&self) -> &[&'static str] {
+            &["sku", "count", "flag"]
+        }
+    }
+
+    #[rstest]
+    #[case::string(json!({"sku": " A "}), Some("A"))]
+    #[case::number(json!({"count": 3}), Some("3"))]
+    #[case::boolean(json!({"flag": false}), Some("false"))]
+    #[case::blank(json!({"sku": "  "}), None)]
+    #[case::not_an_object(json!("A"), None)]
+    fn developer_defined_keys_label_an_object(
+        #[case] value: Value,
+        #[case] expected: Option<&str>,
+    ) {
+        assert_eq!(Keyed.extract_label(&value).as_deref(), expected);
+    }
+
+    #[test]
+    fn the_entity_properties_macro_handles_odd_records() {
+        entity_properties! {
+            Plain {
+                keys: ["sku"],
+            }
+        }
+        let record = Plain;
+        assert_eq!(record.property_keys(), &["sku"]);
+        assert_eq!(
+            record.extract_from_prompt(&prompt_with("not json")),
+            "not json"
+        );
+        assert_eq!(record.extract_from_prompt("nothing"), "Unidentified Entity");
+        let value = json!({"sku": "S-2"});
+        assert_eq!(
+            EntityExtractor::extract_from_value(&record, &value).as_deref(),
+            Some("S-2")
+        );
+    }
+
+    #[test]
+    fn the_defined_extractor_reads_values_too() {
+        define_entity_extractor!(Barcodes, ["barcode"]);
+        let value = json!({"barcode": "B-1"});
+        assert_eq!(Barcodes.extract_from_value(&value).as_deref(), Some("B-1"));
     }
 }

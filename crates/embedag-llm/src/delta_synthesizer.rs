@@ -3,6 +3,28 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 
+/// Adds the `with_attribute` and `with_h3_cell` builders to a struct with `attributes` and `h3_cell`
+/// fields; `$who` names the entity in the docs.
+macro_rules! attribute_builders {
+    ($who:ident) => {
+        #[doc = concat!("Adds a dynamic attribute to the ", stringify!($who), " entity.")]
+        pub fn with_attribute(
+            mut self,
+            key: impl Into<String>,
+            value: impl Into<serde_json::Value>,
+        ) -> Self {
+            self.attributes.insert(key.into(), value.into());
+            self
+        }
+
+        /// Sets an optional H3 geospatial index cell.
+        pub fn with_h3_cell(mut self, cell: u64) -> Self {
+            self.h3_cell = Some(cell);
+            self
+        }
+    };
+}
+
 /// Structured representation of a candidate anchor node from the graph.
 /// Structure-agnostic entity holding arbitrary attributes, hierarchy lineage, and optional spatial coordinates.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -38,21 +60,7 @@ impl CandidateEntity {
         self
     }
 
-    /// Adds a dynamic attribute to the candidate entity.
-    pub fn with_attribute(
-        mut self,
-        key: impl Into<String>,
-        value: impl Into<serde_json::Value>,
-    ) -> Self {
-        self.attributes.insert(key.into(), value.into());
-        self
-    }
-
-    /// Sets an optional H3 geospatial index cell.
-    pub fn with_h3_cell(mut self, cell: u64) -> Self {
-        self.h3_cell = Some(cell);
-        self
-    }
+    attribute_builders!(candidate);
 }
 
 /// Structured representation of an incoming entity to be resolved or classified against the graph.
@@ -73,21 +81,7 @@ impl IncomingEntity {
         }
     }
 
-    /// Adds a dynamic attribute to the incoming entity.
-    pub fn with_attribute(
-        mut self,
-        key: impl Into<String>,
-        value: impl Into<serde_json::Value>,
-    ) -> Self {
-        self.attributes.insert(key.into(), value.into());
-        self
-    }
-
-    /// Sets an optional H3 geospatial index cell.
-    pub fn with_h3_cell(mut self, cell: u64) -> Self {
-        self.h3_cell = Some(cell);
-        self
-    }
+    attribute_builders!(incoming);
 }
 
 /// Computed delta comparison metrics for a specific attribute between candidate and incoming entity.
@@ -208,156 +202,209 @@ impl SemanticDeltaSynthesizer {
         config: &DeltaSynthesizerConfig,
     ) -> SemanticDeltaSummary {
         let mut card = String::new();
-        let mut attribute_deltas = HashMap::new();
-        let mut primary_weight_pct = None;
-        let mut primary_multiplier = None;
-
-        // 1. Candidate summary
-        card.push_str("Candidate Anchor Node:\n");
-        let key_str = candidate
-            .key
-            .as_deref()
-            .map(|s| format!(" (Key: {s})"))
-            .unwrap_or_default();
-        card.push_str(&format!("- Name: {}{}\n", candidate.name, key_str));
-
-        if !candidate.hierarchy.is_empty() {
-            card.push_str(&format!(
-                "- Hierarchy: {}\n",
-                candidate.hierarchy.join(" -> ")
-            ));
-        }
-
-        // Output candidate attributes in deterministic sorted order
-        let sorted_cand_attrs: BTreeMap<_, _> = candidate.attributes.iter().collect();
-        for (k, v) in &sorted_cand_attrs {
-            card.push_str(&format!("- {}: {}\n", k, format_attr_val(v)));
-        }
-
-        // 2. Incoming entity summary
-        card.push_str("\nIncoming Entity to Classify:\n");
-        card.push_str(&format!("- Text: \"{}\"\n", incoming.text));
-
-        let sorted_inc_attrs: BTreeMap<_, _> = incoming.attributes.iter().collect();
-        for (k, v) in &sorted_inc_attrs {
-            card.push_str(&format!("- {}: {}\n", k, format_attr_val(v)));
-        }
-
+        write_candidate(&mut card, candidate);
+        write_incoming(&mut card, incoming);
         card.push_str("- Detected Numerical Deltas:\n");
 
-        // 3. Dynamic numeric attribute delta detection
-        let mut detected_any_delta = false;
-
-        // Check for direct numeric matches on same key or configured prefixes
-        for (key, cand_val) in &candidate.attributes {
-            if let Some(cand_num) = cand_val.as_f64() {
-                let mut inc_val = incoming.attributes.get(key);
-                if inc_val.is_none() {
-                    for prefix in &config.attribute_match_prefixes {
-                        if let Some(v) = incoming.attributes.get(&format!("{prefix}{key}")) {
-                            inc_val = Some(v);
-                            break;
-                        }
-                    }
-                }
-
-                if let Some(inc_num) = inc_val.and_then(|v| v.as_f64())
-                    && cand_num > 0.0
-                {
-                    let match_ratio = 1.0 - ((cand_num - inc_num).abs() / cand_num);
-                    let pct = (match_ratio.max(0.0) * 100.0).round();
-                    let multiplier = inc_num / cand_num;
-
-                    card.push_str(&format!(
-                        "  * {}: cand={:.1}, incoming={:.1} ({:.0}% match, {:.1}x scale)\n",
-                        key, cand_num, inc_num, pct, multiplier
-                    ));
-
-                    attribute_deltas.insert(
-                        key.clone(),
-                        AttributeDelta {
-                            key: key.clone(),
-                            candidate_val: Some(cand_val.clone()),
-                            incoming_val: inc_val.cloned(),
-                            match_pct: Some(pct),
-                            scale_multiplier: Some(multiplier),
-                        },
-                    );
-
-                    if primary_weight_pct.is_none() && multiplier == 1.0 {
-                        primary_weight_pct = Some(pct);
-                    }
-                    if primary_multiplier.is_none() && multiplier > 1.0 {
-                        primary_multiplier = Some(multiplier);
-                    }
-                    detected_any_delta = true;
-                }
-            }
-        }
-
-        // Evaluate user-configured proportional scalar ratio rules
-        for rule in &config.ratio_rules {
-            if let (Some(cand_num), Some(inc_num)) = (
-                candidate
-                    .attributes
-                    .get(&rule.candidate_key)
-                    .and_then(|v| v.as_f64()),
-                incoming
-                    .attributes
-                    .get(&rule.incoming_key)
-                    .and_then(|v| v.as_f64()),
-            ) && cand_num > 0.0
-            {
-                let mult = inc_num / cand_num;
-                primary_multiplier = Some(mult);
-                let pack_note = rule
-                    .count_key
-                    .as_ref()
-                    .and_then(|ck| incoming.attributes.get(ck))
-                    .and_then(|v| v.as_u64())
-                    .map(|c| format!("{c} units"))
-                    .unwrap_or_else(|| format!("{:.0}x units", mult));
-
-                card.push_str(&format!(
-                    "  * Multiplier Detected ({}): {} (Total: {:.1}, {:.0}x scale)\n",
-                    rule.label, pack_note, inc_num, mult
-                ));
-                detected_any_delta = true;
-            }
-        }
-
-        if !detected_any_delta {
+        let mut found = DetectedDeltas::default();
+        found.detect_attribute_deltas(&mut card, candidate, incoming, config);
+        found.apply_ratio_rules(&mut card, candidate, incoming, config);
+        if !found.any {
             card.push_str("  * None detected\n");
         }
 
-        // 4. Geospatial proximity
-        let mut h3_ring_distance = None;
-        if let (Some(cand_cell), Some(inc_cell)) = (candidate.h3_cell, incoming.h3_cell) {
-            let ring_dist =
-                GeospatialEncoder::grid_distance(cand_cell, inc_cell).unwrap_or(u32::MAX);
-            h3_ring_distance = Some(ring_dist);
-            let loc_desc = if ring_dist == 0 {
-                "Co-located in same spatial zone (H3 ring distance: 0)".to_string()
-            } else {
-                format!("Adjacent regional zone (H3 ring distance: {ring_dist})")
-            };
-            card.push_str(&format!("- Spatial Proximity: {}\n", loc_desc));
-        }
-
-        card.push_str("\nClassification Task:\n");
-        card.push_str("Determine if this is:\n");
-        card.push_str("1. An attribute update to anchor\n");
-        card.push_str("2. A new child/variant attached under anchor\n");
-        card.push_str("3. A distinct category branch\n");
+        let h3_ring_distance = write_spatial_proximity(&mut card, candidate, incoming);
+        card.push_str(CLASSIFICATION_TASK);
 
         SemanticDeltaSummary {
-            attribute_deltas,
-            weight_match_pct: primary_weight_pct,
-            scale_multiplier: primary_multiplier,
+            attribute_deltas: found.deltas,
+            weight_match_pct: found.weight_pct,
+            scale_multiplier: found.multiplier,
             h3_ring_distance,
             comparison_card: card,
         }
     }
+}
+
+const CLASSIFICATION_TASK: &str = "\nClassification Task:\n\
+Determine if this is:\n\
+1. An attribute update to anchor\n\
+2. A new child/variant attached under anchor\n\
+3. A distinct category branch\n";
+
+/// The numeric deltas found so far, with the primary weight match and scale.
+#[derive(Default)]
+struct DetectedDeltas {
+    deltas: HashMap<String, AttributeDelta>,
+    weight_pct: Option<f64>,
+    multiplier: Option<f64>,
+    any: bool,
+}
+
+/// A candidate attribute and the incoming value it is compared with.
+struct NumericPair<'a> {
+    key: &'a str,
+    candidate_val: &'a serde_json::Value,
+    incoming_val: &'a serde_json::Value,
+    candidate_num: f64,
+    incoming_num: f64,
+}
+
+impl DetectedDeltas {
+    /// Direct numeric matches on the same key or a configured prefix.
+    fn detect_attribute_deltas(
+        &mut self,
+        card: &mut String,
+        candidate: &CandidateEntity,
+        incoming: &IncomingEntity,
+        config: &DeltaSynthesizerConfig,
+    ) {
+        for (key, candidate_val) in &candidate.attributes {
+            let incoming_val = find_incoming_value(incoming, &config.attribute_match_prefixes, key);
+            let pair = incoming_val.and_then(|incoming_val| {
+                Some(NumericPair {
+                    key,
+                    candidate_val,
+                    incoming_val,
+                    candidate_num: candidate_val.as_f64()?,
+                    incoming_num: incoming_val.as_f64()?,
+                })
+            });
+            if let Some(pair) = pair.filter(|p| p.candidate_num > 0.0) {
+                self.record(card, &pair);
+            }
+        }
+    }
+
+    fn record(&mut self, card: &mut String, pair: &NumericPair) {
+        let (cand, inc) = (pair.candidate_num, pair.incoming_num);
+        let match_ratio = 1.0 - ((cand - inc).abs() / cand);
+        let pct = (match_ratio.max(0.0) * 100.0).round();
+        let multiplier = inc / cand;
+
+        card.push_str(&format!(
+            "  * {}: cand={:.1}, incoming={:.1} ({:.0}% match, {:.1}x scale)\n",
+            pair.key, cand, inc, pct, multiplier
+        ));
+        self.deltas.insert(
+            pair.key.to_string(),
+            AttributeDelta {
+                key: pair.key.to_string(),
+                candidate_val: Some(pair.candidate_val.clone()),
+                incoming_val: Some(pair.incoming_val.clone()),
+                match_pct: Some(pct),
+                scale_multiplier: Some(multiplier),
+            },
+        );
+        if self.weight_pct.is_none() && multiplier == 1.0 {
+            self.weight_pct = Some(pct);
+        }
+        if self.multiplier.is_none() && multiplier > 1.0 {
+            self.multiplier = Some(multiplier);
+        }
+        self.any = true;
+    }
+
+    /// User-configured proportional scalar ratio rules.
+    fn apply_ratio_rules(
+        &mut self,
+        card: &mut String,
+        candidate: &CandidateEntity,
+        incoming: &IncomingEntity,
+        config: &DeltaSynthesizerConfig,
+    ) {
+        for rule in &config.ratio_rules {
+            let cand_num = numeric_attr(&candidate.attributes, &rule.candidate_key);
+            let inc_num = numeric_attr(&incoming.attributes, &rule.incoming_key);
+            if let (Some(cand_num), Some(inc_num)) = (cand_num, inc_num)
+                && cand_num > 0.0
+            {
+                let mult = inc_num / cand_num;
+                self.multiplier = Some(mult);
+                let pack_note = pack_note(rule, incoming, mult);
+                card.push_str(&format!(
+                    "  * Multiplier Detected ({}): {} (Total: {:.1}, {:.0}x scale)\n",
+                    rule.label, pack_note, inc_num, mult
+                ));
+                self.any = true;
+            }
+        }
+    }
+}
+
+fn numeric_attr(attributes: &HashMap<String, serde_json::Value>, key: &str) -> Option<f64> {
+    attributes.get(key).and_then(|v| v.as_f64())
+}
+
+/// The incoming value under the same key, else under the first configured prefix that has one.
+fn find_incoming_value<'a>(
+    incoming: &'a IncomingEntity,
+    prefixes: &[String],
+    key: &str,
+) -> Option<&'a serde_json::Value> {
+    incoming.attributes.get(key).or_else(|| {
+        prefixes
+            .iter()
+            .find_map(|prefix| incoming.attributes.get(&format!("{prefix}{key}")))
+    })
+}
+
+/// "12 units" from the rule's count attribute, else the multiplier.
+fn pack_note(rule: &ScalarRatioRule, incoming: &IncomingEntity, mult: f64) -> String {
+    rule.count_key
+        .as_ref()
+        .and_then(|ck| incoming.attributes.get(ck))
+        .and_then(|v| v.as_u64())
+        .map(|c| format!("{c} units"))
+        .unwrap_or_else(|| format!("{mult:.0}x units"))
+}
+
+fn write_candidate(card: &mut String, candidate: &CandidateEntity) {
+    card.push_str("Candidate Anchor Node:\n");
+    let key_str = candidate
+        .key
+        .as_deref()
+        .map(|s| format!(" (Key: {s})"))
+        .unwrap_or_default();
+    card.push_str(&format!("- Name: {}{}\n", candidate.name, key_str));
+    if !candidate.hierarchy.is_empty() {
+        card.push_str(&format!(
+            "- Hierarchy: {}\n",
+            candidate.hierarchy.join(" -> ")
+        ));
+    }
+    write_sorted_attributes(card, &candidate.attributes);
+}
+
+fn write_incoming(card: &mut String, incoming: &IncomingEntity) {
+    card.push_str("\nIncoming Entity to Classify:\n");
+    card.push_str(&format!("- Text: \"{}\"\n", incoming.text));
+    write_sorted_attributes(card, &incoming.attributes);
+}
+
+/// Attributes in deterministic sorted order.
+fn write_sorted_attributes(card: &mut String, attributes: &HashMap<String, serde_json::Value>) {
+    let sorted: BTreeMap<_, _> = attributes.iter().collect();
+    for (k, v) in &sorted {
+        card.push_str(&format!("- {}: {}\n", k, format_attr_val(v)));
+    }
+}
+
+/// Appends the geospatial proximity line and returns the H3 ring distance, when both have a cell.
+fn write_spatial_proximity(
+    card: &mut String,
+    candidate: &CandidateEntity,
+    incoming: &IncomingEntity,
+) -> Option<u32> {
+    let (cand_cell, inc_cell) = candidate.h3_cell.zip(incoming.h3_cell)?;
+    let ring_dist = GeospatialEncoder::grid_distance(cand_cell, inc_cell).unwrap_or(u32::MAX);
+    let loc_desc = if ring_dist == 0 {
+        "Co-located in same spatial zone (H3 ring distance: 0)".to_string()
+    } else {
+        format!("Adjacent regional zone (H3 ring distance: {ring_dist})")
+    };
+    card.push_str(&format!("- Spatial Proximity: {loc_desc}\n"));
+    Some(ring_dist)
 }
 
 fn format_attr_val(val: &serde_json::Value) -> String {
@@ -415,5 +462,53 @@ mod tests {
         assert!(summary.comparison_card.contains("12 units"));
         assert!(summary.comparison_card.contains("12x scale"));
         assert!(summary.comparison_card.contains("H3 ring distance: 0"));
+    }
+
+    #[test]
+    fn the_default_configuration_matches_detected_prefixes_and_reports_missing_deltas() {
+        let candidate = CandidateEntity::new("Unit").with_attribute("weight", 100.0);
+        let doubled = IncomingEntity::new("Pack").with_attribute("detected_weight", 200.0);
+        let summary = SemanticDeltaSynthesizer::synthesize(&candidate, &doubled);
+        assert_eq!(summary.scale_multiplier, Some(2.0));
+        assert!(summary.comparison_card.contains("2.0x scale"));
+
+        let nothing_alike = IncomingEntity::new("Other").with_attribute("colour", "red");
+        let summary = SemanticDeltaSynthesizer::synthesize(&candidate, &nothing_alike);
+        assert!(summary.comparison_card.contains("None detected"));
+        assert!(summary.scale_multiplier.is_none() && summary.h3_ring_distance.is_none());
+    }
+
+    #[test]
+    fn identical_values_set_the_weight_match_and_a_second_multiplier_is_ignored() {
+        let candidate = CandidateEntity::new("Unit")
+            .with_attribute("a", 10.0)
+            .with_attribute("b", 10.0);
+        let incoming = IncomingEntity::new("Pack")
+            .with_attribute("a", 10.0)
+            .with_attribute("b", 30.0);
+        let summary = SemanticDeltaSynthesizer::synthesize(&candidate, &incoming);
+        assert_eq!(summary.weight_match_pct, Some(100.0));
+        assert_eq!(summary.scale_multiplier, Some(3.0));
+    }
+
+    #[test]
+    fn different_cells_are_described_as_adjacent_and_other_value_kinds_are_summarized() {
+        let candidate = CandidateEntity::new("Unit")
+            .with_attribute("tags", serde_json::json!(["a", "b"]))
+            .with_attribute("meta", serde_json::json!({"x": 1}))
+            .with_attribute("nothing", serde_json::Value::Null)
+            .with_attribute("flag", true)
+            .with_h3_cell(0x8928308280fffff);
+        let incoming = IncomingEntity::new("Pack").with_h3_cell(0x8928308281bffff);
+        let card = SemanticDeltaSynthesizer::synthesize(&candidate, &incoming).comparison_card;
+        for expected in [
+            "[2 items]",
+            "{1 fields}",
+            "null",
+            "true",
+            "Adjacent regional zone",
+        ] {
+            assert!(card.contains(expected), "{expected} missing from {card}");
+        }
     }
 }

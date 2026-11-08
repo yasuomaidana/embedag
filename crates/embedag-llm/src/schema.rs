@@ -88,13 +88,8 @@ mod tests {
         );
 
         // Validate that schema can compile in a JSON Schema validator
-        let compiled = jsonschema::validator_for(&schema_val);
-        assert!(
-            compiled.is_ok(),
-            "Generated schema must be valid JSON Schema: {:?}",
-            compiled.err()
-        );
-        let validator = compiled.expect("validator");
+        let validator = jsonschema::validator_for(&schema_val)
+            .expect("Generated schema must be valid JSON Schema");
 
         // Verify valid instance validates successfully
         let valid_instance = serde_json::json!({

@@ -5,9 +5,13 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+readme = "README.md"
 
 [dependencies]
-embedag-core = { workspace = true }
+#embedag-core = { workspace = true }
 petgraph = { workspace = true }
 blake3 = { workspace = true }
-thiserror = { workspace = true }
+#thiserror = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
