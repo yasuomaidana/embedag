@@ -270,7 +270,7 @@ impl CteHierarchyBuilder {
         statement: String,
     ) -> diesel::QueryResult<Vec<HierarchyItem>> {
         use diesel::sql_types::{Integer, Text};
-        let query = diesel::dsl::sql::<(Text, Integer, Text)>(&statement);
+        let query = sql::<(Text, Integer, Text)>(&statement);
         let rows: Vec<(String, i32, String)> = diesel_async::RunQueryDsl::load(query, conn).await?;
         Ok(items(rows))
     }

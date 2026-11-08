@@ -728,7 +728,7 @@ mod tests {
 
     #[test]
     fn the_automaton_must_accept_and_complete_the_generated_text() {
-        let schema = crate::schema::generate_extraction_schema();
+        let schema = generate_extraction_schema();
         let mut pda = PushdownAutomaton::from_schema(&schema).unwrap();
         assert!(ensure_conformance(&mut pda, "}").is_err());
         let mut pda = PushdownAutomaton::from_schema(&schema).unwrap();
@@ -815,7 +815,7 @@ mod tests {
 
     #[test]
     fn custom_keys_steer_the_entity_text() {
-        let schema = crate::schema::generate_extraction_schema();
+        let schema = generate_extraction_schema();
         let prompt = PromptFormatter::build_prompt("t", "{\"sku\": \"S-1\"}", &[]);
         let keys = vec!["sku".to_string()];
         let value = execute_constrained_semantic_inference(&prompt, &schema, "test", Some(&keys));
