@@ -88,9 +88,7 @@ impl DenseVectorIndex {
             .collect();
 
         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        if scored.len() > top_k {
-            scored.truncate(top_k);
-        }
+        scored.truncate(top_k);
 
         Ok(scored)
     }
@@ -193,10 +191,8 @@ impl LexicalDocument {
             return 0.0;
         }
         let intersection = self.trigrams.intersection(query_trigrams).count();
+        // Neither side is empty here, so the union is not either.
         let union = self.trigrams.union(query_trigrams).count();
-        if union == 0 {
-            return 0.0;
-        }
         intersection as f32 / union as f32
     }
 
@@ -219,27 +215,18 @@ fn tokenize(text: &str) -> HashSet<String> {
         .collect()
 }
 
+/// Character trigrams of every word, each word padded with `^` and `$` (so it has at least three).
 fn compute_trigrams(text: &str) -> HashSet<String> {
-    let lower = text.to_lowercase();
-    let mut trigrams = HashSet::new();
-
-    for word in lower.split_whitespace() {
-        if word.is_empty() {
-            continue;
-        }
-        let padded = format!("^{}$", word);
-        let chars: Vec<char> = padded.chars().collect();
-        if chars.len() < 3 {
-            trigrams.insert(padded);
-        } else {
-            for i in 0..=chars.len() - 3 {
-                let trigram: String = chars[i..i + 3].iter().collect();
-                trigrams.insert(trigram);
-            }
-        }
-    }
-
-    trigrams
+    text.to_lowercase()
+        .split_whitespace()
+        .flat_map(|word| {
+            let padded: Vec<char> = format!("^{word}$").chars().collect();
+            padded
+                .windows(3)
+                .map(|window| window.iter().collect::<String>())
+                .collect::<Vec<_>>()
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -297,5 +284,81 @@ mod tests {
         let sku_results = index.search("SKU-90210", 5);
         assert!(!sku_results.is_empty());
         assert_eq!(sku_results[0].0, id_sku, "Exact SKU must rank #1");
+    }
+
+    use rstest::rstest;
+
+    #[test]
+    fn dense_index_updates_in_place_and_rejects_wrong_dimensions() {
+        let mut index = DenseVectorIndex::new();
+        let id = Uuid::new_v4();
+        index.insert(id, vec![1.0, 0.0]).unwrap();
+        // The first insert fixed the dimensionality at two.
+        assert!(matches!(
+            index.insert(Uuid::new_v4(), vec![1.0]),
+            Err(IndexError::DimensionMismatch {
+                expected: 2,
+                got: 1
+            })
+        ));
+        // Re-inserting the same id replaces the vector instead of adding a second entry.
+        index.insert(id, vec![0.0, 1.0]).unwrap();
+        let hits = index.search(&[0.0, 1.0], 10).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert!((hits[0].1 - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn dense_search_validates_the_query_and_skips_zero_vectors() {
+        let mut index = DenseVectorIndex::with_dimensions(2);
+        index.insert(Uuid::new_v4(), vec![0.0, 0.0]).unwrap();
+        index.insert(Uuid::new_v4(), vec![1.0, 0.0]).unwrap();
+        index.insert(Uuid::new_v4(), vec![0.5, 0.5]).unwrap();
+
+        assert!(matches!(
+            index.search(&[1.0], 5),
+            Err(IndexError::DimensionMismatch { .. })
+        ));
+        assert!(matches!(
+            index.search(&[0.0, 0.0], 5),
+            Err(IndexError::ZeroVector)
+        ));
+        // The stored zero vector never scores, and only the best `top_k` are kept.
+        assert_eq!(index.search(&[1.0, 0.0], 10).unwrap().len(), 2);
+        assert_eq!(index.search(&[1.0, 0.0], 1).unwrap().len(), 1);
+    }
+
+    #[rstest]
+    #[case::empty_query("", 0)]
+    #[case::no_overlap("zzzzzz", 0)]
+    #[case::exact_token("espresso", 1)]
+    #[case::typo("espreso", 1)]
+    fn sparse_search_matches_tokens_and_typos(#[case] query: &str, #[case] hits: usize) {
+        let mut index = SparseLexicalIndex::new();
+        index.insert(Uuid::new_v4(), "SKU-1", "espresso beans");
+        assert_eq!(index.search(query, 10).len(), hits);
+    }
+
+    #[test]
+    fn sparse_documents_are_replaced_by_id_and_results_are_capped() {
+        let mut index = SparseLexicalIndex::new();
+        let id = Uuid::new_v4();
+        index.insert(id, "A", "tea leaves");
+        index.insert(id, "A", "coffee beans");
+        assert!(index.search("tea", 5).is_empty());
+        assert_eq!(index.search("coffee", 5).len(), 1);
+
+        index.insert(Uuid::new_v4(), "B", "coffee grounds");
+        index.insert(Uuid::new_v4(), "C", "coffee filters");
+        assert_eq!(index.search("coffee", 2).len(), 2);
+    }
+
+    #[test]
+    fn trigrams_pad_each_word() {
+        let trigrams = compute_trigrams("Ab c");
+        for expected in ["^ab", "ab$", "^c$"] {
+            assert!(trigrams.contains(expected), "{expected} missing");
+        }
+        assert!(compute_trigrams("").is_empty());
     }
 }

@@ -194,4 +194,17 @@ mod tests {
             "Beverage and Apparel communities must be distinct"
         );
     }
+
+    #[test]
+    fn partitions_answer_membership_queries() {
+        let mut dag = MemoryDag::new();
+        dag.upsert_node(MockClusterNode::new("a", "A"));
+        dag.upsert_node(MockClusterNode::new("b", "B"));
+        let partition = CommunityDetector::new().detect(&dag);
+
+        let community = partition.community_of(&"a".to_string()).unwrap();
+        assert_eq!(partition.members(community), Some(&["a".to_string()][..]));
+        assert_eq!(partition.community_of(&"missing".to_string()), None);
+        assert_eq!(partition.members(99), None);
+    }
 }

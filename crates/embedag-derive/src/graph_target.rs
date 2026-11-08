@@ -213,3 +213,84 @@ pub fn derive_graph_target_impl(input: DeriveInput) -> syn::Result<TokenStream> 
         }
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+    use syn::parse_quote;
+
+    fn expand(input: DeriveInput) -> syn::Result<String> {
+        derive_graph_target_impl(input).map(|tokens| tokens.to_string())
+    }
+
+    #[test]
+    fn every_kind_can_be_chosen_by_attribute() {
+        let out = expand(parse_quote! {
+            enum Placement {
+                #[target(exact)] A(String),
+                #[target(fuzzy)] B { key: String, similarity: f32 },
+                #[target(child)] C { parent_key: String, relationship: String },
+                #[target(multi_child)] D { parent_keys: Vec<String> },
+                #[target(root)] E,
+                #[target(ambiguous)] F(Vec<String>),
+            }
+        })
+        .unwrap();
+        for part in [
+            "ExactMatch",
+            "FuzzyCandidate",
+            "NewChildOf",
+            "NewMultiParentChild",
+            "NewRoot",
+            "Ambiguous",
+        ] {
+            assert!(out.contains(part), "{part} missing");
+        }
+    }
+
+    #[test]
+    fn variants_without_attributes_are_recognized_by_name() {
+        let out = expand(parse_quote! {
+            enum Placement {
+                ExactHit(String),
+                FuzzyHit { key: String, similarity: f32 },
+                MultiParents { parent_keys: Vec<String> },
+                ChildOfParent { parent_key: String, relationship: String },
+                RootNode,
+                AmbiguousMatch(Vec<String>),
+                Unrelated,
+            }
+        })
+        .unwrap();
+        assert!(out.contains("NewMultiParentChild") && out.contains("NewChildOf"));
+        // The variant nothing recognizes gets no arm.
+        assert!(!out.contains("Unrelated"));
+    }
+
+    #[rstest]
+    #[case::nothing_recognizable(parse_quote!(enum E { Foo, Bar }), "could not detect")]
+    #[case::union(parse_quote!(union U { a: u32 }), "only supports enums or structs")]
+    #[case::tuple_struct(parse_quote!(struct S(u32);), "named fields")]
+    #[case::struct_without_target(parse_quote!(struct S { a: u32 }), "requires a `target` field")]
+    fn unsupported_shapes_are_errors(#[case] input: DeriveInput, #[case] message: &str) {
+        let err = expand(input).unwrap_err().to_string();
+        assert!(err.contains(message), "{err}");
+    }
+
+    #[rstest]
+    #[case::by_field_name(parse_quote!(struct S { target: GraphTarget<String> }))]
+    #[case::by_attribute(parse_quote!(struct S { #[target] placement: GraphTarget<String> }))]
+    fn structs_expose_their_target_field(#[case] input: DeriveInput) {
+        assert!(expand(input).unwrap().contains("into_graph_target"));
+    }
+
+    #[test]
+    fn an_unknown_target_attribute_key_is_ignored() {
+        let out = expand(parse_quote! {
+            enum E { #[target(sideways)] Root }
+        })
+        .unwrap();
+        assert!(out.contains("NewRoot"));
+    }
+}

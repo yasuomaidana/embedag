@@ -133,4 +133,25 @@ mod tests {
         assert_eq!(fused[0].dense_rank, Some(2));
         assert_eq!(fused[0].sparse_rank, Some(1));
     }
+
+    #[test]
+    fn fusing_many_lists_sums_reciprocal_ranks_and_breaks_ties_by_id() {
+        let ranker = RrfRanker::new(10.0);
+        let (a, b, c) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        let first = [a, b];
+        let second = [a, c];
+        let fused = ranker.fuse_multi(&[&first, &second]);
+
+        assert_eq!(fused[0].0, a);
+        assert!((fused[0].1 - 2.0 / 11.0).abs() < 1e-6);
+        // `b` and `c` both rank 2nd in one list, so their scores tie: the smaller id comes first.
+        let tied = [fused[1].0, fused[2].0];
+        assert_eq!(tied, if b < c { [b, c] } else { [c, b] });
+    }
+
+    #[test]
+    fn fusing_nothing_yields_nothing() {
+        assert!(RrfRanker::default().fuse(&[], &[]).is_empty());
+        assert!(RrfRanker::default().fuse_multi(&[]).is_empty());
+    }
 }

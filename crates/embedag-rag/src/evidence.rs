@@ -177,4 +177,76 @@ mod tests {
         assert!(cited.contains("SKU-100"));
         assert!(cited.contains("BRAND-01"));
     }
+
+    use rstest::rstest;
+
+    /// `ROOT -> MID -> LEAF` and `MID -> SIDE`; the edge to `SIDE` is an inference.
+    fn family() -> MemoryDag<TestNode> {
+        let mut dag = MemoryDag::new();
+        for (key, level) in [
+            ("ROOT", "L0"),
+            ("MID", "L1"),
+            ("LEAF", "L2"),
+            ("SIDE", "L2"),
+        ] {
+            dag.upsert_node(TestNode::new(key, key, level));
+        }
+        let rule = EdgePayload::new("PARENT_OF", 1.0, ProvenanceKind::DeterministicRule).unwrap();
+        let guess =
+            EdgePayload::new("RELATED", 0.6, ProvenanceKind::LlmConstrainedInference).unwrap();
+        dag.add_edge_by_keys(&"ROOT".into(), &"MID".into(), rule.clone())
+            .unwrap();
+        dag.add_edge_by_keys(&"MID".into(), &"LEAF".into(), rule)
+            .unwrap();
+        dag.add_edge_by_keys(&"MID".into(), &"SIDE".into(), guess)
+            .unwrap();
+        dag
+    }
+
+    #[test]
+    fn every_role_is_tagged_and_inferred_edges_are_marked() {
+        let dag = family();
+        let subgraph = SubgraphExpander::default().expand(&dag, &[("MID".to_string(), 1.0)]);
+        let context = GroundedEvidencePackager::default().package(&dag, &subgraph);
+        for expected in [
+            "SEED",
+            "ANCESTOR",
+            "DESCENDANT",
+            "INFERRED (< 1.0)",
+            "EXTRACTED (1.0)",
+        ] {
+            assert!(
+                context.contains(expected),
+                "{expected} missing from {context}"
+            );
+        }
+        // The seed is listed before the nodes around it.
+        assert!(context.find("[Node: MID]").unwrap() < context.find("[Node: ROOT]").unwrap());
+    }
+
+    #[test]
+    fn siblings_are_tagged_and_nodes_missing_from_the_dag_are_skipped() {
+        let dag = family();
+        let subgraph = SubgraphExpander::default().expand(&dag, &[("LEAF".to_string(), 1.0)]);
+        let context = GroundedEvidencePackager::new().package(&dag, &subgraph);
+        assert!(context.contains("SIBLING"));
+
+        let empty: MemoryDag<TestNode> = MemoryDag::new();
+        let skipped = GroundedEvidencePackager::new().package(&empty, &subgraph);
+        assert!(!skipped.contains("[Node: LEAF]"));
+        assert!(skipped.contains("Citation Requirement"));
+    }
+
+    #[rstest]
+    #[case::none("no citations here", &[])]
+    #[case::two("[Node: A] and [Node: B]", &["A", "B"])]
+    #[case::duplicate("[Node: A] [Node: A]", &["A"])]
+    #[case::empty_key("[Node: ] [Node:   ]", &[])]
+    #[case::unterminated("see [Node: A and then nothing", &[])]
+    fn citations_are_extracted_from_answers(#[case] answer: &str, #[case] expected: &[&str]) {
+        let cited = GroundedEvidencePackager::new().extract_citations(answer);
+        let mut cited: Vec<_> = cited.into_iter().collect();
+        cited.sort();
+        assert_eq!(cited, expected);
+    }
 }

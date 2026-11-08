@@ -383,4 +383,13 @@ mod tests {
     fn captures_the_edges_between_visited_nodes(subgraph: ExpandedSubgraph<String>) {
         assert!(!subgraph.edges.is_empty());
     }
+
+    #[rstest]
+    #[case::within_reach(1, 0.7)]
+    #[case::at_the_limit(2, 0.49)]
+    #[case::beyond_the_limit(3, 0.0)]
+    fn weights_decay_per_hop_and_vanish_past_the_limit(#[case] hops: usize, #[case] expected: f32) {
+        let expander = SubgraphExpander::new(0.7, 2, true);
+        assert!((expander.compute_weight(1.0, hops) - expected).abs() < 1e-4);
+    }
 }

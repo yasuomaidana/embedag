@@ -229,3 +229,75 @@ pub fn derive_as_graph_context_impl(input: DeriveInput) -> syn::Result<TokenStre
         }
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rstest::rstest;
+    use syn::parse_quote;
+
+    fn expand(input: DeriveInput) -> syn::Result<String> {
+        derive_as_graph_context_impl(input).map(|tokens| tokens.to_string())
+    }
+
+    #[test]
+    fn a_fully_annotated_struct_maps_every_modality() {
+        let out = expand(parse_quote! {
+            struct Record {
+                #[graph(key)] id: String,
+                #[graph(text)] title: String,
+                #[graph(text)] body: String,
+                #[graph(scalar)] weight: f64,
+                #[graph(scalar = "price_eur")] price: f64,
+                #[graph(time)] at: DateTime<Utc>,
+                #[graph(geo)] position: (f64, f64),
+                #[graph(tag)] brand: String,
+                #[graph(tag = "maker")] vendor: String,
+                #[graph(blob)] image: MultimodalBlob,
+                #[graph(tokens)] tokens: Vec<(u32, f32)>,
+                ignored: u8,
+            }
+        })
+        .unwrap();
+        for part in [
+            "\"price_eur\"",
+            "\"maker\"",
+            "Some (self . at)",
+            "join",
+            "self . tokens . clone",
+        ] {
+            assert!(out.contains(part), "{part} missing from {out}");
+        }
+    }
+
+    #[rstest]
+    #[case::temporal_alias(parse_quote!(struct R { #[graph(key)] k: String, #[graph(text)] t: String, #[graph(temporal)] at: u8 }))]
+    #[case::geospatial_alias(parse_quote!(struct R { #[graph(key)] k: String, #[graph(text)] t: String, #[graph(geospatial)] g: u8 }))]
+    #[case::blobs_alias(parse_quote!(struct R { #[graph(key)] k: String, #[graph(text)] t: String, #[graph(blobs)] b: u8 }))]
+    #[case::sparse_alias(parse_quote!(struct R { #[graph(key)] k: String, #[graph(text)] t: String, #[graph(sparse)] s: u8 }))]
+    fn attribute_aliases_are_accepted(#[case] input: DeriveInput) {
+        assert!(expand(input).is_ok());
+    }
+
+    #[rstest]
+    #[case::two_keys(
+        parse_quote!(struct R { #[graph(key)] a: String, #[graph(key)] b: String, #[graph(text)] t: String }),
+        "Only one field"
+    )]
+    #[case::two_times(
+        parse_quote!(struct R { #[graph(key)] k: String, #[graph(text)] t: String, #[graph(time)] a: u8, #[graph(time)] b: u8 }),
+        "Only one field"
+    )]
+    #[case::unknown_attribute(
+        parse_quote!(struct R { #[graph(key)] k: String, #[graph(text)] t: String, #[graph(bogus)] x: u8 }),
+        "unrecognized #[graph(...)] attribute: `bogus`"
+    )]
+    #[case::no_key(parse_quote!(struct R { #[graph(text)] t: String }), "exactly one #[graph(key)]")]
+    #[case::no_text(parse_quote!(struct R { #[graph(key)] k: String }), "at least one #[graph(text)]")]
+    #[case::enum_input(parse_quote!(enum E { A }), "only supports structs")]
+    #[case::tuple_struct(parse_quote!(struct R(String);), "requires named fields")]
+    fn invalid_inputs_are_errors(#[case] input: DeriveInput, #[case] message: &str) {
+        let err = expand(input).unwrap_err().to_string();
+        assert!(err.contains(message), "{err}");
+    }
+}
