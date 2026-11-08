@@ -33,7 +33,7 @@ macro_rules! sqlite_cycle {
         };
         assert_eq!(root.insert_sqlite(&mut conn).unwrap(), 1);
         // A batch containing an existing key fails as a whole.
-        assert!($ty::insert_batch_sqlite(&[root.clone()], &mut conn).is_err());
+        assert!($ty::insert_batch_sqlite(std::slice::from_ref(&root), &mut conn).is_err());
         assert_eq!($ty::insert_batch_sqlite(&[child.clone()], &mut conn).unwrap(), 1);
         child.category_name = "B2".into();
         assert_eq!(child.update_sqlite(&mut conn).unwrap(), 1);
@@ -68,7 +68,7 @@ macro_rules! postgres_cycle {
         };
         // Blocking connection.
         assert_eq!(root.insert_pg($sync).unwrap(), 1);
-        assert!($ty::insert_batch_pg(&[root.clone()], $sync).is_err());
+        assert!($ty::insert_batch_pg(std::slice::from_ref(&root), $sync).is_err());
         assert_eq!($ty::insert_batch_pg(&[child.clone()], $sync).unwrap(), 1);
         child.category_name = "B2".into();
         assert_eq!(child.update_pg($sync).unwrap(), 1);
@@ -77,7 +77,7 @@ macro_rules! postgres_cycle {
         // Async connection.
         assert_eq!(root.insert_pg_async($async_conn).await.unwrap(), 1);
         assert!(
-            $ty::insert_batch_pg_async(&[root.clone()], $async_conn)
+            $ty::insert_batch_pg_async(std::slice::from_ref(&root), $async_conn)
                 .await
                 .is_err()
         );
