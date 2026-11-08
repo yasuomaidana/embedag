@@ -10,7 +10,7 @@ Use `embedag-matcher` when you already have a parser (such as `syn`, `tree-sitte
 - A custom pairwise similarity metric implemented via the `Matcher` trait.
 - Thresholded undirected similarity graphs (`SimilarityGraph`) with score-sorted neighbor queries and connected-component cluster discovery.
 
-Do not use `embedag-matcher` to parse raw source code directly (it deliberately contains no language grammar or lexer) or to enforce acyclic dependency ordering (use [`embedag-core`](../embedag-core/README.md) and `MemoryDag<T>` for directed acyclic graphs).
+Do not use `embedag-matcher` to parse raw source code directly (it deliberately contains no language grammar or lexer) or to enforce acyclic dependency ordering (use [`embedag-core`](https://docs.rs/embedag-core) and `MemoryDag<T>` for directed acyclic graphs).
 
 ## Main types and functions
 
@@ -67,7 +67,7 @@ fn main() {
 
 ## Workspace relationship
 
-Within the workspace, `embedag-matcher` depends only on `embedag-core`, `petgraph`, `blake3`, and `thiserror`, and is re-exported by [`embedag`](../embedag/README.md) under the `matcher` feature (`embedag::matcher`).
+Within the workspace, `embedag-matcher` depends only on `embedag-core`, `petgraph`, `blake3`, and `thiserror`, and is re-exported by [`embedag`](https://docs.rs/embedag) under the `matcher` feature (`embedag::matcher`).
 
 
 ## Build and test
@@ -79,4 +79,4 @@ cargo test -p embedag-matcher
 
 ## Specifications
 
-- [`doc/22_Dependency_Resolution_and_Merkle_Delta_API.md`](../../doc/22_Dependency_Resolution_and_Merkle_Delta_API.md) — Section 3 ("`embedag-matcher`: Structural AST Similarity & Similarity Graphs") specifies `Tree`, `Matcher`, `AstMatcher`, and `SimilarityGraph`.
+- [`doc/22_Dependency_Resolution_and_Merkle_Delta_API.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/22_Dependency_Resolution_and_Merkle_Delta_API.md) — Section 3 ("`embedag-matcher`: Structural AST Similarity & Similarity Graphs") specifies `Tree`, `Matcher`, `AstMatcher`, and `SimilarityGraph`.

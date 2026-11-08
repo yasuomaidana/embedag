@@ -6,6 +6,10 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 readme = "README.md"
+keywords = ["ast","similarity","tree","hashing","embedag"]
+categories = ["algorithms","data-structures"]
+homepage.workspace = true
+documentation = "https://docs.rs/embedag-matcher"
 
 [dependencies]
 #embedag-core = { workspace = true }

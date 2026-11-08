@@ -6,6 +6,10 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 readme = "README.md"
+keywords = ["diesel","postgres","sqlite","pgvector","graph"]
+categories = ["database","data-structures"]
+homepage.workspace = true
+documentation = "https://docs.rs/embedag-diesel"
 
 [features]
 default = ["postgres-async", "sqlite", "test-harness"]

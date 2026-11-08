@@ -10,7 +10,7 @@ Do not use `#[derive(HierarchicalModel)]` on structs that do not live in a crate
 
 ### Planned capabilities
 
-- **Discriminator-scoped hierarchies and configurable `ON DELETE` (Ticket 10.4.1)**: Extending `#[hierarchical(...)]` with `scope = "<column>"` (for multi-tenant or per-project trees sharing a table) and `on_delete = "cascade" | "restrict" | "set_null"` is specified in [`doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md`](../../doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md) and is not yet implemented.
+- **Discriminator-scoped hierarchies and configurable `ON DELETE` (Ticket 10.4.1)**: Extending `#[hierarchical(...)]` with `scope = "<column>"` (for multi-tenant or per-project trees sharing a table) and `on_delete = "cascade" | "restrict" | "set_null"` is specified in [`doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md) and is not yet implemented.
 
 ## Main macros and attributes
 
@@ -95,9 +95,9 @@ fn main() {
 
 Within the workspace:
 
-- `embedag-derive` generates trait implementations defined in [`embedag-core`](../embedag-core/README.md) (`AsGraphContext`, `GraphTarget`, `NodePayload`) and [`embedag-diesel`](../embedag-diesel/README.md) (`HierarchicalModel`, `HierarchicalNode`).
-- [`embedag-example-receipts`](../embedag-example-receipts/README.md) uses `#[derive(AsGraphContext)]`, `#[derive(GraphTarget)]`, and `#[derive(HierarchicalModel)]` across its receipt and multi-DAG finance taxonomy models.
-- [`embedag`](../embedag/README.md) re-exports all three derive macros under `embedag::derive` and `embedag::prelude`.
+- `embedag-derive` generates trait implementations defined in [`embedag-core`](https://docs.rs/embedag-core) (`AsGraphContext`, `GraphTarget`, `NodePayload`) and [`embedag-diesel`](https://docs.rs/embedag-diesel) (`HierarchicalModel`, `HierarchicalNode`).
+- [`embedag-example-receipts`](https://github.com/yasuomaidana/embedag/blob/main/crates/embedag-example-receipts) uses `#[derive(AsGraphContext)]`, `#[derive(GraphTarget)]`, and `#[derive(HierarchicalModel)]` across its receipt and multi-DAG finance taxonomy models.
+- [`embedag`](https://docs.rs/embedag) re-exports all three derive macros under `embedag::derive` and `embedag::prelude`.
 
 
 ## Build and test
@@ -111,6 +111,6 @@ Macro expansion behavior is also tested in `embedag-core`, `embedag-diesel`, and
 
 ## Specifications
 
-- [`doc/06_Procedural_Derive_Macros.md`](../../doc/06_Procedural_Derive_Macros.md) — Macro syntax, AST parsing rules, and generated trait implementations.
-- [`doc/16_Hierarchical_Recursive_CTE_Traversals.md`](../../doc/16_Hierarchical_Recursive_CTE_Traversals.md) — `#[derive(HierarchicalModel)]` and `HierarchicalTableConfig` integration.
-- [`doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md`](../../doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md) — Planned `#[hierarchical(scope = ..., on_delete = ...)]` extensions (Ticket 10.4.1).
+- [`doc/06_Procedural_Derive_Macros.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/06_Procedural_Derive_Macros.md) — Macro syntax, AST parsing rules, and generated trait implementations.
+- [`doc/16_Hierarchical_Recursive_CTE_Traversals.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/16_Hierarchical_Recursive_CTE_Traversals.md) — `#[derive(HierarchicalModel)]` and `HierarchicalTableConfig` integration.
+- [`doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md) — Planned `#[hierarchical(scope = ..., on_delete = ...)]` extensions (Ticket 10.4.1).

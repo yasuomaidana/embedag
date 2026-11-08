@@ -1,4 +1,4 @@
-//! Procedural derive macros for `embedag`.\n//!\n//! Provides `#[derive(AsGraphContext)]`, `#[derive(GraphTarget)]`, and `#[derive(HierarchicalModel)]`.
+#![doc = include_str!("../README.md")]
 
 use proc_macro::TokenStream;
 use syn::{DeriveInput, parse_macro_input};
@@ -45,8 +45,3 @@ pub fn derive_hierarchical_model(input: TokenStream) -> TokenStream {
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }
-
-/// Compiles the Rust examples of the crate README as doctests, so they cannot drift from the code.
-#[cfg(doctest)]
-#[doc = include_str!("../README.md")]
-struct ReadmeDoctests;

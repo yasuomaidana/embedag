@@ -11,18 +11,18 @@ Use `embedag-diesel` when your application stores graph nodes, edges, or adjacen
 - Savepoint-wrapped transaction execution (`execute_with_savepoint`, `execute_with_savepoint_turso`) and atomic mutation lifecycles (`apply_mutation_lifecycle`, `apply_mutation_lifecycle_turso`).
 - Embedded DDL schema initialization (`MigrationEngine`) and containerized PostgreSQL `pgvector/pgvector:pg16` integration testing (`PgVectorHarness`).
 
-Do not use `embedag-diesel` if you want a pure RDF/SPARQL triple store (use [`embedag-oxirs`](../embedag-oxirs/README.md)), a document-graph store with `RELATE` edges (use [`embedag-surrealdb`](../embedag-surrealdb/README.md)), or a Bolt/OpenCypher property graph (use [`embedag-neo4j`](../embedag-neo4j/README.md)).
+Do not use `embedag-diesel` if you want a pure RDF/SPARQL triple store (use [`embedag-oxirs`](https://docs.rs/embedag-oxirs)), a document-graph store with `RELATE` edges (use [`embedag-surrealdb`](https://docs.rs/embedag-surrealdb)), or a Bolt/OpenCypher property graph (use [`embedag-neo4j`](https://docs.rs/embedag-neo4j)).
 
 ### Implemented vs. planned capabilities
 
-- **`VectorSearchRepository` on PostgreSQL / SQLite (Ticket 10.1.2)**: While `MigrationEngine::POSTGRES_UP_SQL` provisions `embedding vector(768)` and an HNSW `vector_cosine_ops` index on `semantic_nodes` (and `NodeUpsertRecord` carries `embedding: Option<Vec<f32>>`), `embedag-diesel` does not yet implement `embedag_core::traits::VectorSearchRepository<T>` (`ORDER BY embedding <=> $1 LIMIT $2` on PostgreSQL and brute-force cosine scan over BLOB vectors on SQLite/Turso). That implementation is planned in [`doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md`](../../doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md) (§4, Ticket 10.1.2).
+- **`VectorSearchRepository` on PostgreSQL / SQLite (Ticket 10.1.2)**: While `MigrationEngine::POSTGRES_UP_SQL` provisions `embedding vector(768)` and an HNSW `vector_cosine_ops` index on `semantic_nodes` (and `NodeUpsertRecord` carries `embedding: Option<Vec<f32>>`), `embedag-diesel` does not yet implement `embedag_core::traits::VectorSearchRepository<T>` (`ORDER BY embedding <=> $1 LIMIT $2` on PostgreSQL and brute-force cosine scan over BLOB vectors on SQLite/Turso). That implementation is planned in [`doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md) (§4, Ticket 10.1.2).
 
 ## Main types and functions
 
 - **Recursive CTE hierarchy traversals (`cte`, `traversal`)**:
   - `HierarchicalTableConfig`: Configures any adjacency-list table (`table_name`, `id_column`, `parent_column`, `name_column`, optional `description` and `max_breadth_per_node`).
   - `HierarchyItem`: Returned lineage entry (`id: String`, `depth: i32`, `name: String`, where `depth >= 1`).
-  - `HierarchicalNode` and `HierarchicalModel`: Traits implemented manually or via `#[derive(HierarchicalModel)]` from [`embedag-derive`](../embedag-derive/README.md).
+  - `HierarchicalNode` and `HierarchicalModel`: Traits implemented manually or via `#[derive(HierarchicalModel)]` from [`embedag-derive`](https://docs.rs/embedag-derive).
   - `CteHierarchyBuilder`:
     - SQLite (`feature = "sqlite"`): `fetch_ancestors_sqlite`, `fetch_ancestors_dedup_sqlite`, `fetch_descendants_sqlite`, `fetch_model_ancestors_sqlite`, `fetch_model_descendants_sqlite`, `fetch_model_ancestors_dedup_sqlite`.
     - PostgreSQL async (`features = ["postgres-async", "diesel-async"]`): `fetch_ancestors_pg_async`, `fetch_descendants_pg_async`, `fetch_model_ancestors_pg_async`, `fetch_model_descendants_pg_async`.
@@ -84,10 +84,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Within the workspace:
 
-- `embedag-diesel` depends on [`embedag-core`](../embedag-core/README.md).
-- [`embedag-derive`](../embedag-derive/README.md) generates implementations of `embedag_diesel::cte::HierarchicalModel` and `HierarchicalNode`.
-- [`embedag-example-receipts`](../embedag-example-receipts/README.md) uses `embedag-diesel` to persist and traverse receipt and financial category hierarchies across SQLite and PostgreSQL.
-- [`embedag`](../embedag/README.md) re-exports `embedag-diesel` under `embedag::diesel` and forwards the `turso` and `turso-async` feature flags.
+- `embedag-diesel` depends on [`embedag-core`](https://docs.rs/embedag-core).
+- [`embedag-derive`](https://docs.rs/embedag-derive) generates implementations of `embedag_diesel::cte::HierarchicalModel` and `HierarchicalNode`.
+- [`embedag-example-receipts`](https://github.com/yasuomaidana/embedag/blob/main/crates/embedag-example-receipts) uses `embedag-diesel` to persist and traverse receipt and financial category hierarchies across SQLite and PostgreSQL.
+- [`embedag`](https://docs.rs/embedag) re-exports `embedag-diesel` under `embedag::diesel` and forwards the `turso` and `turso-async` feature flags.
 
 
 ## Build and test
@@ -102,7 +102,7 @@ cargo test -p embedag-diesel --test pgvector_integration -- --include-ignored
 
 ## Specifications
 
-- [`doc/15_Relational_Persistence_and_Schema_Engine.md`](../../doc/15_Relational_Persistence_and_Schema_Engine.md) — Schema DDL, `UpsertDescriptor`, batch upserts, and savepoints.
-- [`doc/16_Hierarchical_Recursive_CTE_Traversals.md`](../../doc/16_Hierarchical_Recursive_CTE_Traversals.md) — `CteHierarchyBuilder`, `HierarchicalTableConfig`, and `diesel-cte-ext` integration.
-- [`doc/21_Heavy_Graph_Handling_and_Topological_Pagination.md`](../../doc/21_Heavy_Graph_Handling_and_Topological_Pagination.md) — Bounded CTE depth and per-node breadth windowing (`ROW_NUMBER() OVER (PARTITION BY ...)`).
-- [`doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md`](../../doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md) — Planned `VectorSearchRepository` implementation for PostgreSQL `pgvector` and SQLite (Ticket 10.1.2).
+- [`doc/15_Relational_Persistence_and_Schema_Engine.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/15_Relational_Persistence_and_Schema_Engine.md) — Schema DDL, `UpsertDescriptor`, batch upserts, and savepoints.
+- [`doc/16_Hierarchical_Recursive_CTE_Traversals.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/16_Hierarchical_Recursive_CTE_Traversals.md) — `CteHierarchyBuilder`, `HierarchicalTableConfig`, and `diesel-cte-ext` integration.
+- [`doc/21_Heavy_Graph_Handling_and_Topological_Pagination.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/21_Heavy_Graph_Handling_and_Topological_Pagination.md) — Bounded CTE depth and per-node breadth windowing (`ROW_NUMBER() OVER (PARTITION BY ...)`).
+- [`doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md) — Planned `VectorSearchRepository` implementation for PostgreSQL `pgvector` and SQLite (Ticket 10.1.2).

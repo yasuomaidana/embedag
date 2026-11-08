@@ -15,7 +15,7 @@ Do not use `embedag-llm` expecting out-of-the-box remote HTTP calls to OpenAI/An
 
 ### Implemented vs. planned capabilities
 
-Per [`doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md`](../../doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md) (§2):
+Per [`doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md) (§2):
 
 - **Local providers (`CandleProvider`, `OxillamaProvider`, `OxibonsaiProvider`)**: Currently evaluate prompts using deterministic token-overlap and candidate-matching heuristics (`src/provider.rs`) validated step-by-step through `PushdownAutomaton`, or return a caller-configured `simulated_directive` (`with_simulated_response`). Under the `oxillama` feature, `OxillamaProvider::validate_gbnf_grammar` compiles GBNF grammars via `oxillama::grammar::Grammar::from_gbnf`.
 - **`CloudProvider`**: Currently a configuration stub that returns `LlmError::ProviderFailure` when `extract_directive` is called without a simulated response (`src/provider.rs:412`). A real OpenAI-compatible HTTP `JsonSchemaHttpProvider` (`/v1/chat/completions` with `response_format: { type: "json_schema" }`) is planned in Ticket 10.3.1.
@@ -79,9 +79,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Within the workspace:
 
-- `embedag-llm` depends on [`embedag-core`](../embedag-core/README.md) (`MemoryDag`, `MutationDirective`, `EdgePayload`, `GraphContext`).
-- [`embedag-example-receipts`](../embedag-example-receipts/README.md) uses `embedag-llm` (`PromptFormatter`, `LlmProvider`, `CandleProvider`, `WaterfallPipeline`, `SemanticDeltaSynthesizer`, `ChangesetDiffEngine`) to categorize receipts and invoices into hierarchical taxonomies.
-- [`embedag`](../embedag/README.md) re-exports `embedag-llm` under `embedag::llm` and `embedag::prelude`.
+- `embedag-llm` depends on [`embedag-core`](https://docs.rs/embedag-core) (`MemoryDag`, `MutationDirective`, `EdgePayload`, `GraphContext`).
+- [`embedag-example-receipts`](https://github.com/yasuomaidana/embedag/blob/main/crates/embedag-example-receipts) uses `embedag-llm` (`PromptFormatter`, `LlmProvider`, `CandleProvider`, `WaterfallPipeline`, `SemanticDeltaSynthesizer`, `ChangesetDiffEngine`) to categorize receipts and invoices into hierarchical taxonomies.
+- [`embedag`](https://docs.rs/embedag) re-exports `embedag-llm` under `embedag::llm` and `embedag::prelude`.
 
 
 ## Build and test
@@ -93,8 +93,8 @@ cargo test -p embedag-llm
 
 ## Specifications
 
-- [`doc/10_Structured_Extraction_and_Schema_Derivation.md`](../../doc/10_Structured_Extraction_and_Schema_Derivation.md) — `ExtractionDirective`, `schemars` derivation, and `$ref` dereferencing.
-- [`doc/11_Pure_Rust_LLM_Inference_and_Constrained_Decoding.md`](../../doc/11_Pure_Rust_LLM_Inference_and_Constrained_Decoding.md) — GBNF compilation, `PushdownAutomaton`, and `LlmProvider` backends.
-- [`doc/12_Multi_Tiered_Waterfall_Resolution.md`](../../doc/12_Multi_Tiered_Waterfall_Resolution.md) — 3-tier `WaterfallPipeline` and `AliasStore`.
-- [`doc/14_Dynamic_Graph_Mutations_and_Diffing.md`](../../doc/14_Dynamic_Graph_Mutations_and_Diffing.md) — `ChangesetDiffEngine` and `SemanticDeltaSynthesizer`.
-- [`doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md`](../../doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md) — Current provider audit (§2), planned `JsonSchemaHttpProvider` (Ticket 10.3.1), and kNN waterfall tier (Ticket 10.2.2).
+- [`doc/10_Structured_Extraction_and_Schema_Derivation.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/10_Structured_Extraction_and_Schema_Derivation.md) — `ExtractionDirective`, `schemars` derivation, and `$ref` dereferencing.
+- [`doc/11_Pure_Rust_LLM_Inference_and_Constrained_Decoding.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/11_Pure_Rust_LLM_Inference_and_Constrained_Decoding.md) — GBNF compilation, `PushdownAutomaton`, and `LlmProvider` backends.
+- [`doc/12_Multi_Tiered_Waterfall_Resolution.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/12_Multi_Tiered_Waterfall_Resolution.md) — 3-tier `WaterfallPipeline` and `AliasStore`.
+- [`doc/14_Dynamic_Graph_Mutations_and_Diffing.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/14_Dynamic_Graph_Mutations_and_Diffing.md) — `ChangesetDiffEngine` and `SemanticDeltaSynthesizer`.
+- [`doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md) — Current provider audit (§2), planned `JsonSchemaHttpProvider` (Ticket 10.3.1), and kNN waterfall tier (Ticket 10.2.2).

@@ -1,4 +1,4 @@
-//! Constrained LLM extraction, schema derivation, oxillama & candle inference and multi-tiered waterfall resolution.
+#![doc = include_str!("../README.md")]
 
 pub mod delta_synthesizer;
 pub mod diff;
@@ -30,8 +30,3 @@ pub use schema::{
     ExtractionDirective, ExtractionEnvelope, generate_extraction_schema, generate_schema_for,
 };
 pub use waterfall::{AliasStore, CandidateMatch, ResolutionOutcome, WaterfallPipeline};
-
-/// Compiles the Rust examples of the crate README as doctests, so they cannot drift from the code.
-#[cfg(doctest)]
-#[doc = include_str!("../README.md")]
-struct ReadmeDoctests;

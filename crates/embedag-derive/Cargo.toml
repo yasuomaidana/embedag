@@ -6,6 +6,10 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 readme = "README.md"
+keywords = ["derive","macro","graph","dag","embedag"]
+categories = ["development-tools","rust-patterns"]
+homepage.workspace = true
+documentation = "https://docs.rs/embedag-derive"
 
 [lib]
 proc-macro = true

@@ -134,7 +134,7 @@ async fn loading_edges_that_lack_properties_uses_the_defaults(#[future(awt)] bol
         .password("password")
         .build()
         .unwrap();
-    let graph = neo4rs::Graph::connect(config).await.unwrap();
+    let graph = neo4rs::Graph::connect(config).unwrap();
     graph
         .run(neo4rs::query(
             "MATCH (p {business_key: 'a'}), (c {business_key: 'b'}) CREATE (p)-[:LINKS]->(c)",

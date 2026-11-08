@@ -10,7 +10,7 @@ Use `embedag-neo4j` when your infrastructure runs Neo4j or Memgraph and you want
 - Use the standard `ReadOnlyGraphRepository`, `VectorSearchRepository`, and `TransactionalGraphRepository` traits from `embedag-core` against a Bolt endpoint (`Neo4jConfig::bolt(uri, user, password)`).
 - Run fast local unit tests without a live Neo4j daemon via `Neo4jEngine::in_memory()`.
 
-Do not use `embedag-neo4j` when you want embedded file-backed storage without an external database server (use [`embedag-diesel`](../embedag-diesel/README.md) with SQLite/Turso or [`embedag-oxirs`](../embedag-oxirs/README.md) with `StorageMode::Persistent`).
+Do not use `embedag-neo4j` when you want embedded file-backed storage without an external database server (use [`embedag-diesel`](https://docs.rs/embedag-diesel) with SQLite/Turso or [`embedag-oxirs`](https://docs.rs/embedag-oxirs) with `StorageMode::Persistent`).
 
 ## Main types and functions
 
@@ -66,8 +66,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Within the workspace:
 
-- `embedag-neo4j` depends on [`embedag-core`](../embedag-core/README.md) (`MemoryDag`, `NodePayload`, `EdgePayload`, `MutationDirective`, `rank_by_cosine`, repository traits) and `neo4rs`.
-- [`embedag`](../embedag/README.md) re-exports `embedag-neo4j` under `embedag::neo4j` and `embedag::prelude` when the `neo4j` feature is enabled.
+- `embedag-neo4j` depends on [`embedag-core`](https://docs.rs/embedag-core) (`MemoryDag`, `NodePayload`, `EdgePayload`, `MutationDirective`, `rank_by_cosine`, repository traits) and `neo4rs`.
+- [`embedag`](https://docs.rs/embedag) re-exports `embedag-neo4j` under `embedag::neo4j` and `embedag::prelude` when the `neo4j` feature is enabled.
 
 
 ## Build and test
@@ -82,4 +82,4 @@ cargo test -p embedag-neo4j --test neo4j_testcontainers -- --include-ignored
 
 ## Specifications
 
-- [`doc/20_Multi_Database_Extensibility_and_Future_Adapters.md`](../../doc/20_Multi_Database_Extensibility_and_Future_Adapters.md) — Section 3 ("Neo4j & OpenCypher Property Graph Adapter (`embedag-neo4j`)").
+- [`doc/20_Multi_Database_Extensibility_and_Future_Adapters.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/20_Multi_Database_Extensibility_and_Future_Adapters.md) — Section 3 ("Neo4j & OpenCypher Property Graph Adapter (`embedag-neo4j`)").

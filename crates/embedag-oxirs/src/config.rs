@@ -12,7 +12,7 @@ pub enum StorageMode {
     Persistent(PathBuf),
 }
 
-/// Configuration settings for [`OxiRsTdbEngine`].
+/// Configuration settings for [`OxiRsTdbEngine`](crate::OxiRsTdbEngine).
 ///
 /// Follows the developer-defined abstraction pattern: developers have 100% control
 /// over base URI namespaces, persistence directories, sync policies, and named graphs.

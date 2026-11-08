@@ -12,7 +12,7 @@ Use `embedag-rag` when you have a `MemoryDag<T>` and want to:
 - Partition a `MemoryDag<T>` into modular communities via Leiden modularity optimization and generate deterministic community summaries (`LeidenClusterer`).
 - Format retrieved nodes and their ancestor lineages into token-budgeted markdown context strings (`EvidenceSynthesizer`) or run the unified 4-layer `oxirag` verification pipeline (`OxiRagUnifiedEngine`).
 
-Do not use `embedag-rag` as a durable storage engine; persist graphs using [`embedag-diesel`](../embedag-diesel/README.md), [`embedag-oxirs`](../embedag-oxirs/README.md), [`embedag-surrealdb`](../embedag-surrealdb/README.md), or [`embedag-neo4j`](../embedag-neo4j/README.md) and load or project the relevant subgraph into `MemoryDag<T>` for retrieval.
+Do not use `embedag-rag` as a durable storage engine; persist graphs using [`embedag-diesel`](https://docs.rs/embedag-diesel), [`embedag-oxirs`](https://docs.rs/embedag-oxirs), [`embedag-surrealdb`](https://docs.rs/embedag-surrealdb), or [`embedag-neo4j`](https://docs.rs/embedag-neo4j) and load or project the relevant subgraph into `MemoryDag<T>` for retrieval.
 
 ## Main types and functions
 
@@ -79,8 +79,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Within the workspace:
 
-- `embedag-rag` depends on [`embedag-core`](../embedag-core/README.md) (`MemoryDag`, `NodePayload`, `EdgePayload`, `rank_by_cosine`) and `oxirag`.
-- [`embedag`](../embedag/README.md) re-exports `embedag-rag` under `embedag::rag` and `embedag::prelude`.
+- `embedag-rag` depends on [`embedag-core`](https://docs.rs/embedag-core) (`MemoryDag`, `NodePayload`, `EdgePayload`, `rank_by_cosine`) and `oxirag`.
+- [`embedag`](https://docs.rs/embedag) re-exports `embedag-rag` under `embedag::rag` and `embedag::prelude`.
 
 
 ## Build and test
@@ -92,6 +92,6 @@ cargo test -p embedag-rag
 
 ## Specifications
 
-- [`doc/17_Hybrid_Vector_and_Lexical_Retrieval.md`](../../doc/17_Hybrid_Vector_and_Lexical_Retrieval.md) — `ReciprocalRankFusion` and `InMemoryHybridIndex`.
-- [`doc/18_Topological_Subgraph_Expansion_and_GraphRAG.md`](../../doc/18_Topological_Subgraph_Expansion_and_GraphRAG.md) — `SubgraphExpander`, `LeidenClusterer`, `EvidenceSynthesizer`, and `OxiRagUnifiedEngine`.
-- [`doc/19_External_Ecosystem_and_KitaSan_Stack.md`](../../doc/19_External_Ecosystem_and_KitaSan_Stack.md) — Integration with `oxirag`.
+- [`doc/17_Hybrid_Vector_and_Lexical_Retrieval.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/17_Hybrid_Vector_and_Lexical_Retrieval.md) — `ReciprocalRankFusion` and `InMemoryHybridIndex`.
+- [`doc/18_Topological_Subgraph_Expansion_and_GraphRAG.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/18_Topological_Subgraph_Expansion_and_GraphRAG.md) — `SubgraphExpander`, `LeidenClusterer`, `EvidenceSynthesizer`, and `OxiRagUnifiedEngine`.
+- [`doc/19_External_Ecosystem_and_KitaSan_Stack.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/19_External_Ecosystem_and_KitaSan_Stack.md) — Integration with `oxirag`.

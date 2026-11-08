@@ -6,6 +6,10 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 readme = "README.md"
+keywords = ["dag","graph","merkle","embedding","topological-sort"]
+categories = ["data-structures","algorithms"]
+homepage.workspace = true
+documentation = "https://docs.rs/embedag-core"
 
 [features]
 default = ["std", "h3o"]

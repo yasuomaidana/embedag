@@ -6,7 +6,7 @@
 
 Use `embedag` when your application combines multiple capabilities from the workspace—such as deriving `AsGraphContext` on domain structs, validating acyclic graph mutations in `MemoryDag`, persisting hierarchies via `embedag-diesel`, and running hybrid retrieval with `embedag-rag`.
 
-Do not use `embedag` with its default `full` feature set when you only need a single layer of the stack or want to minimize compile times and transitive dependencies (such as `surrealdb`, `neo4rs`, `oxirs-core`, or `candle-core`). Library crates and lightweight services should depend directly on [`embedag-core`](../embedag-core/README.md), [`embedag-matcher`](../embedag-matcher/README.md), or the specific adapter crate they require, or disable default features on `embedag` (`default-features = false`) and opt into individual feature flags.
+Do not use `embedag` with its default `full` feature set when you only need a single layer of the stack or want to minimize compile times and transitive dependencies (such as `surrealdb`, `neo4rs`, `oxirs-core`, or `candle-core`). Library crates and lightweight services should depend directly on [`embedag-core`](https://docs.rs/embedag-core), [`embedag-matcher`](https://docs.rs/embedag-matcher), or the specific adapter crate they require, or disable default features on `embedag` (`default-features = false`) and opt into individual feature flags.
 
 ## Main types and functions
 
@@ -95,6 +95,6 @@ cargo test -p embedag
 
 ## Specifications
 
-- [`doc/00_MASTER_SPECIFICATIONS.md`](../../doc/00_MASTER_SPECIFICATIONS.md) — Architectural overview and specification index.
-- [`doc/02_Workspace_Crate_Topology.md`](../../doc/02_Workspace_Crate_Topology.md) — Workspace crate hierarchy, dependency rules, and feature flags.
-- [`doc/03_Architectural_Design_Patterns.md`](../../doc/03_Architectural_Design_Patterns.md) — Typestate, arena, capability trait, and waterfall patterns re-exported by the prelude.
+- [`doc/00_MASTER_SPECIFICATIONS.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/00_MASTER_SPECIFICATIONS.md) — Architectural overview and specification index.
+- [`doc/02_Workspace_Crate_Topology.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/02_Workspace_Crate_Topology.md) — Workspace crate hierarchy, dependency rules, and feature flags.
+- [`doc/03_Architectural_Design_Patterns.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/03_Architectural_Design_Patterns.md) — Typestate, arena, capability trait, and waterfall patterns re-exported by the prelude.

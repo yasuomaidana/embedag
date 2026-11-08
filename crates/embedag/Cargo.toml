@@ -6,6 +6,10 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 readme = "README.md"
+keywords = ["dag","graph-rag","rag","llm","embedag"]
+categories = ["data-structures","algorithms"]
+homepage.workspace = true
+documentation = "https://docs.rs/embedag"
 
 [features]
 default = ["full"]
