@@ -153,25 +153,3 @@ fn models_generate_the_recursive_cte_seed_and_step_sql() {
     assert!(Dept::descendant_seed_sql("root").contains("WHERE id = 'root'"));
     assert!(Dept::ancestor_step_sql(2).contains("a.depth < 2"));
 }
-
-#[cfg(feature = "turso-async")]
-#[test]
-fn the_turso_row_types_can_be_cloned_and_printed() {
-    use embedag_diesel::cte::builder::TursoHierarchyRow;
-    use embedag_diesel::traversal::TursoTraversalRow;
-
-    let hierarchy = TursoHierarchyRow {
-        curr_id: "a".into(),
-        depth: 1,
-        curr_name: "A".into(),
-    };
-    assert!(format!("{:?}", hierarchy.clone()).contains("curr_id"));
-    let traversal = TursoTraversalRow {
-        node_id: "a".into(),
-        depth: 1,
-        business_key: "k".into(),
-        entity_level: "l".into(),
-        name: "n".into(),
-    };
-    assert!(format!("{:?}", traversal.clone()).contains("node_id"));
-}

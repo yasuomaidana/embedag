@@ -24,6 +24,10 @@ pub type AncestorRow = LineageRow;
 /// Descendant entry retrieved in a single roundtrip via recursive CTE.
 pub type DescendantRow = LineageRow;
 
+/// A Turso lineage row: node id, depth, business key, name and entity level.
+#[cfg(feature = "turso-async")]
+type TursoRow = (String, i32, String, String, String);
+
 impl LineageRow {
     /// Reads the five traversal columns of a PostgreSQL row.
     #[cfg(feature = "postgres-async")]
@@ -39,13 +43,13 @@ impl LineageRow {
 
     /// Reads a Turso / libSQL row, whose ids come back as text.
     #[cfg(feature = "turso-async")]
-    fn from_turso(row: TursoTraversalRow) -> Self {
+    fn from_turso((node_id, depth, business_key, name, entity_level): TursoRow) -> Self {
         Self {
-            node_id: Uuid::parse_str(&row.node_id).unwrap_or_default(),
-            depth: row.depth,
-            business_key: row.business_key,
-            name: row.name,
-            entity_level: row.entity_level,
+            node_id: Uuid::parse_str(&node_id).unwrap_or_default(),
+            depth,
+            business_key,
+            name,
+            entity_level,
         }
     }
 }
@@ -271,10 +275,11 @@ impl RecursiveTraversalBuilder {
         conn: &mut crate::migrations::AsyncLibSqlConnection,
         sql: String,
     ) -> Result<Vec<LineageRow>, PersistenceError> {
-        let rows: Vec<TursoTraversalRow> =
-            diesel_async::RunQueryDsl::load(diesel::sql_query(sql), conn)
-                .await
-                .map_err(PersistenceError::Diesel)?;
+        use diesel::sql_types::{Integer, Text};
+        let query = diesel::dsl::sql::<(Text, Integer, Text, Text, Text)>(&sql);
+        let rows: Vec<TursoRow> = diesel_async::RunQueryDsl::load(query, conn)
+            .await
+            .map_err(PersistenceError::Diesel)?;
         Ok(rows.into_iter().map(LineageRow::from_turso).collect())
     }
 
@@ -285,20 +290,4 @@ impl RecursiveTraversalBuilder {
         /// Executes multi-hop descendant traversal asynchronously on Turso / libSQL using .
         fetch_descendants_turso_async(root_id) => turso_descendant_query, DescendantRow;
     }
-}
-
-/// Raw query row mapping for Turso traversal queries.
-#[cfg(feature = "turso-async")]
-#[derive(Debug, Clone, diesel::QueryableByName)]
-pub struct TursoTraversalRow {
-    #[diesel(sql_type = diesel::sql_types::Text)]
-    pub node_id: String,
-    #[diesel(sql_type = diesel::sql_types::Integer)]
-    pub depth: i32,
-    #[diesel(sql_type = diesel::sql_types::Text)]
-    pub business_key: String,
-    #[diesel(sql_type = diesel::sql_types::Text)]
-    pub name: String,
-    #[diesel(sql_type = diesel::sql_types::Text)]
-    pub entity_level: String,
 }

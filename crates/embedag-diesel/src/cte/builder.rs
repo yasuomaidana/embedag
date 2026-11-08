@@ -59,6 +59,7 @@ fn parts<Seed: diesel::expression::TypedExpressionType>(cte: &cte_sql::CteSql) -
 /// The rows a traversal returns as hierarchy items.
 #[cfg(any(
     feature = "sqlite",
+    feature = "turso-async",
     all(feature = "postgres-async", feature = "diesel-async")
 ))]
 fn items(rows: Vec<(String, i32, String)>) -> Vec<HierarchyItem> {
@@ -268,27 +269,9 @@ impl CteHierarchyBuilder {
         conn: &mut crate::migrations::AsyncLibSqlConnection,
         statement: String,
     ) -> diesel::QueryResult<Vec<HierarchyItem>> {
-        let rows: Vec<TursoHierarchyRow> =
-            diesel_async::RunQueryDsl::load(diesel::sql_query(statement), conn).await?;
-        Ok(rows
-            .into_iter()
-            .map(|r| HierarchyItem {
-                id: r.curr_id,
-                depth: r.depth,
-                name: r.curr_name,
-            })
-            .collect())
+        use diesel::sql_types::{Integer, Text};
+        let query = diesel::dsl::sql::<(Text, Integer, Text)>(&statement);
+        let rows: Vec<(String, i32, String)> = diesel_async::RunQueryDsl::load(query, conn).await?;
+        Ok(items(rows))
     }
-}
-
-/// Raw query row mapping for Turso CTE hierarchy queries.
-#[cfg(feature = "turso-async")]
-#[derive(Debug, Clone, diesel::QueryableByName)]
-pub struct TursoHierarchyRow {
-    #[diesel(sql_type = diesel::sql_types::Text)]
-    pub curr_id: String,
-    #[diesel(sql_type = diesel::sql_types::Integer)]
-    pub depth: i32,
-    #[diesel(sql_type = diesel::sql_types::Text)]
-    pub curr_name: String,
 }

@@ -289,8 +289,8 @@ mod tests {
 
     #[rstest]
     #[case::plain_text(r#"{"a": "b"#, true)]
-    #[case::escaped_quote(r#"{"a": "say "hi""#, true)]
-    #[case::escaped_backslash(r#"{"a": "path\"#, true)]
+    #[case::escaped_quote(r##"{"a": "say \"hi\" "##, true)]
+    #[case::escaped_backslash(r#"{"a": "path\\ "#, true)]
     #[case::closing_without_opening_brace("}", false)]
     #[case::closing_without_opening_bracket("]", false)]
     #[case::closed_but_invalid("{}}", false)]

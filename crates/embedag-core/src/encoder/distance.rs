@@ -529,6 +529,10 @@ mod tests {
     fn composite_distance_degrades_gracefully() {
         let a = record("a", "text", vec![]);
         let b = record("b", "text", vec![]);
+        assert_eq!(
+            (a.context_key().as_str(), b.text_repr().as_str()),
+            ("a", "text")
+        );
         // No modality has data on either side: nothing to compare.
         assert_eq!(
             composite_distance(&a, &b, &[], &[], &ModalityWeights::default(), 8, 5).unwrap(),
