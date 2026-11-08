@@ -215,9 +215,9 @@ async fn apply_directive_turso(
             batch_upsert_nodes_turso(conn, std::slice::from_ref(node)).await?;
         }
         MutationDirectiveRecord::AttachParent { .. } => {
-            if let Some(edge) = mutation.attached_edge() {
-                batch_upsert_edges_turso(conn, &[edge]).await?;
-            }
+            // Only an `AttachParent` directive reaches here, and it always carries an edge.
+            let edges: Vec<_> = mutation.attached_edge().into_iter().collect();
+            batch_upsert_edges_turso(conn, &edges).await?;
         }
         MutationDirectiveRecord::UpdateNodePayload {
             id,

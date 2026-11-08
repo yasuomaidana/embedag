@@ -2327,6 +2327,7 @@ dependencies = [
  "serde",
  "serde_json",
  "surrealdb",
+ "testcontainers",
  "thiserror 2.0.21",
  "tokio",
 ]

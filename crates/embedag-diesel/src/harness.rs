@@ -36,23 +36,10 @@ impl PostgresHarness {
             format!("host={host} port={port} user=postgres password=postgres dbname=postgres");
 
         // Establish connection to verify readiness and run initial baseline extension setup
-        let mut client_opt = None;
-        for _ in 0..15 {
-            match tokio_postgres::connect(&conn_str, tokio_postgres::NoTls).await {
-                Ok((client, conn)) => {
-                    tokio::spawn(async move {
-                        if let Err(e) = conn.await {
-                            eprintln!("Postgres connection error: {e}");
-                        }
-                    });
-                    client_opt = Some(client);
-                    break;
-                }
-                Err(_) => tokio::time::sleep(tokio::time::Duration::from_millis(300)).await,
-            }
-        }
-
-        let client = client_opt.ok_or("Failed to connect to ephemeral Postgres container")?;
+        let retry_delay = tokio::time::Duration::from_millis(300);
+        let client = connect_with_retry(&conn_str, 15, retry_delay)
+            .await
+            .ok_or("Failed to connect to ephemeral Postgres container")?;
         setup_postgres(&client).await?;
 
         Ok(Self {
@@ -67,12 +54,29 @@ impl PostgresHarness {
     pub async fn connect(&self) -> Result<tokio_postgres::Client, tokio_postgres::Error> {
         let (client, conn) = tokio_postgres::connect(&self.conn_str, tokio_postgres::NoTls).await?;
         tokio::spawn(async move {
-            if let Err(e) = conn.await {
-                eprintln!("Postgres client error: {e}");
-            }
+            let _ = conn.await;
         });
         Ok(client)
     }
+}
+
+/// Connects to PostgreSQL, trying up to `attempts` times with `delay` between failed attempts.
+#[cfg(all(feature = "postgres-async", feature = "test-harness"))]
+pub async fn connect_with_retry(
+    conn_str: &str,
+    attempts: u32,
+    delay: tokio::time::Duration,
+) -> Option<tokio_postgres::Client> {
+    for _ in 0..attempts {
+        if let Ok((client, conn)) = tokio_postgres::connect(conn_str, tokio_postgres::NoTls).await {
+            tokio::spawn(async move {
+                let _ = conn.await;
+            });
+            return Some(client);
+        }
+        tokio::time::sleep(delay).await;
+    }
+    None
 }
 
 /// Reusable ephemeral Turso / libSQL test harness.

@@ -173,10 +173,9 @@ async fn attach_parent(
     tx: &tokio_postgres::Transaction<'_>,
     mutation: &MutationDirectiveRecord,
 ) -> Result<(), PersistenceError> {
-    match mutation.attached_edge() {
-        Some(edge) => batch_upsert_edges(tx, &[edge]).await.map(|_| ()),
-        None => Ok(()),
-    }
+    // Only an `AttachParent` directive reaches here, and it always carries an edge.
+    let edges: Vec<_> = mutation.attached_edge().into_iter().collect();
+    batch_upsert_edges(tx, &edges).await.map(|_| ())
 }
 
 /// Deletes the child's edge to its old parent and upserts one to the new parent.
