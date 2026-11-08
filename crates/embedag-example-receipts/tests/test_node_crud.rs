@@ -15,7 +15,9 @@ const COLUMNS: &str = "(category_id TEXT PRIMARY KEY, parent_category_id TEXT, \
 
 /// Runs every generated SQLite method of `$ty` against its table `$table`.
 macro_rules! sqlite_cycle {
-    ($ty:ident, $table:literal) => {{
+    ($name:ident, $ty:ident, $table:literal) => {
+        #[test]
+        fn $name() {
         let mut conn = SqliteConnection::establish(":memory:").expect("sqlite");
         conn.batch_execute(concat!("CREATE TABLE ", $table, " ", "(category_id TEXT PRIMARY KEY, parent_category_id TEXT, category_name TEXT NOT NULL, entity_level TEXT NOT NULL);"))
             .expect("schema");
@@ -39,61 +41,87 @@ macro_rules! sqlite_cycle {
         assert_eq!(child.update_sqlite(&mut conn).unwrap(), 1);
         assert_eq!($ty::delete_by_id_sqlite(&mut conn, "b").unwrap(), 1);
         assert!(!$ty::table_context().is_empty());
-    }};
+        }
+    };
 }
 
-#[test]
-fn every_node_type_has_working_sqlite_crud() {
-    sqlite_cycle!(ReceiptCategoryNode, "receipt_categories");
-    sqlite_cycle!(MerchantCategoryNode, "merchant_categories");
-    sqlite_cycle!(ItemCategoryNode, "item_categories");
-    sqlite_cycle!(PurchaseCategoryNode, "purchase_categories");
-    sqlite_cycle!(InvoiceCategoryNode, "invoice_categories");
-}
+sqlite_cycle!(
+    receipt_node_has_sqlite_crud,
+    ReceiptCategoryNode,
+    "receipt_categories"
+);
+sqlite_cycle!(
+    merchant_node_has_sqlite_crud,
+    MerchantCategoryNode,
+    "merchant_categories"
+);
+sqlite_cycle!(
+    item_node_has_sqlite_crud,
+    ItemCategoryNode,
+    "item_categories"
+);
+sqlite_cycle!(
+    purchase_node_has_sqlite_crud,
+    PurchaseCategoryNode,
+    "purchase_categories"
+);
+sqlite_cycle!(
+    invoice_node_has_sqlite_crud,
+    InvoiceCategoryNode,
+    "invoice_categories"
+);
 
 /// Runs every generated PostgreSQL method of `$ty`, blocking and async, against `$table`.
 macro_rules! postgres_cycle {
-    ($ty:ident, $table:literal, $sync:expr, $async_conn:expr) => {{
-        let root = $ty {
-            category_id: "a".into(),
-            parent_category_id: None,
-            category_name: "A".into(),
-            entity_level: "root".into(),
-        };
-        let mut child = $ty {
-            category_id: "b".into(),
-            parent_category_id: Some("a".into()),
-            category_name: "B".into(),
-            entity_level: "leaf".into(),
-        };
-        // Blocking connection.
-        assert_eq!(root.insert_pg($sync).unwrap(), 1);
-        assert!($ty::insert_batch_pg(std::slice::from_ref(&root), $sync).is_err());
-        assert_eq!($ty::insert_batch_pg(&[child.clone()], $sync).unwrap(), 1);
-        child.category_name = "B2".into();
-        assert_eq!(child.update_pg($sync).unwrap(), 1);
-        assert_eq!($ty::delete_by_id_pg($sync, "b").unwrap(), 1);
-        assert_eq!($ty::delete_by_id_pg($sync, "a").unwrap(), 1);
-        // Async connection.
-        assert_eq!(root.insert_pg_async($async_conn).await.unwrap(), 1);
-        assert!(
-            $ty::insert_batch_pg_async(std::slice::from_ref(&root), $async_conn)
-                .await
-                .is_err()
-        );
-        assert_eq!(
-            $ty::insert_batch_pg_async(&[child.clone()], $async_conn)
-                .await
-                .unwrap(),
-            1
-        );
-        assert_eq!(child.update_pg_async($async_conn).await.unwrap(), 1);
-        assert_eq!(
-            $ty::delete_by_id_pg_async($async_conn, "b").await.unwrap(),
-            1
-        );
-    }};
+    ($name:ident, $ty:ident) => {
+        async fn $name(sync: &mut diesel::PgConnection, asynchronous: &mut AsyncPgConnection) {
+            let root = $ty {
+                category_id: "a".into(),
+                parent_category_id: None,
+                category_name: "A".into(),
+                entity_level: "root".into(),
+            };
+            let mut child = $ty {
+                category_id: "b".into(),
+                parent_category_id: Some("a".into()),
+                category_name: "B".into(),
+                entity_level: "leaf".into(),
+            };
+            // Blocking connection.
+            assert_eq!(root.insert_pg(sync).unwrap(), 1);
+            assert!($ty::insert_batch_pg(std::slice::from_ref(&root), sync).is_err());
+            assert_eq!($ty::insert_batch_pg(&[child.clone()], sync).unwrap(), 1);
+            child.category_name = "B2".into();
+            assert_eq!(child.update_pg(sync).unwrap(), 1);
+            assert_eq!($ty::delete_by_id_pg(sync, "b").unwrap(), 1);
+            assert_eq!($ty::delete_by_id_pg(sync, "a").unwrap(), 1);
+            // Async connection.
+            assert_eq!(root.insert_pg_async(asynchronous).await.unwrap(), 1);
+            assert!(
+                $ty::insert_batch_pg_async(std::slice::from_ref(&root), asynchronous)
+                    .await
+                    .is_err()
+            );
+            assert_eq!(
+                $ty::insert_batch_pg_async(&[child.clone()], asynchronous)
+                    .await
+                    .unwrap(),
+                1
+            );
+            assert_eq!(child.update_pg_async(asynchronous).await.unwrap(), 1);
+            assert_eq!(
+                $ty::delete_by_id_pg_async(asynchronous, "b").await.unwrap(),
+                1
+            );
+        }
+    };
 }
+
+postgres_cycle!(receipt_postgres, ReceiptCategoryNode);
+postgres_cycle!(merchant_postgres, MerchantCategoryNode);
+postgres_cycle!(item_postgres, ItemCategoryNode);
+postgres_cycle!(purchase_postgres, PurchaseCategoryNode);
+postgres_cycle!(invoice_postgres, InvoiceCategoryNode);
 
 #[tokio::test]
 #[ignore = "starts a Postgres container: runs in the persistence-testcontainers and coverage jobs"]
@@ -121,10 +149,9 @@ async fn every_node_type_has_working_postgres_crud() {
             .await
             .expect("schema");
     }
-    let (s, a) = (&mut sync, &mut asynchronous);
-    postgres_cycle!(ReceiptCategoryNode, "receipt_categories", s, a);
-    postgres_cycle!(MerchantCategoryNode, "merchant_categories", s, a);
-    postgres_cycle!(ItemCategoryNode, "item_categories", s, a);
-    postgres_cycle!(PurchaseCategoryNode, "purchase_categories", s, a);
-    postgres_cycle!(InvoiceCategoryNode, "invoice_categories", s, a);
+    receipt_postgres(&mut sync, &mut asynchronous).await;
+    merchant_postgres(&mut sync, &mut asynchronous).await;
+    item_postgres(&mut sync, &mut asynchronous).await;
+    purchase_postgres(&mut sync, &mut asynchronous).await;
+    invoice_postgres(&mut sync, &mut asynchronous).await;
 }
