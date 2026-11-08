@@ -408,17 +408,20 @@ fn execute_constrained_semantic_inference(
     let json_string = serde_json::to_string(&json_value)?;
 
     // Pass generated tokens through Pushdown Automaton to guarantee grammar conformance
-    pda.consume(&json_string).map_err(|e| {
+    ensure_conformance(&mut pda, &json_string).map(|()| json_value)
+}
+
+/// Feeds the generated text to the automaton; it must be accepted and form a complete document.
+fn ensure_conformance(pda: &mut PushdownAutomaton, generated: &str) -> Result<(), LlmError> {
+    pda.consume(generated).map_err(|e| {
         LlmError::ConstrainedSamplingError(format!("Inference token failed PDA transition: {e}"))
     })?;
-
     if !pda.is_complete() {
         return Err(LlmError::ConstrainedSamplingError(
             "PDA did not reach complete terminal state".into(),
         ));
     }
-
-    Ok(json_value)
+    Ok(())
 }
 
 const CANDIDATE_HEADER: &str = "### CANDIDATE PARENT / PEER SUBGRAPHS\n";
@@ -654,5 +657,195 @@ mod tests {
             }
             other => panic!("Expected CreateRootNode for custom key, got {other:?}"),
         }
+    }
+
+    use rstest::rstest;
+    use serde_json::json;
+
+    /// A provider whose "model" answers with something that is not an extraction envelope.
+    struct Babbler;
+
+    #[async_trait]
+    impl LlmProvider for Babbler {
+        async fn generate_structured(&self, _p: &str, _s: &Value) -> Result<Value, LlmError> {
+            Ok(json!({"unexpected": true}))
+        }
+
+        fn model_info(&self) -> ModelMetadata {
+            ModelMetadata {
+                provider_name: "babbler".into(),
+                model_id: "b".into(),
+                quantization: "none".into(),
+                is_local_zero_ffi: true,
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn an_answer_that_is_not_an_envelope_is_a_sampling_error() {
+        let err = Babbler.extract_directive("anything").await.unwrap_err();
+        assert!(matches!(err, LlmError::ConstrainedSamplingError(_)));
+    }
+
+    fn root(name: &str) -> ExtractionDirective {
+        ExtractionDirective::CreateRootNode {
+            entity_name: name.into(),
+            entity_level: "category".into(),
+            confidence: 0.5,
+        }
+    }
+
+    #[tokio::test]
+    async fn simulated_output_overrides_the_inference() {
+        let candle = CandleProvider::with_simulated_output("c", root("Forced"));
+        let oxillama = OxillamaProvider::with_simulated_output("o", root("Forced"))
+            .with_model_path("/models/o.gguf");
+        assert!(oxillama.model_path.is_some());
+        for directive in [
+            candle.extract_directive("p").await.unwrap().0,
+            oxillama.extract_directive("p").await.unwrap().0,
+        ] {
+            assert!(matches!(
+                directive,
+                ExtractionDirective::CreateRootNode { ref entity_name, .. } if entity_name == "Forced"
+            ));
+        }
+    }
+
+    #[tokio::test]
+    async fn the_cloud_provider_answers_with_a_root_node() {
+        let cloud = CloudProvider::new("https://example.org", "model");
+        let (directive, notes) = cloud.extract_directive("p").await.unwrap();
+        assert!(matches!(
+            directive,
+            ExtractionDirective::CreateRootNode { ref entity_name, .. } if entity_name == "Cloud Root"
+        ));
+        assert!(notes.chain_of_thought.contains("Cloud"));
+    }
+
+    #[test]
+    fn the_automaton_must_accept_and_complete_the_generated_text() {
+        let schema = crate::schema::generate_extraction_schema();
+        let mut pda = PushdownAutomaton::from_schema(&schema).unwrap();
+        assert!(ensure_conformance(&mut pda, "}").is_err());
+        let mut pda = PushdownAutomaton::from_schema(&schema).unwrap();
+        assert!(ensure_conformance(&mut pda, "{\"open\": [").is_err());
+        let mut pda = PushdownAutomaton::from_schema(&schema).unwrap();
+        assert!(ensure_conformance(&mut pda, "{}").is_ok());
+    }
+
+    #[rstest]
+    #[case::numbered("1. cat_a (Alpha)", "cat_a", "Alpha")]
+    #[case::bulleted("- cat_b: Beta", "cat_b", "Beta")]
+    #[case::bare("Gamma", "Gamma", "Gamma")]
+    #[case::unbalanced_parentheses(") odd (", ") odd (", ") odd (")]
+    fn candidate_lines_are_parsed_in_their_three_formats(
+        #[case] line: &str,
+        #[case] key: &str,
+        #[case] name: &str,
+    ) {
+        let parsed = parse_candidate(strip_list_marker(line));
+        assert_eq!((parsed.key.as_str(), parsed.name.as_str()), (key, name));
+    }
+
+    fn candidates() -> Vec<ParsedCandidate> {
+        vec![
+            ParsedCandidate {
+                key: "cat_dairy".into(),
+                name: "Dairy Products".into(),
+            },
+            ParsedCandidate {
+                key: "cat_bakery".into(),
+                name: "Fresh Bakery Goods".into(),
+            },
+        ]
+    }
+
+    #[rstest]
+    #[case::contained("fresh dairy products", Some("cat_dairy"))]
+    #[case::by_key("cat_bakery", Some("cat_bakery"))]
+    #[case::token_overlap("goods from the bakery counter", Some("cat_bakery"))]
+    #[case::no_match("hardware tools", None)]
+    fn the_best_candidate_is_found_by_containment_then_token_overlap(
+        #[case] incoming: &str,
+        #[case] expected: Option<&str>,
+    ) {
+        let candidates = candidates();
+        let found = find_best_matching_candidate(incoming, &candidates);
+        assert_eq!(found.map(|c| c.key.as_str()), expected);
+    }
+
+    #[rstest]
+    #[case::ambiguous_text("an ambiguous thing", "cat_x", true)]
+    #[case::unseen_text("unseen item", "cat_x", true)]
+    #[case::anchor_key("plain", "cat_anchor", true)]
+    #[case::nothing_suggests_it("plain", "cat_x", false)]
+    fn a_lone_candidate_is_the_default_when_the_text_hints_at_an_anchor(
+        #[case] incoming: &str,
+        #[case] key: &str,
+        #[case] chosen: bool,
+    ) {
+        let only = vec![ParsedCandidate {
+            key: key.into(),
+            name: "zzz".into(),
+        }];
+        assert_eq!(
+            find_best_matching_candidate(incoming, &only).is_some(),
+            chosen
+        );
+    }
+
+    #[test]
+    fn candidates_are_only_read_from_their_section() {
+        assert!(extract_candidates_from_prompt("no section").is_empty());
+        let prompt = "### CANDIDATE PARENT / PEER SUBGRAPHS\n- None\n1. a (A)\n\n### NEXT\nb (B)";
+        let found = extract_candidates_from_prompt(prompt);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].key, "a");
+    }
+
+    #[test]
+    fn an_unusable_schema_is_a_sampling_error() {
+        let result = execute_constrained_semantic_inference("p", &json!(42), "test", None);
+        assert!(matches!(result, Err(LlmError::ConstrainedSamplingError(_))));
+    }
+
+    #[test]
+    fn custom_keys_steer_the_entity_text() {
+        let schema = crate::schema::generate_extraction_schema();
+        let prompt = PromptFormatter::build_prompt("t", "{\"sku\": \"S-1\"}", &[]);
+        let keys = vec!["sku".to_string()];
+        let value = execute_constrained_semantic_inference(&prompt, &schema, "test", Some(&keys));
+        assert!(value.unwrap().to_string().contains("S-1"));
+    }
+
+    #[tokio::test]
+    async fn oxibonsai_can_be_forced_to_a_simulated_answer() {
+        let provider = OxibonsaiProvider::with_simulated_output("bonsai", root("Forced"));
+        let (directive, _) = provider.extract_directive("p").await.unwrap();
+        assert!(matches!(
+            directive,
+            ExtractionDirective::CreateRootNode { ref entity_name, .. } if entity_name == "Forced"
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_record_that_matches_no_candidate_becomes_a_root() {
+        let provider = CandleProvider::new("m");
+        let prompt = PromptFormatter::build_prompt(
+            "t",
+            "{\"name\": \"Hardware Tools\"}",
+            &["cat_dairy (Dairy Products)", "cat_bakery (Fresh Bakery)"],
+        );
+        let (directive, notes) = provider.extract_directive(&prompt).await.unwrap();
+        assert!(matches!(
+            directive,
+            ExtractionDirective::CreateRootNode { .. }
+        ));
+        assert!(
+            notes
+                .chain_of_thought
+                .contains("No matching existing candidate")
+        );
     }
 }

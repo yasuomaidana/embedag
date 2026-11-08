@@ -260,4 +260,159 @@ mod tests {
         assert_eq!(diff.new_edges.len(), 1);
         assert_eq!(diff.new_nodes[0].0, "new_child");
     }
+
+    use rstest::{fixture, rstest};
+    use serde_json::json;
+
+    /// `root -> child`, both present.
+    #[fixture]
+    fn dag() -> MemoryDag<DummyNode> {
+        let mut dag = MemoryDag::new();
+        for key in ["root", "other", "child"] {
+            dag.upsert_node(DummyNode {
+                key: key.into(),
+                label: key.into(),
+            });
+        }
+        let edge = EdgePayload::new("PARENT_OF", 1.0, ProvenanceKind::DeterministicRule).unwrap();
+        dag.add_edge_by_keys(&"root".to_string(), &"child".to_string(), edge)
+            .unwrap();
+        dag
+    }
+
+    fn multi_parent(parents: &[&str], entity: &str) -> ExtractionDirective {
+        ExtractionDirective::InsertMultiParentNode {
+            parent_keys: parents.iter().map(|p| p.to_string()).collect(),
+            entity_name: entity.into(),
+            entity_level: "sku".into(),
+            relationship: "PARENT_OF".into(),
+            confidence: 0.9,
+        }
+    }
+
+    #[rstest]
+    #[case::new_node_two_parents(multi_parent(&["root", "other"], "fresh"), 1, 2)]
+    #[case::existing_node_one_new_parent(multi_parent(&["root", "other"], "child"), 0, 1)]
+    #[case::fully_known(multi_parent(&["root"], "child"), 0, 0)]
+    fn multi_parent_inserts_only_propose_what_is_missing(
+        dag: MemoryDag<DummyNode>,
+        #[case] directive: ExtractionDirective,
+        #[case] new_nodes: usize,
+        #[case] new_edges: usize,
+    ) {
+        let diff = ChangesetDiffEngine::diff_directive(&dag, &directive);
+        assert_eq!(
+            (diff.new_nodes.len(), diff.new_edges.len()),
+            (new_nodes, new_edges)
+        );
+    }
+
+    #[rstest]
+    #[case::new_root("brand-new", 1)]
+    #[case::existing_root("root", 0)]
+    fn root_nodes_are_only_proposed_when_missing(
+        dag: MemoryDag<DummyNode>,
+        #[case] name: &str,
+        #[case] new_nodes: usize,
+    ) {
+        let directive = ExtractionDirective::CreateRootNode {
+            entity_name: name.into(),
+            entity_level: "category".into(),
+            confidence: 1.0,
+        };
+        let diff = ChangesetDiffEngine::diff_directive(&dag, &directive);
+        assert_eq!(diff.new_nodes.len(), new_nodes);
+    }
+
+    #[rstest]
+    #[case::known_target("root", json!({"colour": "red"}), 1)]
+    #[case::unknown_target("ghost", json!({"colour": "red"}), 0)]
+    #[case::nothing_to_update("root", json!({}), 0)]
+    fn attribute_updates_need_a_known_target_and_fields(
+        dag: MemoryDag<DummyNode>,
+        #[case] target: &str,
+        #[case] fields: serde_json::Value,
+        #[case] updates: usize,
+    ) {
+        let updated_fields = serde_json::from_value(fields).unwrap();
+        let directive = ExtractionDirective::UpdateAttributes {
+            target_key: target.into(),
+            updated_fields,
+            confidence: 0.8,
+        };
+        let diff = ChangesetDiffEngine::diff_directive(&dag, &directive);
+        assert_eq!(diff.updated_nodes.len(), updates);
+    }
+
+    #[rstest]
+    #[case::valid("MOVED", 3.0, 1)]
+    #[case::nan_confidence("MOVED", f32::NAN, 0)]
+    fn retargeting_removes_the_old_edge_and_proposes_a_clamped_new_one(
+        dag: MemoryDag<DummyNode>,
+        #[case] relationship: &str,
+        #[case] confidence: f32,
+        #[case] new_edges: usize,
+    ) {
+        let directive = ExtractionDirective::RetargetEdge {
+            child_key: "child".into(),
+            old_parent_key: "root".into(),
+            new_parent_key: "other".into(),
+            relationship: relationship.into(),
+            confidence,
+        };
+        let diff = ChangesetDiffEngine::diff_directive(&dag, &directive);
+        assert_eq!(
+            diff.removed_edges,
+            vec![("root".to_string(), "child".to_string())]
+        );
+        assert_eq!(diff.new_edges.len(), new_edges);
+        assert!(diff.new_edges.iter().all(|(_, _, e)| e.confidence <= 1.0));
+    }
+
+    #[rstest]
+    fn an_unusable_confidence_proposes_no_edge(dag: MemoryDag<DummyNode>) {
+        let directive = ExtractionDirective::InsertNode {
+            parent_key: "other".into(),
+            entity_name: "child".into(),
+            entity_level: "sku".into(),
+            relationship: "PARENT_OF".into(),
+            confidence: f32::NAN,
+        };
+        assert!(ChangesetDiffEngine::diff_directive(&dag, &directive).is_empty());
+    }
+
+    #[rstest]
+    fn ambiguity_proposes_nothing(dag: MemoryDag<DummyNode>) {
+        let directive = ExtractionDirective::MarkAmbiguous {
+            candidate_keys: vec!["root".into()],
+            reason: "two matches".into(),
+        };
+        assert!(ChangesetDiffEngine::diff_directive(&dag, &directive).is_empty());
+    }
+
+    #[test]
+    fn a_diff_is_empty_only_when_every_part_is() {
+        let empty: GraphDiff<String> = GraphDiff::default();
+        assert!(empty.is_empty());
+        let edge = || EdgePayload::new("R", 1.0, ProvenanceKind::DeterministicRule).unwrap();
+        let variants = [
+            GraphDiff {
+                new_nodes: vec![("a".into(), "a".into())],
+                ..empty.clone()
+            },
+            GraphDiff {
+                updated_nodes: vec![("a".into(), HashMap::new())],
+                ..empty.clone()
+            },
+            GraphDiff {
+                new_edges: vec![("a".into(), "b".into(), edge())],
+                ..empty.clone()
+            },
+            GraphDiff {
+                removed_edges: vec![("a".into(), "b".into())],
+                ..empty.clone()
+            },
+        ];
+        assert!(variants.iter().all(|d| !d.is_empty()));
+    }
 }

@@ -293,4 +293,143 @@ mod tests {
             _ => panic!("Expected Tier3LlmResolved for ambiguous candidate"),
         }
     }
+
+    use crate::provider::CandleProvider;
+    use rstest::rstest;
+
+    fn candidate(key: &str, similarity: f32) -> CandidateMatch {
+        CandidateMatch {
+            key: key.into(),
+            similarity_score: similarity,
+        }
+    }
+
+    fn insert_with_confidence(confidence: f32) -> ExtractionDirective {
+        ExtractionDirective::InsertNode {
+            parent_key: "cat".into(),
+            entity_name: "thing".into(),
+            entity_level: "item".into(),
+            relationship: "CHILD_OF".into(),
+            confidence,
+        }
+    }
+
+    #[test]
+    fn the_alias_store_normalizes_counts_and_learns_corrections() {
+        let store = AliasStore::default();
+        assert!(store.is_empty());
+        assert_eq!(AliasStore::normalize_token("  Choc-Bar!! "), "choc-bar");
+
+        store.insert_alias("Choc Bar", "sku-1");
+        store.record_human_correction("Candy Bar", "sku-2");
+        assert_eq!(store.len(), 2);
+        assert_eq!(store.lookup("choc bar").as_deref(), Some("sku-1"));
+        assert_eq!(store.lookup("candy bar!").as_deref(), Some("sku-2"));
+        assert_eq!(store.lookup("unknown"), None);
+    }
+
+    #[rstest]
+    #[case::near_match(vec![candidate("a", 0.9), candidate("b", 0.5)], "near")]
+    #[case::novel_entity(vec![candidate("a", 0.3)], "novel")]
+    #[case::no_candidates(vec![], "novel")]
+    #[tokio::test]
+    async fn tier_two_decides_on_the_best_similarity(
+        #[case] candidates: Vec<CandidateMatch>,
+        #[case] expected: &str,
+    ) {
+        let pipeline = WaterfallPipeline::new(CandleProvider::new("m"));
+        let outcome = pipeline
+            .resolve("something new", &candidates)
+            .await
+            .unwrap();
+        match (expected, outcome) {
+            ("near", ResolutionOutcome::Tier2NearMatch { target_key, .. }) => {
+                assert_eq!(target_key, "a");
+            }
+            ("novel", ResolutionOutcome::Tier2NovelEntity { .. }) => {}
+            (_, other) => panic!("unexpected outcome {other:?}"),
+        }
+    }
+
+    #[rstest]
+    #[case::confident(insert_with_confidence(0.95), true)]
+    #[case::hesitant(insert_with_confidence(0.40), false)]
+    #[case::ambiguous(
+        ExtractionDirective::MarkAmbiguous { candidate_keys: vec![], reason: "unsure".into() },
+        false
+    )]
+    #[tokio::test]
+    async fn tier_three_resolves_only_confident_answers(
+        #[case] directive: ExtractionDirective,
+        #[case] resolved: bool,
+    ) {
+        let provider = CandleProvider::with_simulated_output("m", directive);
+        let pipeline = WaterfallPipeline::new(provider);
+        let middling = vec![candidate("cat", 0.7)];
+        let outcome = pipeline
+            .resolve("a mid-range record", &middling)
+            .await
+            .unwrap();
+        assert_eq!(
+            matches!(outcome, ResolutionOutcome::Tier3LlmResolved { .. }),
+            resolved
+        );
+        if !resolved {
+            let ResolutionOutcome::Tier4HumanReview {
+                candidate_keys,
+                reason,
+            } = outcome
+            else {
+                panic!("expected a human review");
+            };
+            assert_eq!(candidate_keys, vec!["cat".to_string()]);
+            assert!(reason.contains("fell below gate"));
+        }
+    }
+
+    #[test]
+    fn directive_confidence_covers_every_directive_kind() {
+        let kinds = [
+            (insert_with_confidence(0.1), 0.1),
+            (
+                ExtractionDirective::InsertMultiParentNode {
+                    parent_keys: vec![],
+                    entity_name: "n".into(),
+                    entity_level: "l".into(),
+                    relationship: "r".into(),
+                    confidence: 0.2,
+                },
+                0.2,
+            ),
+            (
+                ExtractionDirective::UpdateAttributes {
+                    target_key: "t".into(),
+                    updated_fields: HashMap::new(),
+                    confidence: 0.3,
+                },
+                0.3,
+            ),
+            (
+                ExtractionDirective::RetargetEdge {
+                    child_key: "c".into(),
+                    old_parent_key: "o".into(),
+                    new_parent_key: "n".into(),
+                    relationship: "r".into(),
+                    confidence: 0.4,
+                },
+                0.4,
+            ),
+            (
+                ExtractionDirective::CreateRootNode {
+                    entity_name: "e".into(),
+                    entity_level: "l".into(),
+                    confidence: 0.5,
+                },
+                0.5,
+            ),
+        ];
+        for (directive, expected) in kinds {
+            assert_eq!(directive_confidence(&directive), expected);
+        }
+    }
 }

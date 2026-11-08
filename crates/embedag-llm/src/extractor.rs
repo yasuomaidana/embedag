@@ -449,4 +449,168 @@ mod tests {
         let prompt_empty = "### INCOMING RECORD\n{}\n\n###";
         assert_eq!(record.extract_from_prompt(prompt_empty), "Unknown Patient");
     }
+
+    use serde_json::json;
+
+    fn prompt_with(record: &str) -> String {
+        format!("### INCOMING RECORD\n{record}\n\n###")
+    }
+
+    #[rstest]
+    #[case::name("name", true)]
+    #[case::uppercase("TITLE", true)]
+    #[case::suffix("item_label", true)]
+    #[case::prefix("name_full", true)]
+    #[case::title_prefix("title_main", true)]
+    #[case::label_prefix("label_text", true)]
+    #[case::identifier("id", true)]
+    #[case::key_suffix("api_key", true)]
+    #[case::other("colour", false)]
+    fn recognizes_entity_keys(#[case] key: &str, #[case] expected: bool) {
+        assert_eq!(is_heuristic_entity_key(key), expected);
+    }
+
+    #[rstest]
+    #[case::missing_header("no header here", None)]
+    #[case::blank_record("### INCOMING RECORD\n   \n\n###", None)]
+    #[case::trimmed("### INCOMING RECORD\n  abc  \n\n###", Some("abc"))]
+    #[case::runs_to_the_end("### INCOMING RECORD\nabc", Some("abc"))]
+    fn finds_the_record_slice(#[case] prompt: &str, #[case] expected: Option<&str>) {
+        assert_eq!(extract_record_slice(prompt), expected);
+    }
+
+    #[rstest]
+    #[case::string(json!("  Milk  "), Some("Milk"))]
+    #[case::blank_string(json!("   "), None)]
+    #[case::number(json!(42), Some("42"))]
+    #[case::boolean(json!(true), Some("true"))]
+    #[case::null(json!(null), None)]
+    #[case::array(json!(["x"]), None)]
+    #[case::object_without_labels(json!({"n": null}), None)]
+    fn extracts_from_values(#[case] value: Value, #[case] expected: Option<&str>) {
+        let config = EntityExtractorConfig::new();
+        assert_eq!(config.extract_from_value(&value).as_deref(), expected);
+    }
+
+    #[test]
+    fn the_configuration_builders_steer_extraction() {
+        let config = EntityExtractorConfig::new()
+            .with_keys(["sku"])
+            .with_priority_key("barcode")
+            .enable_suffix_heuristics(false)
+            .fallback_to_any_string(false)
+            .with_default_label("Nothing");
+        assert_eq!(config.priority_keys, vec!["sku", "barcode"]);
+
+        let value = json!({"barcode": 12345, "name": "Ignored"});
+        assert_eq!(config.extract_from_value(&value).as_deref(), Some("12345"));
+        // With heuristics and the any-string fallback both off, an unlisted key finds nothing.
+        let unlisted = json!({"name": "Ignored", "other": "x"});
+        assert_eq!(config.extract_from_value(&unlisted), None);
+        assert_eq!(
+            extract_incoming_entity_text_with_config("no record", &config),
+            "Nothing"
+        );
+    }
+
+    #[test]
+    fn the_slice_fallback_can_be_switched_off() {
+        let config = EntityExtractorConfig {
+            fallback_to_slice: false,
+            ..EntityExtractorConfig::default()
+        };
+        assert_eq!(
+            config.extract_from_prompt(&prompt_with("plain text")),
+            "Unidentified Entity"
+        );
+        assert_eq!(
+            config.extract_from_prompt("no record at all"),
+            "Unidentified Entity"
+        );
+    }
+
+    #[test]
+    fn values_can_be_read_with_or_without_preferred_keys() {
+        let value = json!({"sku": "S-1", "name": "Milk"});
+        assert_eq!(
+            extract_entity_text_from_value(&value, None).as_deref(),
+            Some("Milk")
+        );
+        assert_eq!(
+            extract_entity_text_from_value(&value, Some(&["sku"])).as_deref(),
+            Some("S-1")
+        );
+    }
+
+    struct Fixed;
+
+    impl EntityExtractor for Fixed {
+        fn extract_from_value(&self, value: &Value) -> Option<String> {
+            value.get("x").and_then(Value::as_str).map(str::to_string)
+        }
+    }
+
+    #[rstest]
+    #[case::json(r#"{"x": "found"}"#, "found")]
+    #[case::json_without_the_key(r#"{"y": "nope"}"#, "Unidentified Entity")]
+    #[case::not_json("free text", "free text")]
+    fn the_default_prompt_extraction_uses_the_value_extractor(
+        #[case] record: &str,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(Fixed.extract_from_prompt(&prompt_with(record)), expected);
+        assert_eq!(
+            Fixed.extract_from_prompt("no record"),
+            "Unidentified Entity"
+        );
+    }
+
+    struct Keyed;
+
+    impl EntityProperties for Keyed {
+        fn property_keys(&self) -> &[&'static str] {
+            &["sku", "count", "flag"]
+        }
+    }
+
+    #[rstest]
+    #[case::string(json!({"sku": " A "}), Some("A"))]
+    #[case::number(json!({"count": 3}), Some("3"))]
+    #[case::boolean(json!({"flag": false}), Some("false"))]
+    #[case::blank(json!({"sku": "  "}), None)]
+    #[case::not_an_object(json!("A"), None)]
+    fn developer_defined_keys_label_an_object(
+        #[case] value: Value,
+        #[case] expected: Option<&str>,
+    ) {
+        assert_eq!(Keyed.extract_label(&value).as_deref(), expected);
+    }
+
+    #[test]
+    fn the_entity_properties_macro_handles_odd_records() {
+        entity_properties! {
+            Plain {
+                keys: ["sku"],
+            }
+        }
+        let record = Plain;
+        assert_eq!(record.property_keys(), &["sku"]);
+        assert_eq!(
+            record.extract_from_prompt(&prompt_with("not json")),
+            "not json"
+        );
+        assert_eq!(record.extract_from_prompt("nothing"), "Unidentified Entity");
+        let value = json!({"sku": "S-2"});
+        assert_eq!(
+            EntityExtractor::extract_from_value(&record, &value).as_deref(),
+            Some("S-2")
+        );
+    }
+
+    #[test]
+    fn the_defined_extractor_reads_values_too() {
+        define_entity_extractor!(Barcodes, ["barcode"]);
+        let value = json!({"barcode": "B-1"});
+        assert_eq!(Barcodes.extract_from_value(&value).as_deref(), Some("B-1"));
+    }
 }
