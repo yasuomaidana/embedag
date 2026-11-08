@@ -211,11 +211,8 @@ impl OxiRsTdbEngine {
         let pred = relationship
             .map(|rel| self.vocab.custom_relation(rel).map(Predicate::NamedNode))
             .transpose()?;
-        let quads = self.find_quads(
-            Some(&Subject::NamedNode(parent_iri.clone())),
-            pred.as_ref(),
-            Some(&Object::NamedNode(child_iri.clone())),
-        )?;
+        let (parent, child) = (parent_iri.clone(), child_iri.clone());
+        let quads = self.find_quads(Some(&parent.into()), pred.as_ref(), Some(&child.into()))?;
         let mut removed = false;
         for q in &quads {
             removed |= self.remove_quad(q)?;
@@ -230,11 +227,8 @@ impl OxiRsTdbEngine {
         child_iri: &NamedNode,
         relationship: Option<&str>,
     ) -> Result<(), OxiRsStorageError> {
-        let edge_quads = self.find_quads(
-            None,
-            Some(&Predicate::NamedNode(self.vocab.parent_rel.clone())),
-            Some(&Object::NamedNode(parent_iri)),
-        )?;
+        let parent_rel = Predicate::NamedNode(self.vocab.parent_rel.clone());
+        let edge_quads = self.find_quads(None, Some(&parent_rel), Some(&parent_iri.into()))?;
         for eq in edge_quads {
             let edge_subj = eq.subject();
             if self.reified_edge_matches(edge_subj, child_iri, relationship)? {
@@ -253,19 +247,15 @@ impl OxiRsTdbEngine {
         child_iri: &NamedNode,
         relationship: Option<&str>,
     ) -> Result<bool, OxiRsStorageError> {
-        let child_matches = self.find_quads(
-            Some(edge_subj),
-            Some(&Predicate::NamedNode(self.vocab.child_rel.clone())),
-            Some(&Object::NamedNode(child_iri.clone())),
-        )?;
+        let child_rel = Predicate::NamedNode(self.vocab.child_rel.clone());
+        let child = Object::NamedNode(child_iri.clone());
+        let child_matches = self.find_quads(Some(edge_subj), Some(&child_rel), Some(&child))?;
         let Some(rel) = relationship.filter(|_| !child_matches.is_empty()) else {
             return Ok(!child_matches.is_empty());
         };
-        let rel_matches = self.find_quads(
-            Some(edge_subj),
-            Some(&Predicate::NamedNode(self.vocab.relationship.clone())),
-            Some(&Object::Literal(oxirs_core::model::Literal::new(rel))),
-        )?;
+        let rel_pred = Predicate::NamedNode(self.vocab.relationship.clone());
+        let rel_literal = Object::Literal(oxirs_core::model::Literal::new(rel));
+        let rel_matches = self.find_quads(Some(edge_subj), Some(&rel_pred), Some(&rel_literal))?;
         Ok(!rel_matches.is_empty())
     }
 
@@ -368,11 +358,8 @@ impl OxiRsTdbEngine {
         let mut all_quads = Vec::new();
 
         // 1. Export all nodes
-        for idx in inner.node_indices() {
-            if let Some(payload) = inner.node_weight(idx) {
-                let quads = node_to_quads(&self.config, &self.vocab, payload)?;
-                all_quads.extend(quads);
-            }
+        for payload in inner.node_weights() {
+            all_quads.extend(node_to_quads(&self.config, &self.vocab, payload)?);
         }
 
         // 2. Export all directed edges
@@ -405,11 +392,8 @@ impl OxiRsTdbEngine {
         &self,
         dag: &mut MemoryDag<T>,
     ) -> Result<HashMap<String, NodeIndex>, OxiRsStorageError> {
-        let node_quads = self.find_quads(
-            None,
-            Some(&Predicate::NamedNode(self.vocab.payload.clone())),
-            None,
-        )?;
+        let payload_pred = Predicate::NamedNode(self.vocab.payload.clone());
+        let node_quads = self.find_quads(None, Some(&payload_pred), None)?;
         let mut node_keys = HashMap::new();
         for q in node_quads {
             if let Subject::NamedNode(_subj) = q.subject()
@@ -429,11 +413,9 @@ impl OxiRsTdbEngine {
         node_keys: &HashMap<String, NodeIndex>,
         dag: &mut MemoryDag<T>,
     ) -> Result<(), OxiRsStorageError> {
-        let edge_quads = self.find_quads(
-            None,
-            Some(&Predicate::NamedNode(self.vocab.rdf_type.clone())),
-            Some(&Object::NamedNode(self.vocab.edge_type.clone())),
-        )?;
+        let rdf_type = Predicate::NamedNode(self.vocab.rdf_type.clone());
+        let edge_type = Object::NamedNode(self.vocab.edge_type.clone());
+        let edge_quads = self.find_quads(None, Some(&rdf_type), Some(&edge_type))?;
         for eq in edge_quads {
             let Some(edge) = self.read_reified_edge(eq.subject())? else {
                 continue;
@@ -441,11 +423,8 @@ impl OxiRsTdbEngine {
             if let (Some(&p_idx), Some(&c_idx)) =
                 (node_keys.get(&edge.parent), node_keys.get(&edge.child))
             {
-                let payload = EdgePayload::new(
-                    edge.relationship,
-                    edge.confidence,
-                    ProvenanceKind::DeterministicRule,
-                )?;
+                let provenance = ProvenanceKind::DeterministicRule;
+                let payload = EdgePayload::new(edge.relationship, edge.confidence, provenance)?;
                 dag.add_edge(p_idx, c_idx, payload);
             }
         }
@@ -458,11 +437,8 @@ impl OxiRsTdbEngine {
         edge_subj: &Subject,
         predicate: &NamedNode,
     ) -> Result<Option<Object>, OxiRsStorageError> {
-        let quads = self.find_quads(
-            Some(edge_subj),
-            Some(&Predicate::NamedNode(predicate.clone())),
-            None,
-        )?;
+        let predicate = Predicate::NamedNode(predicate.clone());
+        let quads = self.find_quads(Some(edge_subj), Some(&predicate), None)?;
         Ok(quads.first().map(|q| q.object().clone()))
     }
 
@@ -510,5 +486,19 @@ fn extract_key_from_iri(iri: &str) -> String {
         iri[idx + 1..].to_string()
     } else {
         iri.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_key_from_iri;
+    use rstest::rstest;
+
+    #[rstest]
+    #[case::slash("https://example.org/node/KEY", "KEY")]
+    #[case::colon("urn:embedag:node:KEY", "KEY")]
+    #[case::neither("KEY", "KEY")]
+    fn key_is_the_last_segment_of_the_iri(#[case] iri: &str, #[case] expected: &str) {
+        assert_eq!(extract_key_from_iri(iri), expected);
     }
 }
