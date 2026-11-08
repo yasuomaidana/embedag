@@ -394,4 +394,37 @@ mod tests {
         assert_eq!(t_a, t_b);
         assert!(diff(&t_a, &t_b).is_empty());
     }
+
+    #[rstest::rstest]
+    #[case::no_prefix("", "a", "a")]
+    #[case::no_key("dir", "", "dir")]
+    #[case::both("dir", "a", "dir/a")]
+    fn paths_join_with_a_slash_unless_a_side_is_empty(
+        #[case] prefix: &str,
+        #[case] key: &str,
+        #[case] expected: &str,
+    ) {
+        assert_eq!(join_path(prefix, key), expected);
+    }
+
+    #[test]
+    fn a_leaf_replaced_by_a_branch_is_reported_as_changed_at_its_path() {
+        let old = MerkleNode::branch("root", vec![MerkleNode::leaf("x", b"1")]);
+        let new = MerkleNode::branch(
+            "root",
+            vec![MerkleNode::branch("x", vec![MerkleNode::leaf("y", b"1")])],
+        );
+        let delta = diff(&old, &new);
+        assert_eq!(delta.changed, vec!["x".to_string()]);
+        assert!(!delta.is_empty());
+    }
+
+    #[test]
+    fn a_changed_root_leaf_reports_the_new_roots_key() {
+        let delta = diff(
+            &MerkleNode::leaf("file", b"1"),
+            &MerkleNode::leaf("file", b"2"),
+        );
+        assert_eq!(delta.changed, vec!["file".to_string()]);
+    }
 }

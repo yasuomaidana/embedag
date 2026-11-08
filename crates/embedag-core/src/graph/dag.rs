@@ -959,4 +959,148 @@ mod tests {
         let json_ld = dag.to_json_ld();
         assert!(json_ld["@graph"].as_array().is_some());
     }
+
+    /// `A -> B -> C`, all edges `PARENT_OF` with the given relationship.
+    fn chain() -> MemoryDag<TestNode> {
+        let mut dag = MemoryDag::with_capacity(3, 2);
+        for key in ["A", "B", "C"] {
+            dag.upsert_node(TestNode::new(key, key, "Level"));
+        }
+        for (parent, child) in [("A", "B"), ("B", "C")] {
+            dag.add_edge_by_keys(&parent.into(), &child.into(), test_edge("PARENT_OF"))
+                .unwrap();
+        }
+        dag
+    }
+
+    #[test]
+    fn debug_default_and_clear() {
+        let mut dag = chain();
+        let printed = format!("{dag:?}");
+        assert!(printed.contains("revision") && printed.contains("keys"));
+        assert!(MemoryDag::<TestNode>::default().is_empty());
+
+        let before = dag.revision();
+        dag.clear();
+        assert!(dag.is_empty());
+        assert!(dag.revision() > before);
+    }
+
+    #[test]
+    fn nodes_can_be_mutated_by_key_and_by_index() {
+        let mut dag = chain();
+        dag.node_mut(&"A".to_string()).unwrap().name = "renamed".into();
+        assert_eq!(dag.node(&"A".to_string()).unwrap().name, "renamed");
+        assert!(dag.node_mut(&"missing".to_string()).is_none());
+
+        let idx = dag.node_index(&"B".to_string()).unwrap();
+        dag.node_by_index_mut(idx).unwrap().name = "also renamed".into();
+        assert_eq!(dag.node_by_index(idx).unwrap().name, "also renamed");
+    }
+
+    #[rstest::rstest]
+    #[case::unknown_parent("X", "B", None, false)]
+    #[case::unknown_child("A", "X", None, false)]
+    #[case::wrong_relationship("A", "B", Some("OTHER"), false)]
+    #[case::right_relationship("A", "B", Some("PARENT_OF"), true)]
+    #[case::any_relationship("B", "C", None, true)]
+    fn removing_edges_by_key(
+        #[case] parent: &str,
+        #[case] child: &str,
+        #[case] relationship: Option<&str>,
+        #[case] removed: bool,
+    ) {
+        let mut dag = chain();
+        let result = dag.remove_edge_by_keys(&parent.to_string(), &child.to_string(), relationship);
+        assert_eq!(result, removed);
+    }
+
+    #[rstest::rstest]
+    #[case::same_node("A", "A", true)]
+    #[case::closing_the_chain("C", "A", true)]
+    #[case::forward_is_fine("A", "C", false)]
+    #[case::unknown_node("A", "X", false)]
+    fn cycle_prediction_by_key(#[case] from: &str, #[case] to: &str, #[case] cycle: bool) {
+        assert_eq!(
+            chain().would_create_cycle(&from.to_string(), &to.to_string()),
+            cycle
+        );
+    }
+
+    #[test]
+    fn guarded_edges_refuse_cycles_and_unknown_nodes() {
+        let mut dag = chain();
+        let (a, c) = (
+            dag.node_index(&"A".to_string()).unwrap(),
+            dag.node_index(&"C".to_string()).unwrap(),
+        );
+        assert!(matches!(
+            dag.add_edge_guarded(c, a, test_edge("BACK")),
+            Err(DagError::CycleDetected { .. })
+        ));
+        assert!(dag.add_edge_guarded(a, c, test_edge("SKIP")).is_ok());
+
+        let guarded = |dag: &mut MemoryDag<TestNode>, parent: &str, child: &str| {
+            dag.add_edge_by_keys_guarded(&parent.to_string(), &child.to_string(), test_edge("X"))
+        };
+        assert!(matches!(
+            guarded(&mut dag, "X", "A"),
+            Err(DagError::NodeNotFound { .. })
+        ));
+        assert!(matches!(
+            guarded(&mut dag, "A", "X"),
+            Err(DagError::NodeNotFound { .. })
+        ));
+        assert!(matches!(
+            guarded(&mut dag, "C", "A"),
+            Err(DagError::CycleDetected { .. })
+        ));
+    }
+
+    #[test]
+    fn validation_finds_loops_of_any_size() {
+        let mut dag = chain();
+        let c = dag.node_index(&"C".to_string()).unwrap();
+        let a = dag.node_index(&"A".to_string()).unwrap();
+        dag.add_edge(c, a, test_edge("BACK"));
+        assert!(
+            matches!(dag.validate_acyclic(), Err(DagError::CycleDetected { node_indices }) if node_indices.len() == 3)
+        );
+
+        let mut selfish = chain();
+        let b = selfish.node_index(&"B".to_string()).unwrap();
+        selfish.add_edge(b, b, test_edge("SELF"));
+        assert!(
+            matches!(selfish.validate_acyclic(), Err(DagError::CycleDetected { node_indices }) if node_indices.len() == 1)
+        );
+    }
+
+    #[test]
+    fn unknown_keys_have_no_neighbours() {
+        let dag = chain();
+        let missing = "missing".to_string();
+        assert!(dag.children_of(&missing).is_empty());
+        assert!(dag.transitive_ancestors(&missing).is_empty());
+        assert!(dag.transitive_descendants(&missing).is_empty());
+    }
+
+    #[test]
+    fn pagination_follows_direction_and_relationship() {
+        let mut dag = chain();
+        let (a, c) = (
+            dag.node_index(&"A".to_string()).unwrap(),
+            dag.node_index(&"C".to_string()).unwrap(),
+        );
+        dag.add_edge(a, c, test_edge("SKIP"));
+
+        let key = "C".to_string();
+        let parents = dag.paginate_neighbors(&NeighborPageRequest::parents(&key, 0, 10));
+        assert_eq!(parents.total_count, 2);
+        let only_skip = NeighborPageRequest::parents(&key, 0, 10).with_relationship("SKIP");
+        assert_eq!(dag.paginate_neighbors(&only_skip).total_count, 1);
+
+        let missing = "missing".to_string();
+        let page = dag.paginate_neighbors(&NeighborPageRequest::children(&missing, 0, 10));
+        assert!(page.items.is_empty() && !page.has_more && page.next_offset.is_none());
+    }
 }

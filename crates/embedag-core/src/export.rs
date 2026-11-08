@@ -48,15 +48,14 @@ impl GraphExporter {
         let inner = dag.inner();
 
         for idx in inner.node_indices() {
-            if let Some(payload) = inner.node_weight(idx) {
-                out.push_str(&format!(
-                    "    <node id=\"n{}\">\n      <data key=\"key\">{}</data>\n      <data key=\"name\">{}</data>\n      <data key=\"level\">{}</data>\n    </node>\n",
-                    idx.index(),
-                    quick_xml_escape(&payload.key().to_string()),
-                    quick_xml_escape(payload.name()),
-                    quick_xml_escape(payload.entity_level())
-                ));
-            }
+            let payload = &inner[idx];
+            out.push_str(&format!(
+                "    <node id=\"n{}\">\n      <data key=\"key\">{}</data>\n      <data key=\"name\">{}</data>\n      <data key=\"level\">{}</data>\n    </node>\n",
+                idx.index(),
+                quick_xml_escape(&payload.key().to_string()),
+                quick_xml_escape(payload.name()),
+                quick_xml_escape(payload.entity_level())
+            ));
         }
 
         for (edge_id, edge) in inner.edge_references().enumerate() {
@@ -83,30 +82,29 @@ impl GraphExporter {
         let mut graph_items = Vec::new();
 
         for idx in inner.node_indices() {
-            if let Some(payload) = inner.node_weight(idx) {
-                let key_str = payload.key().to_string();
+            let payload = &inner[idx];
+            let key_str = payload.key().to_string();
 
-                // Find connected child relations
-                let mut outgoing = Vec::new();
-                for edge in inner.edges(idx) {
-                    if let Some(child_payload) = inner.node_weight(edge.target()) {
-                        outgoing.push(json!({
-                            "@type": edge.weight().relationship,
-                            "target": format!("urn:embedag:node:{}", child_payload.key()),
-                            "confidence": edge.weight().confidence,
-                        }));
-                    }
+            // Find connected child relations
+            let mut outgoing = Vec::new();
+            for edge in inner.edges(idx) {
+                if let Some(child_payload) = inner.node_weight(edge.target()) {
+                    outgoing.push(json!({
+                        "@type": edge.weight().relationship,
+                        "target": format!("urn:embedag:node:{}", child_payload.key()),
+                        "confidence": edge.weight().confidence,
+                    }));
                 }
-
-                graph_items.push(json!({
-                    "@id": format!("urn:embedag:node:{}", key_str),
-                    "@type": payload.entity_level(),
-                    "name": payload.name(),
-                    "business_key": key_str,
-                    "attributes": payload.attributes(),
-                    "relationships": outgoing,
-                }));
             }
+
+            graph_items.push(json!({
+                "@id": format!("urn:embedag:node:{}", key_str),
+                "@type": payload.entity_level(),
+                "name": payload.name(),
+                "business_key": key_str,
+                "attributes": payload.attributes(),
+                "relationships": outgoing,
+            }));
         }
 
         json!({
@@ -134,33 +132,28 @@ impl GraphExporter {
 
         let inner = dag.inner();
         for idx in inner.node_indices() {
-            if let Some(payload) = inner.node_weight(idx) {
-                let key = payload.key().to_string();
-                out.push_str(&format!(
-                    "node:{} a embedag:{} ;\n    rdfs:label \"{}\" ;\n    embedag:businessKey \"{}\" .\n\n",
-                    key,
-                    payload.entity_level(),
-                    payload.name().replace('"', "\\\""),
-                    key
-                ));
-            }
+            let payload = &inner[idx];
+            let key = payload.key().to_string();
+            out.push_str(&format!(
+                "node:{} a embedag:{} ;\n    rdfs:label \"{}\" ;\n    embedag:businessKey \"{}\" .\n\n",
+                key,
+                payload.entity_level(),
+                payload.name().replace('"', "\\\""),
+                key
+            ));
         }
 
         for edge in inner.edge_references() {
-            if let (Some(src), Some(tgt)) = (
-                inner.node_weight(edge.source()),
-                inner.node_weight(edge.target()),
-            ) {
-                let weight = edge.weight();
-                out.push_str(&format!(
-                    "<< node:{} embedag:{} node:{} >> embedag:confidence \"{:.4}\"^^xsd:float ;\n    embedag:provenance \"{:?}\" .\n",
-                    src.key(),
-                    weight.relationship,
-                    tgt.key(),
-                    weight.confidence,
-                    weight.provenance
-                ));
-            }
+            let (src, tgt) = (&inner[edge.source()], &inner[edge.target()]);
+            let weight = edge.weight();
+            out.push_str(&format!(
+                "<< node:{} embedag:{} node:{} >> embedag:confidence \"{:.4}\"^^xsd:float ;\n    embedag:provenance \"{:?}\" .\n",
+                src.key(),
+                weight.relationship,
+                tgt.key(),
+                weight.confidence,
+                weight.provenance
+            ));
         }
 
         out
@@ -254,11 +247,10 @@ fn write_nodes<T: NodePayload>(
     let inner = dag.inner();
     let mut ids = HashMap::new();
     for idx in inner.node_indices() {
-        if let Some(payload) = inner.node_weight(idx) {
-            let id = format!("{prefix}{}", idx.index());
-            out.push_str(&line(&id, payload));
-            ids.insert(idx.index(), id);
-        }
+        let payload = &inner[idx];
+        let id = format!("{prefix}{}", idx.index());
+        out.push_str(&line(&id, payload));
+        ids.insert(idx.index(), id);
     }
     ids
 }

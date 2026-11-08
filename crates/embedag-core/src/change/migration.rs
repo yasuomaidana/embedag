@@ -388,4 +388,111 @@ mod tests {
         let res = migration.apply(&mut dag);
         assert!(matches!(res, Err(DagError::CycleDetected { .. })));
     }
+
+    fn parent_of() -> EdgePayload {
+        EdgePayload::new("PARENT_OF", 1.0, ProvenanceKind::DeterministicRule).unwrap()
+    }
+
+    /// `P1` and `P2` roots; `P1 -> C`.
+    fn two_parents_one_child() -> MemoryDag<TestNode> {
+        let mut dag = MemoryDag::new();
+        for (key, level) in [("P1", "L0"), ("P2", "L0"), ("C", "L1")] {
+            dag.upsert_node(TestNode::new(key, key, level));
+        }
+        dag.add_edge_by_keys(&"P1".into(), &"C".into(), parent_of())
+            .unwrap();
+        dag
+    }
+
+    #[test]
+    fn reparent_moves_the_edge_and_records_both_directives() {
+        let mut dag = two_parents_one_child();
+        let mut migration = GraphMigration::new();
+        migration.add_step(MigrationStep::Reparent {
+            child_key: "C".into(),
+            old_parent_key: "P1".into(),
+            new_parent_key: "P2".into(),
+            relationship: "PARENT_OF".into(),
+            confidence: 0.8,
+        });
+
+        let directives = migration.apply(&mut dag).unwrap();
+        assert!(matches!(
+            directives.as_slice(),
+            [
+                MutationDirective::RemoveEdge { .. },
+                MutationDirective::AddEdge { .. }
+            ]
+        ));
+        assert_eq!(dag.parents_of(&"C".into())[0].key(), "P2");
+    }
+
+    #[test]
+    fn split_refuses_a_route_that_closes_a_loop() {
+        let mut dag = two_parents_one_child();
+        let mut migration = GraphMigration::new();
+        migration.add_step(MigrationStep::SplitCategory {
+            source_category: "P1".into(),
+            new_categories: vec![],
+            // `C` cannot become the parent of its own parent `P1`.
+            child_routes: vec![("P1".into(), "C".into())],
+            relationship: "PARENT_OF".into(),
+        });
+        assert!(matches!(
+            migration.apply(&mut dag),
+            Err(DagError::CycleDetected { .. })
+        ));
+    }
+
+    #[test]
+    fn merge_moves_every_child_of_every_source_under_the_target() {
+        let mut dag = two_parents_one_child();
+        let mut migration = GraphMigration::new();
+        migration.add_step(MigrationStep::MergeNodes {
+            sources: vec!["P1".into(), "P2".into()],
+            target: TestNode::new("M", "Merged", "L0"),
+            relationship: "PARENT_OF".into(),
+        });
+
+        let directives = migration.apply(&mut dag).unwrap();
+        // upsert target + (remove, add) for the one child
+        assert_eq!(directives.len(), 3);
+        assert_eq!(dag.parents_of(&"C".into())[0].key(), "M");
+    }
+
+    #[test]
+    fn plans_and_steps_can_be_built_and_printed() {
+        let migration: GraphMigration<TestNode> = GraphMigration::default();
+        assert!(format!("{migration:?}").contains("steps"));
+
+        let steps: Vec<MigrationStep<TestNode>> = vec![
+            MigrationStep::Reparent {
+                child_key: "C".into(),
+                old_parent_key: "P1".into(),
+                new_parent_key: "P2".into(),
+                relationship: "R".into(),
+                confidence: 1.0,
+            },
+            MigrationStep::SplitCategory {
+                source_category: "P1".into(),
+                new_categories: vec![],
+                child_routes: vec![],
+                relationship: "R".into(),
+            },
+            MigrationStep::MergeNodes {
+                sources: vec![],
+                target: TestNode::new("M", "M", "L"),
+                relationship: "R".into(),
+            },
+        ];
+        let names: Vec<String> = steps.iter().map(|s| format!("{s:?}")).collect();
+        for (name, expected) in names
+            .iter()
+            .zip(["Reparent", "SplitCategory", "MergeNodes"])
+        {
+            assert!(name.contains(expected), "{name}");
+        }
+        let cloned = steps.clone();
+        assert_eq!(cloned.len(), 3);
+    }
 }

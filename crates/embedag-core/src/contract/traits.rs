@@ -267,4 +267,35 @@ mod tests {
         let _transactional: &dyn TransactionalGraphRepository<MockNode> = &repo;
         let _master_repo: &dyn GraphRepository<MockNode> = &repo;
     }
+
+    #[tokio::test]
+    async fn the_mock_repository_answers_every_port() {
+        let repo = MockFullRepo;
+        let key = "k".to_string();
+        assert!(repo.get_node(&key).await.unwrap().is_none());
+        assert!(repo.get_parents(&key).await.unwrap().is_empty());
+        assert!(repo.get_children(&key).await.unwrap().is_empty());
+        assert!(
+            repo.find_nearest_neighbors(&[1.0], 1)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(repo.apply_mutation_batch(&[]).await.is_ok());
+    }
+
+    #[test]
+    fn any_node_payload_can_be_used_as_a_dyn_payload() {
+        let node = MockNode {
+            id: "n1".into(),
+            label: "Node".into(),
+            level: "Item".into(),
+            meta: serde_json::json!({"a": 1}),
+        };
+        let dynamic: &dyn DynNodePayload = &node;
+        assert_eq!(dynamic.dyn_key(), "n1");
+        assert_eq!(dynamic.dyn_name(), "Node");
+        assert_eq!(dynamic.dyn_entity_level(), "Item");
+        assert_eq!(dynamic.dyn_attributes(), serde_json::json!({"a": 1}));
+    }
 }

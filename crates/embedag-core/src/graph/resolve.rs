@@ -28,13 +28,11 @@ impl Sweep {
         for idx in dag.inner().node_indices() {
             let deg = dag.parent_indices(idx).len();
             in_degree.insert(idx, deg);
-            if let Some(payload) = dag.node_by_index(idx) {
-                let disp = payload.key().to_string();
-                if deg == 0 {
-                    ready.insert((disp.clone(), idx.index()), idx);
-                }
-                display_keys.insert(idx, disp);
+            let disp = dag.inner()[idx].key().to_string();
+            if deg == 0 {
+                ready.insert((disp.clone(), idx.index()), idx);
             }
+            display_keys.insert(idx, disp);
         }
         (
             Self {
@@ -48,31 +46,19 @@ impl Sweep {
     /// Marks `idx` visited: each child whose parents are all visited joins `ready`.
     fn visit<T: NodePayload>(&mut self, dag: &MemoryDag<T>, idx: NodeIndex, ready: &mut Ready) {
         for child_idx in dag.child_indices(idx) {
-            if let Some(deg) = self.in_degree.get_mut(&child_idx) {
-                *deg -= 1;
-                if *deg == 0
-                    && let Some(disp) = self.display_keys.get(&child_idx)
-                {
-                    ready.insert((disp.clone(), child_idx.index()), child_idx);
-                }
+            let deg = self.in_degree.entry(child_idx).or_insert(1);
+            *deg -= 1;
+            if *deg == 0 {
+                let disp = self.display_keys[&child_idx].clone();
+                ready.insert((disp, child_idx.index()), child_idx);
             }
         }
     }
 
-    /// The error for a sweep that left nodes unvisited: the validation error, else the cycle.
-    fn cycle_error<T: NodePayload>(self, dag: &MemoryDag<T>) -> DagError {
-        if let Err(e) = dag.validate_acyclic() {
-            return e;
-        }
-        let mut cycle_nodes: Vec<usize> = self
-            .in_degree
-            .into_iter()
-            .filter_map(|(idx, deg)| if deg > 0 { Some(idx.index()) } else { None })
-            .collect();
-        cycle_nodes.sort_unstable();
-        DagError::CycleDetected {
-            node_indices: cycle_nodes,
-        }
+    /// The error for a sweep that left nodes unvisited: unvisited nodes always sit on a cycle.
+    fn cycle_error<T: NodePayload>(dag: &MemoryDag<T>) -> DagError {
+        dag.validate_acyclic()
+            .expect_err("a sweep that leaves nodes unvisited has met a cycle")
     }
 }
 
@@ -94,14 +80,12 @@ pub fn toposort<T: NodePayload>(dag: &MemoryDag<T>) -> Result<Vec<T::Key>, DagEr
     let (mut sweep, mut ready) = Sweep::start(dag);
     let mut order = Vec::with_capacity(node_count);
     while let Some((_sort_key, idx)) = ready.pop_first() {
-        if let Some(payload) = dag.node_by_index(idx) {
-            order.push(payload.key().clone());
-        }
+        order.push(dag.inner()[idx].key().clone());
         sweep.visit(dag, idx, &mut ready);
     }
 
     if order.len() != node_count {
-        return Err(sweep.cycle_error(dag));
+        return Err(Sweep::cycle_error(dag));
     }
 
     Ok(order)
@@ -131,9 +115,7 @@ pub fn levels<T: NodePayload>(dag: &MemoryDag<T>) -> Result<Vec<Vec<T::Key>>, Da
 
         for (_sort_key, idx) in current_ready {
             visited += 1;
-            if let Some(payload) = dag.node_by_index(idx) {
-                level_keys.push(payload.key().clone());
-            }
+            level_keys.push(dag.inner()[idx].key().clone());
             sweep.visit(dag, idx, &mut next_ready);
         }
 
@@ -142,7 +124,7 @@ pub fn levels<T: NodePayload>(dag: &MemoryDag<T>) -> Result<Vec<Vec<T::Key>>, Da
     }
 
     if visited != node_count {
-        return Err(sweep.cycle_error(dag));
+        return Err(Sweep::cycle_error(dag));
     }
 
     Ok(result)
@@ -192,13 +174,10 @@ pub fn critical_path<T: NodePayload, F: Fn(&T) -> u64>(
     weight: F,
 ) -> Result<(u64, Vec<T::Key>), DagError> {
     let topo_keys = toposort(dag)?;
-    if topo_keys.is_empty() {
-        return Ok((0, Vec::new()));
-    }
-
-    let display_keys = display_keys(dag, &topo_keys);
-    let (dist, prev) = longest_distances(dag, &topo_keys, &display_keys, &weight);
-    let Some((max_weight, end_idx)) = best_end(dag, &topo_keys, &dist, &prev, &display_keys) else {
+    let order: Vec<NodeIndex> = topo_keys.iter().filter_map(|k| dag.node_index(k)).collect();
+    let display_keys = display_keys(dag, &order);
+    let (dist, prev) = longest_distances(dag, &order, &display_keys, &weight);
+    let Some((max_weight, end_idx)) = best_end(&order, &dist, &prev, &display_keys) else {
         return Ok((0, Vec::new()));
     };
     Ok((max_weight, path_keys(dag, end_idx, &prev)))
@@ -211,31 +190,25 @@ fn beats<D: PartialOrd + ?Sized>(new: (u64, &D), current: (u64, &D)) -> bool {
 
 fn display_keys<T: NodePayload>(
     dag: &MemoryDag<T>,
-    topo_keys: &[T::Key],
+    order: &[NodeIndex],
 ) -> HashMap<NodeIndex, String> {
-    topo_keys
+    order
         .iter()
-        .filter_map(|key| dag.node_index(key).map(|idx| (idx, key.to_string())))
+        .map(|&idx| (idx, dag.inner()[idx].key().to_string()))
         .collect()
 }
 
 /// Longest distance to every node, and the parent each distance came through.
 fn longest_distances<T: NodePayload, F: Fn(&T) -> u64>(
     dag: &MemoryDag<T>,
-    topo_keys: &[T::Key],
+    order: &[NodeIndex],
     display_keys: &HashMap<NodeIndex, String>,
     weight: &F,
 ) -> (HashMap<NodeIndex, u64>, HashMap<NodeIndex, NodeIndex>) {
-    let mut dist: HashMap<NodeIndex, u64> = HashMap::with_capacity(topo_keys.len());
-    let mut prev: HashMap<NodeIndex, NodeIndex> = HashMap::with_capacity(topo_keys.len());
-    for key in topo_keys {
-        let Some(idx) = dag.node_index(key) else {
-            continue;
-        };
-        let Some(payload) = dag.node_by_index(idx) else {
-            continue;
-        };
-        let node_w = weight(payload);
+    let mut dist: HashMap<NodeIndex, u64> = HashMap::with_capacity(order.len());
+    let mut prev: HashMap<NodeIndex, NodeIndex> = HashMap::with_capacity(order.len());
+    for &idx in order {
+        let node_w = weight(&dag.inner()[idx]);
         match best_parent(dag, idx, &dist, display_keys) {
             Some((p_dist, p_idx)) => {
                 dist.insert(idx, p_dist.saturating_add(node_w));
@@ -257,11 +230,9 @@ fn best_parent<T: NodePayload>(
     display_keys: &HashMap<NodeIndex, String>,
 ) -> Option<(u64, NodeIndex)> {
     let mut best: Option<(u64, &str, NodeIndex)> = None;
+    // Parents come earlier in topological order, so they are all measured already.
     for p_idx in dag.parent_indices(idx) {
-        let Some(&p_dist) = dist.get(&p_idx) else {
-            continue;
-        };
-        let p_disp = display_keys.get(&p_idx).map_or("", String::as_str);
+        let (p_dist, p_disp) = (dist[&p_idx], display_keys[&p_idx].as_str());
         if best.is_none_or(|(cur, disp, _)| beats((p_dist, p_disp), (cur, disp))) {
             best = Some((p_dist, p_disp, p_idx));
         }
@@ -270,21 +241,15 @@ fn best_parent<T: NodePayload>(
 }
 
 /// The end node of the critical path: longest distance (ties: smallest display path).
-fn best_end<T: NodePayload>(
-    dag: &MemoryDag<T>,
-    topo_keys: &[T::Key],
+fn best_end(
+    order: &[NodeIndex],
     dist: &HashMap<NodeIndex, u64>,
     prev: &HashMap<NodeIndex, NodeIndex>,
     display_keys: &HashMap<NodeIndex, String>,
 ) -> Option<(u64, NodeIndex)> {
     let mut best: Option<(u64, Vec<String>, NodeIndex)> = None;
-    for key in topo_keys {
-        let Some(idx) = dag.node_index(key) else {
-            continue;
-        };
-        let Some(&d) = dist.get(&idx) else {
-            continue;
-        };
+    for &idx in order {
+        let d = dist[&idx];
         let path_disp = reconstruct_display_path(idx, prev, display_keys);
         if best
             .as_ref()
@@ -311,7 +276,7 @@ fn path_keys<T: NodePayload>(
     path_indices
         .into_iter()
         .rev()
-        .filter_map(|idx| dag.node_by_index(idx).map(|n| n.key().clone()))
+        .map(|idx| dag.inner()[idx].key().clone())
         .collect()
 }
 
@@ -323,9 +288,7 @@ fn reconstruct_display_path(
     let mut path = Vec::new();
     let mut curr = Some(end_idx);
     while let Some(idx) = curr {
-        if let Some(disp) = display_keys.get(&idx) {
-            path.push(disp.clone());
-        }
+        path.push(display_keys[&idx].clone());
         curr = prev.get(&idx).copied();
     }
     path.reverse();

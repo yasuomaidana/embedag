@@ -140,4 +140,11 @@ mod tests {
         .sqrt();
         assert!((hour_dist - 2.0).abs() < 1e-6);
     }
+
+    #[test]
+    fn the_encoder_measures_distance_between_encoded_vectors() {
+        let noon = Utc.with_ymd_and_hms(2026, 5, 1, 12, 0, 0).single().unwrap();
+        let encoded = CyclicalTimeEncoder::encode(&noon);
+        assert_eq!(CyclicalTimeEncoder::distance(&encoded, &encoded), 0.0);
+    }
 }

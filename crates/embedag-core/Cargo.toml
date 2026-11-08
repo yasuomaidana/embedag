@@ -27,3 +27,4 @@ h3o = { workspace = true, optional = true }
 [dev-dependencies]
 #proptest = { workspace = true }
 rstest = { workspace = true }
+tokio = { workspace = true }

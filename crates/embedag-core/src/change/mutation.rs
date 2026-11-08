@@ -576,4 +576,82 @@ mod tests {
             })
         ));
     }
+
+    #[test]
+    fn plans_are_built_inspected_and_printed() {
+        let plan: MutationPlan<MockItem> = MutationPlan::default();
+        assert!(plan.is_empty());
+        assert_eq!(plan.validated_revision(), None);
+
+        let plan = plan
+            .upsert_node(MockItem::new("C", "Node C"))
+            .add_edge("A".to_string(), "C".to_string(), test_edge("rel"))
+            .remove_edge("A".to_string(), "B".to_string(), Some("rel".to_string()))
+            .add_directive(MutationDirective::UpsertNode(MockItem::new("D", "Node D")));
+        assert_eq!(plan.len(), 4);
+        assert_eq!(plan.directives().len(), 4);
+
+        let printed = format!("{plan:?}");
+        for part in ["UpsertNode", "AddEdge", "RemoveEdge", "validated_revision"] {
+            assert!(printed.contains(part), "{part} missing from {printed}");
+        }
+    }
+
+    #[rstest]
+    fn removing_an_edge_in_the_batch_unblocks_the_reverse_edge(chain: MemoryDag<MockItem>) {
+        let plan = MutationPlan::new()
+            .remove_edge("A".to_string(), "B".to_string(), None)
+            .add_edge("B".to_string(), "A".to_string(), test_edge("rev"));
+        assert_eq!(differential(plan, &chain).unwrap(), 2);
+    }
+
+    #[rstest]
+    #[case::unknown_parent("X", "B")]
+    #[case::unknown_child("A", "X")]
+    fn edges_to_unknown_nodes_are_rejected(
+        chain: MemoryDag<MockItem>,
+        #[case] parent: &str,
+        #[case] child: &str,
+        #[values(plain, differential)] validate: Validate,
+    ) {
+        let plan =
+            MutationPlan::new().add_edge(parent.to_string(), child.to_string(), test_edge("r"));
+        assert!(matches!(
+            validate(plan, &chain),
+            Err(DagError::NodeNotFound { .. })
+        ));
+    }
+
+    #[rstest]
+    fn a_self_loop_is_a_cycle(chain: MemoryDag<MockItem>) {
+        let plan = MutationPlan::new().add_edge("A".to_string(), "A".to_string(), test_edge("r"));
+        assert!(matches!(
+            differential(plan, &chain),
+            Err(DagError::CycleDetected { .. })
+        ));
+    }
+
+    #[rstest]
+    fn applying_removals_and_dag_directives_round_trip(mut chain: MemoryDag<MockItem>) {
+        let recreate = dag_directives(&chain);
+        assert_eq!(recreate.len(), 3); // two nodes, one edge
+
+        let removal = MutationPlan::new().remove_edge("A".to_string(), "B".to_string(), None);
+        removal
+            .validate_cycles(&chain)
+            .unwrap()
+            .apply(&mut chain)
+            .unwrap();
+        assert_eq!(chain.edge_count(), 0);
+
+        let mut rebuilt = MemoryDag::new();
+        let plan = recreate
+            .into_iter()
+            .fold(MutationPlan::new(), MutationPlan::add_directive);
+        plan.validate_cycles(&rebuilt)
+            .unwrap()
+            .apply(&mut rebuilt)
+            .unwrap();
+        assert_eq!(rebuilt.edge_count(), 1);
+    }
 }

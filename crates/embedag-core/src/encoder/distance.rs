@@ -467,4 +467,91 @@ mod tests {
         assert!((0.0..=1.0).contains(&dist));
         assert!(dist < 1e-5, "expected ~0.0, got {dist}");
     }
+
+    use rstest::rstest;
+
+    fn weights(values: [f64; 6]) -> ModalityWeights {
+        let [text, lexical, scalar, temporal, geospatial, categorical] = values;
+        ModalityWeights {
+            text,
+            lexical,
+            scalar,
+            temporal,
+            geospatial,
+            categorical,
+        }
+    }
+
+    #[rstest]
+    #[case::valid([1.0; 6], true)]
+    #[case::negative([1.0, 1.0, 1.0, 1.0, 1.0, -1.0], false)]
+    #[case::not_finite([f64::NAN, 1.0, 1.0, 1.0, 1.0, 1.0], false)]
+    #[case::all_zero([0.0; 6], false)]
+    fn weights_must_be_finite_non_negative_and_not_all_zero(
+        #[case] values: [f64; 6],
+        #[case] valid: bool,
+    ) {
+        assert_eq!(weights(values).validate().is_ok(), valid);
+    }
+
+    #[test]
+    fn cosine_distance_of_empty_or_zero_vectors_is_zero() {
+        assert_eq!(cosine_distance(&[], &[]).unwrap(), 0.0);
+        assert_eq!(cosine_distance(&[0.0, 0.0], &[1.0, 1.0]).unwrap(), 0.0);
+    }
+
+    #[rstest]
+    #[case::both_empty(&[], &[], 0.0)]
+    #[case::one_empty(&[(1, 1.0)], &[], 1.0)]
+    #[case::other_empty(&[], &[(1, 1.0)], 1.0)]
+    #[case::identical(&[(1, 1.0), (2, 1.0)], &[(1, 1.0), (2, 1.0)], 0.0)]
+    fn lexical_distance_edges(
+        #[case] a: &[(u32, f32)],
+        #[case] b: &[(u32, f32)],
+        #[case] expected: f64,
+    ) {
+        assert!((lexical_token_distance(a, b) - expected).abs() < 1e-9);
+    }
+
+    #[test]
+    fn scalar_distance_penalizes_missing_dimensions_and_has_none_when_empty() {
+        let empty = FeatureMap::new();
+        assert_eq!(scalar_gower_distance(&empty, &empty), None);
+
+        let a = FeatureMap::from([("x".to_string(), 10.0)]);
+        let b = FeatureMap::from([("y".to_string(), 10.0)]);
+        // Each side lacks the other's dimension: both dimensions get the maximum penalty.
+        assert_eq!(scalar_gower_distance(&a, &b), Some(1.0));
+    }
+
+    #[test]
+    fn categorical_distance_counts_mismatching_tags() {
+        let empty = TagMap::new();
+        assert_eq!(categorical_tag_distance(&empty, &empty), None);
+
+        let a = TagMap::from([("brand".to_string(), "A".to_string())]);
+        let b = TagMap::from([("brand".to_string(), "B".to_string())]);
+        assert_eq!(categorical_tag_distance(&a, &b), Some(1.0));
+        assert_eq!(categorical_tag_distance(&a, &a), Some(0.0));
+    }
+
+    #[test]
+    fn composite_distance_degrades_gracefully() {
+        let a = record("a", "text", vec![]);
+        let b = record("b", "text", vec![]);
+        // No modality has data on either side: nothing to compare.
+        assert_eq!(
+            composite_distance(&a, &b, &[], &[], &ModalityWeights::default(), 8, 5).unwrap(),
+            0.0
+        );
+        // Weights that fail validation are an error.
+        let bad = weights([0.0; 6]);
+        assert!(composite_distance(&a, &b, &[], &[], &bad, 8, 5).is_err());
+        // A single modality with a zero weight leaves no weight to normalize by.
+        let only_text = weights([0.0, 1.0, 1.0, 1.0, 1.0, 1.0]);
+        assert_eq!(
+            composite_distance(&a, &b, &[1.0], &[1.0], &only_text, 8, 5).unwrap(),
+            0.0
+        );
+    }
 }
