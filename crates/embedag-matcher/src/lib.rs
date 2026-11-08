@@ -170,6 +170,45 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn matchers_are_built_with_a_threshold_or_by_default() {
+        assert_eq!(AstMatcher::new(5).min_subtree, 5);
+        assert_eq!(AstMatcher::default().min_subtree, 3);
+    }
+
+    #[test]
+    fn trees_report_their_size() {
+        let tree = Tree::branch(
+            "root",
+            vec![Tree::leaf("a", "x"), Tree::branch("b", vec![])],
+        );
+        assert_eq!(tree.size(), 3);
+    }
+
+    #[test]
+    fn small_trees_are_compared_whole_and_a_tiny_one_never_matches_a_large_one() {
+        let tiny = Tree::leaf("identifier", "x");
+        let matcher = AstMatcher::default();
+        // Neither tree has a subtree of three nodes, so the comparison falls back to single nodes.
+        assert!((matcher.score(&tiny, &Tree::leaf("identifier", "y")) - 1.0).abs() < f32::EPSILON);
+        // Only one side has subtrees of three nodes: nothing in common.
+        let large = sample_add_fn("add", "a", "b");
+        assert_eq!(matcher.score(&tiny, &large), 0.0);
+    }
+
+    #[rstest]
+    fn the_similarity_graph_exposes_its_graph_and_both_directions(sample_unrelated_tree: Tree) {
+        let items = vec![
+            ("first".to_string(), sample_add_fn("add", "a", "b")),
+            ("second".to_string(), sample_add_fn("sum", "c", "d")),
+            ("other".to_string(), sample_unrelated_tree),
+        ];
+        let graph = SimilarityGraph::build(&items, &AstMatcher::default(), 0.9);
+        assert_eq!(graph.inner().node_count(), 3);
+        // The edge was added from the first item, but is visible from the second too.
+        assert_eq!(graph.neighbors("second")[0].0, "first");
+    }
 }
 
 /// Compiles the Rust examples of the crate README as doctests, so they cannot drift from the code.

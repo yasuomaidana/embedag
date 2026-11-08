@@ -53,9 +53,7 @@ impl AstMatcher {
 impl Matcher for AstMatcher {
     fn score(&self, a: &Tree, b: &Tree) -> f32 {
         let (hashes_a, hashes_b) = self.hashes_of_both(a, b);
-        if hashes_a.is_empty() && hashes_b.is_empty() {
-            return 1.0;
-        }
+        // Retried with size 1 when both are empty, so at most one side can still be empty.
         if hashes_a.is_empty() || hashes_b.is_empty() {
             return 0.0;
         }
@@ -82,9 +80,6 @@ fn weighted_jaccard(weights: &BTreeMap<u64, (usize, usize)>) -> f32 {
         intersection += (*wa).min(*wb);
         union += (*wa).max(*wb);
     }
-    if union == 0 {
-        1.0
-    } else {
-        ((intersection as f64) / (union as f64)).clamp(0.0, 1.0) as f32
-    }
+    // Every hash comes from a subtree of at least one node, so the union is never empty.
+    ((intersection as f64) / (union as f64)).clamp(0.0, 1.0) as f32
 }
