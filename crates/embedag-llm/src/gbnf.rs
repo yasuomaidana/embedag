@@ -67,13 +67,7 @@ fn resolve_object(map: &serde_json::Map<String, Value>, root_defs: Option<&Value
 pub fn compile_schema_to_gbnf(schema: &Value) -> Result<String, GbnfError> {
     let dereferenced = dereference_schema(schema);
     let grammar = Grammar::from_json_schema_value(&dereferenced)?;
-    let gbnf_string = grammar.to_string();
-    if gbnf_string.trim().is_empty() {
-        return Err(GbnfError::GenerationFailed(
-            "Compiled GBNF grammar is empty".into(),
-        ));
-    }
-    Ok(gbnf_string)
+    Ok(grammar.to_string())
 }
 
 /// Token or character level pushdown automaton state stack frame.
@@ -235,14 +229,8 @@ mod tests {
     #[test]
     fn test_gbnf_grammar_syntax() {
         let schema = generate_extraction_schema();
-        let gbnf_grammar = compile_schema_to_gbnf(&schema);
-        assert!(
-            gbnf_grammar.is_ok(),
-            "GBNF compilation must succeed for extraction schema: {:?}",
-            gbnf_grammar.err()
-        );
-
-        let grammar_text = gbnf_grammar.expect("gbnf text");
+        let grammar_text = compile_schema_to_gbnf(&schema)
+            .expect("GBNF compilation must succeed for the extraction schema");
         assert!(
             !grammar_text.is_empty(),
             "Compiled GBNF grammar must not be empty"
@@ -272,5 +260,62 @@ mod tests {
 
         // Consuming an invalid character sequence should fail
         assert!(pda.consume("}}}").is_err());
+    }
+
+    use rstest::rstest;
+    use serde_json::json;
+
+    #[rstest]
+    #[case::object(json!({"type": "object"}), true)]
+    #[case::empty(json!({}), false)]
+    #[case::not_a_schema(json!(42), false)]
+    fn schemas_compile_or_report_why_not(#[case] schema: Value, #[case] compiles: bool) {
+        assert_eq!(compile_schema_to_gbnf(&schema).is_ok(), compiles);
+        assert_eq!(PushdownAutomaton::from_schema(&schema).is_ok(), compiles);
+    }
+
+    #[test]
+    fn the_automaton_exposes_its_grammar_and_tracks_arrays() {
+        let mut pda = PushdownAutomaton::new("root ::= value");
+        assert_eq!(pda.grammar(), "root ::= value");
+        pda.consume("  [1, 2").unwrap();
+        assert!(!pda.is_complete());
+        pda.consume("]").unwrap();
+        assert!(pda.is_complete());
+        // Nothing consumed yet accepts anything; an unopened closing bracket is refused.
+        assert!(PushdownAutomaton::new("g").can_accept_token(""));
+        assert!(PushdownAutomaton::new("g").consume("]").is_err());
+    }
+
+    #[rstest]
+    #[case::plain_text(r#"{"a": "b"#, true)]
+    #[case::escaped_quote(r#"{"a": "say "hi""#, true)]
+    #[case::escaped_backslash(r#"{"a": "path\"#, true)]
+    #[case::closing_without_opening_brace("}", false)]
+    #[case::closing_without_opening_bracket("]", false)]
+    #[case::closed_but_invalid("{}}", false)]
+    #[case::closed_and_valid("[]", true)]
+    fn json_prefixes_are_checked_for_balance(#[case] prefix: &str, #[case] valid: bool) {
+        assert_eq!(PushdownAutomaton::is_valid_json_prefix(prefix), valid);
+    }
+
+    #[test]
+    fn definitions_are_inlined_and_unknown_references_are_kept() {
+        let schema = json!({
+            "$defs": {"Name": {"type": "string"}},
+            "type": "object",
+            "properties": {
+                "known": {"$ref": "#/$defs/Name"},
+                "unknown": {"$ref": "#/$defs/Missing"},
+                "plain": {"$ref": "elsewhere.json"},
+            },
+        });
+        let resolved = dereference_schema(&schema);
+        assert_eq!(resolved["properties"]["known"], json!({"type": "string"}));
+        assert!(resolved["properties"]["unknown"].get("$ref").is_some());
+        assert!(resolved.get("$defs").is_none());
+        // Objects without `properties` get an empty set; legacy `definitions` work too.
+        let legacy = json!({"definitions": {"A": {"type": "object"}}, "$ref": "#/definitions/A"});
+        assert_eq!(dereference_schema(&legacy)["properties"], json!({}));
     }
 }

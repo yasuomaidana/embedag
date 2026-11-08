@@ -685,6 +685,7 @@ mod tests {
     async fn an_answer_that_is_not_an_envelope_is_a_sampling_error() {
         let err = Babbler.extract_directive("anything").await.unwrap_err();
         assert!(matches!(err, LlmError::ConstrainedSamplingError(_)));
+        assert_eq!(Babbler.model_info().provider_name, "babbler");
     }
 
     fn root(name: &str) -> ExtractionDirective {

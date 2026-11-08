@@ -463,4 +463,31 @@ mod tests {
         assert!(summary.comparison_card.contains("12x scale"));
         assert!(summary.comparison_card.contains("H3 ring distance: 0"));
     }
+
+    #[test]
+    fn the_default_configuration_matches_detected_prefixes_and_reports_missing_deltas() {
+        let candidate = CandidateEntity::new("Unit").with_attribute("weight", 100.0);
+        let doubled = IncomingEntity::new("Pack").with_attribute("detected_weight", 200.0);
+        let summary = SemanticDeltaSynthesizer::synthesize(&candidate, &doubled);
+        assert_eq!(summary.scale_multiplier, Some(2.0));
+        assert!(summary.comparison_card.contains("2.0x scale"));
+
+        let nothing_alike = IncomingEntity::new("Other").with_attribute("colour", "red");
+        let summary = SemanticDeltaSynthesizer::synthesize(&candidate, &nothing_alike);
+        assert!(summary.comparison_card.contains("None detected"));
+        assert!(summary.scale_multiplier.is_none() && summary.h3_ring_distance.is_none());
+    }
+
+    #[test]
+    fn identical_values_set_the_weight_match_and_a_second_multiplier_is_ignored() {
+        let candidate = CandidateEntity::new("Unit")
+            .with_attribute("a", 10.0)
+            .with_attribute("b", 10.0);
+        let incoming = IncomingEntity::new("Pack")
+            .with_attribute("a", 10.0)
+            .with_attribute("b", 30.0);
+        let summary = SemanticDeltaSynthesizer::synthesize(&candidate, &incoming);
+        assert_eq!(summary.weight_match_pct, Some(100.0));
+        assert_eq!(summary.scale_multiplier, Some(3.0));
+    }
 }

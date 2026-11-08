@@ -242,4 +242,34 @@ mod tests {
         assert!(prompt.contains("Dairy Alternatives"));
         assert!(prompt.contains("\"chain_of_thought\""));
     }
+
+    use serde_json::json;
+
+    #[test]
+    fn schema_descriptions_become_field_constraints_when_there_are_any() {
+        let schema = json!({
+            "properties": {"name": {"description": "the display name"}},
+            "$defs": {"Inner": {"properties": {"unit": {"description": "measured in grams"}}}},
+        });
+        let described = PromptFormatter::build_prompt_with_schema("role", "{}", &[], Some(&schema));
+        assert!(described.contains("### FIELD CONSTRAINTS & SPECIFICATIONS"));
+        assert!(described.contains("- name: \"the display name\""));
+        assert!(described.contains("- unit: \"measured in grams\""));
+
+        // A schema without descriptions adds no section, and neither does a missing schema.
+        let bare = json!({"properties": {"name": {"type": "string"}}});
+        for schema in [Some(&bare), None] {
+            let prompt = PromptFormatter::build_prompt_with_schema("role", "{}", &[], schema);
+            assert!(!prompt.contains("FIELD CONSTRAINTS"));
+        }
+    }
+
+    #[test]
+    fn legacy_definitions_are_walked_too() {
+        let schema = json!({"definitions": {"Old": {"properties": {"x": {"description": "d"}}}}});
+        assert_eq!(
+            extract_field_descriptions(&schema),
+            vec![("x".to_string(), "d".to_string())]
+        );
+    }
 }
