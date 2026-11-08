@@ -427,4 +427,16 @@ mod tests {
         );
         assert_eq!(delta.changed, vec!["file".to_string()]);
     }
+
+    #[test]
+    fn files_only_in_the_old_tree_are_reported_as_removed() {
+        let old = MerkleNode::branch(
+            "root",
+            vec![MerkleNode::leaf("a", b"1"), MerkleNode::leaf("c", b"3")],
+        );
+        let new = MerkleNode::branch("root", vec![MerkleNode::leaf("c", b"3")]);
+        let delta = diff(&old, &new);
+        assert_eq!(delta.removed, vec!["a".to_string()]);
+        assert!(delta.added.is_empty() && delta.changed.is_empty());
+    }
 }

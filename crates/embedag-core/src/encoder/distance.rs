@@ -131,10 +131,6 @@ pub fn lexical_token_distance(a: &[(u32, f32)], b: &[(u32, f32)]) -> f64 {
     let intersection = set_a.intersection(&set_b).count();
     let union = set_a.union(&set_b).count();
 
-    if union == 0 {
-        return 0.0;
-    }
-
     let jaccard = intersection as f64 / union as f64;
     (1.0 - jaccard).clamp(0.0, 1.0)
 }
@@ -152,9 +148,6 @@ pub fn scalar_gower_distance(a: &FeatureMap, b: &FeatureMap) -> Option<f64> {
     }
 
     let all_keys: HashSet<&String> = a.keys().chain(b.keys()).collect();
-    if all_keys.is_empty() {
-        return None;
-    }
 
     let mut total_distance = 0.0;
     for &k in &all_keys {
@@ -195,9 +188,6 @@ pub fn categorical_tag_distance(a: &TagMap, b: &TagMap) -> Option<f64> {
         return None;
     }
     let all_keys: HashSet<&String> = a.keys().chain(b.keys()).collect();
-    if all_keys.is_empty() {
-        return None;
-    }
 
     let mut mismatches = 0.0;
     for &k in &all_keys {

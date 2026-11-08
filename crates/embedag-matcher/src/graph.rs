@@ -61,11 +61,8 @@ impl SimilarityGraph {
 
         let mut list = Vec::new();
         for edge in self.graph.edges(idx) {
-            let other_idx = if edge.source() == idx {
-                edge.target()
-            } else {
-                edge.source()
-            };
+            // On an undirected graph, `edges(idx)` always reports `idx` as the source.
+            let other_idx = edge.target();
             if let Some(other_id) = self.graph.node_weight(other_idx) {
                 list.push((other_id.clone(), *edge.weight()));
             }

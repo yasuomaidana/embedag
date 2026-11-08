@@ -490,4 +490,25 @@ mod tests {
         assert_eq!(summary.weight_match_pct, Some(100.0));
         assert_eq!(summary.scale_multiplier, Some(3.0));
     }
+
+    #[test]
+    fn different_cells_are_described_as_adjacent_and_other_value_kinds_are_summarized() {
+        let candidate = CandidateEntity::new("Unit")
+            .with_attribute("tags", serde_json::json!(["a", "b"]))
+            .with_attribute("meta", serde_json::json!({"x": 1}))
+            .with_attribute("nothing", serde_json::Value::Null)
+            .with_attribute("flag", true)
+            .with_h3_cell(0x8928308280fffff);
+        let incoming = IncomingEntity::new("Pack").with_h3_cell(0x8928308281bffff);
+        let card = SemanticDeltaSynthesizer::synthesize(&candidate, &incoming).comparison_card;
+        for expected in [
+            "[2 items]",
+            "{1 fields}",
+            "null",
+            "true",
+            "Adjacent regional zone",
+        ] {
+            assert!(card.contains(expected), "{expected} missing from {card}");
+        }
+    }
 }

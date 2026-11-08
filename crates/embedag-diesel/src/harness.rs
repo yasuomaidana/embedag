@@ -53,9 +53,7 @@ impl PostgresHarness {
     /// Connects a new isolated `tokio_postgres::Client` to the harness.
     pub async fn connect(&self) -> Result<tokio_postgres::Client, tokio_postgres::Error> {
         let (client, conn) = tokio_postgres::connect(&self.conn_str, tokio_postgres::NoTls).await?;
-        tokio::spawn(async move {
-            let _ = conn.await;
-        });
+        tokio::spawn(conn);
         Ok(client)
     }
 }
@@ -69,9 +67,7 @@ pub async fn connect_with_retry(
 ) -> Option<tokio_postgres::Client> {
     for _ in 0..attempts {
         if let Ok((client, conn)) = tokio_postgres::connect(conn_str, tokio_postgres::NoTls).await {
-            tokio::spawn(async move {
-                let _ = conn.await;
-            });
+            tokio::spawn(conn);
             return Some(client);
         }
         tokio::time::sleep(delay).await;

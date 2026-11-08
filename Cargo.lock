@@ -2324,6 +2324,7 @@ dependencies = [
  "async-trait",
  "embedag-core",
  "parking_lot 0.13.0",
+ "rstest",
  "serde",
  "serde_json",
  "surrealdb",

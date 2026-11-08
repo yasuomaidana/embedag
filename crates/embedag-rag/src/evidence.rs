@@ -178,9 +178,10 @@ mod tests {
         assert!(cited.contains("BRAND-01"));
     }
 
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
 
     /// `ROOT -> MID -> LEAF` and `MID -> SIDE`; the edge to `SIDE` is an inference.
+    #[fixture]
     fn family() -> MemoryDag<TestNode> {
         let mut dag = MemoryDag::new();
         for (key, level) in [
@@ -203,11 +204,12 @@ mod tests {
         dag
     }
 
-    #[test]
-    fn every_role_is_tagged_and_inferred_edges_are_marked() {
-        let dag = family();
+    #[rstest]
+    fn every_role_is_tagged_and_inferred_edges_are_marked(
+        #[from(family)] dag: MemoryDag<TestNode>,
+    ) {
         let subgraph = SubgraphExpander::default().expand(&dag, &[("MID".to_string(), 1.0)]);
-        let context = GroundedEvidencePackager::default().package(&dag, &subgraph);
+        let context = GroundedEvidencePackager.package(&dag, &subgraph);
         for expected in [
             "SEED",
             "ANCESTOR",
@@ -224,9 +226,10 @@ mod tests {
         assert!(context.find("[Node: MID]").unwrap() < context.find("[Node: ROOT]").unwrap());
     }
 
-    #[test]
-    fn siblings_are_tagged_and_nodes_missing_from_the_dag_are_skipped() {
-        let dag = family();
+    #[rstest]
+    fn siblings_are_tagged_and_nodes_missing_from_the_dag_are_skipped(
+        #[from(family)] dag: MemoryDag<TestNode>,
+    ) {
         let subgraph = SubgraphExpander::default().expand(&dag, &[("LEAF".to_string(), 1.0)]);
         let context = GroundedEvidencePackager::new().package(&dag, &subgraph);
         assert!(context.contains("SIBLING"));
@@ -248,5 +251,13 @@ mod tests {
         let mut cited: Vec<_> = cited.into_iter().collect();
         cited.sort();
         assert_eq!(cited, expected);
+    }
+
+    #[rstest]
+    fn several_seeds_are_listed_before_the_rest(#[from(family)] dag: MemoryDag<TestNode>) {
+        let seeds = [("ROOT".to_string(), 1.0), ("LEAF".to_string(), 1.0)];
+        let subgraph = SubgraphExpander::default().expand(&dag, &seeds);
+        let context = GroundedEvidencePackager::new().package(&dag, &subgraph);
+        assert_eq!(context.matches("Role: SEED").count(), 2);
     }
 }

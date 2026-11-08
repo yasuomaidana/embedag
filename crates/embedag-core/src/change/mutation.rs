@@ -654,4 +654,26 @@ mod tests {
             .unwrap();
         assert_eq!(rebuilt.edge_count(), 1);
     }
+
+    #[rstest]
+    fn a_path_from_a_node_to_itself_exists(chain: MemoryDag<MockItem>) {
+        let (introduced, removed, overlay) = (HashSet::new(), HashSet::new(), HashMap::new());
+        let batch = Batch {
+            introduced: &introduced,
+            removed: &removed,
+            overlay_out: &overlay,
+        };
+        assert!(has_path_differential(
+            &chain,
+            &"A".to_string(),
+            &"A".to_string(),
+            &batch
+        ));
+        assert!(!has_path_differential(
+            &chain,
+            &"B".to_string(),
+            &"A".to_string(),
+            &batch
+        ));
+    }
 }

@@ -6,6 +6,7 @@ use std::time::Duration;
 use embedag_core::model::{EdgePayload, ProvenanceKind};
 use embedag_core::testing::StoredNode;
 use embedag_neo4j::{Neo4jConfig, Neo4jEngine};
+use rstest::{fixture, rstest};
 use testcontainers::core::WaitFor;
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
@@ -52,6 +53,12 @@ pub async fn bolt_engine() -> Result<BoltEngine, Box<dyn std::error::Error + Sen
     Err(last_error.map_or_else(|| "no connection attempt".into(), |e| e.to_string().into()))
 }
 
+/// A fresh Neo4j container and an engine connected to it.
+#[fixture]
+async fn bolt() -> BoltEngine {
+    bolt_engine().await.expect("neo4j container")
+}
+
 embedag_core::persistence_suite!(
     bolt_engine(),
     #[ignore = "starts a Neo4j container: runs in the persistence-testcontainers and coverage jobs"]
@@ -69,10 +76,11 @@ fn contains() -> EdgePayload {
     EdgePayload::new("CONTAINS", 0.9, ProvenanceKind::DeterministicRule).unwrap()
 }
 
+#[rstest]
 #[tokio::test]
 #[ignore = "starts a Neo4j container: runs in the persistence-testcontainers and coverage jobs"]
-async fn removing_edges_by_relationship_or_entirely() {
-    let engine = bolt_engine().await.expect("neo4j container");
+async fn removing_edges_by_relationship_or_entirely(#[future(awt)] bolt: BoltEngine) {
+    let engine = bolt;
     for sku in ["a", "b"] {
         engine.insert_node(&stored(sku)).await.unwrap();
     }
@@ -111,10 +119,11 @@ async fn removing_edges_by_relationship_or_entirely() {
     );
 }
 
+#[rstest]
 #[tokio::test]
 #[ignore = "starts a Neo4j container: runs in the persistence-testcontainers and coverage jobs"]
-async fn loading_edges_that_lack_properties_uses_the_defaults() {
-    let engine = bolt_engine().await.expect("neo4j container");
+async fn loading_edges_that_lack_properties_uses_the_defaults(#[future(awt)] bolt: BoltEngine) {
+    let engine = bolt;
     for sku in ["a", "b"] {
         engine.insert_node(&stored(sku)).await.unwrap();
     }

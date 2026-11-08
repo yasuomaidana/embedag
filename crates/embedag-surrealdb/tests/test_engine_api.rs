@@ -3,6 +3,7 @@
 use embedag_core::model::{EdgePayload, ProvenanceKind};
 use embedag_core::testing::StoredNode;
 use embedag_surrealdb::{StorageMode, SurrealDbConfig, SurrealDbEngine};
+use rstest::rstest;
 
 fn stored(sku: &str) -> StoredNode {
     StoredNode {
@@ -44,9 +45,12 @@ fn the_configuration_builders_set_every_option() {
     assert!(local.username.is_none());
 }
 
+#[rstest]
+#[case::websocket("ws://127.0.0.1:1")]
+#[case::http("http://127.0.0.1:1")]
 #[tokio::test]
-async fn an_unreachable_endpoint_is_a_connection_error() {
-    let config = SurrealDbConfig::remote("ws://127.0.0.1:1");
+async fn an_unreachable_endpoint_is_a_connection_error(#[case] endpoint: &str) {
+    let config = SurrealDbConfig::remote(endpoint);
     assert!(SurrealDbEngine::open(config).await.is_err());
 }
 

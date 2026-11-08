@@ -217,18 +217,13 @@ mod tests {
 
     #[test]
     fn unnamed_field_is_skipped_by_the_scan() {
-        let tuple: DeriveInput = parse_quote!(
-            struct T(String);
-        );
+        let unnamed: syn::FieldsUnnamed = parse_quote!((String));
         let named: DeriveInput = parse_quote!(
             struct N {
                 id: String,
             }
         );
-        let Data::Struct(data) = &tuple.data else {
-            unreachable!("parsed as a struct")
-        };
-        let mut fields: Punctuated<Field, Comma> = data.fields.iter().cloned().collect();
+        let mut fields: Punctuated<Field, Comma> = unnamed.unnamed.clone();
         fields.extend(fields_of(&named).iter().cloned());
         let scan = FieldScan::scan(&fields);
         assert_eq!(scan.names, vec!["id".to_string()]);

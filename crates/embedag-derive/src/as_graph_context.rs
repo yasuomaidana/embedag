@@ -255,7 +255,7 @@ mod tests {
                 #[graph(tag = "maker")] vendor: String,
                 #[graph(blob)] image: MultimodalBlob,
                 #[graph(tokens)] tokens: Vec<(u32, f32)>,
-                ignored: u8,
+                #[allow(dead_code)] ignored: u8,
             }
         })
         .unwrap();

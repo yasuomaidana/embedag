@@ -54,14 +54,9 @@ pub trait EntityExtractor: Send + Sync {
     /// Extracts a representative entity text label from a prompt string.
     fn extract_from_prompt(&self, prompt: &str) -> String {
         extract_record_slice(prompt)
-            .and_then(|slice| {
-                if let Ok(v) = serde_json::from_str::<Value>(slice) {
-                    self.extract_from_value(&v)
-                } else if !slice.is_empty() {
-                    Some(slice.to_string())
-                } else {
-                    None
-                }
+            .and_then(|slice| match serde_json::from_str::<Value>(slice) {
+                Ok(v) => self.extract_from_value(&v),
+                Err(_) => Some(slice.to_string()),
             })
             .unwrap_or_else(|| "Unidentified Entity".to_string())
     }
@@ -344,14 +339,9 @@ macro_rules! entity_properties {
                 $(fallback = $default_label;)?
 
                 $crate::extractor::extract_record_slice(prompt)
-                    .and_then(|slice| {
-                        if let Ok(v) = ::serde_json::from_str::<::serde_json::Value>(slice) {
-                            $crate::extractor::EntityProperties::extract_label(self, &v)
-                        } else if !slice.is_empty() {
-                            Some(slice.to_string())
-                        } else {
-                            None
-                        }
+                    .and_then(|slice| match ::serde_json::from_str::<::serde_json::Value>(slice) {
+                        Ok(v) => $crate::extractor::EntityProperties::extract_label(self, &v),
+                        Err(_) => Some(slice.to_string()),
                     })
                     .unwrap_or_else(|| fallback.to_string())
             }

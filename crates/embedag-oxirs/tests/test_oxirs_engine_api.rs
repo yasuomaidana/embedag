@@ -7,7 +7,7 @@ use embedag_oxirs::{
     OxiRsTdbConfig, OxiRsTdbEngine, StorageMode, SyncPolicy, make_graph_name, make_node_iri,
 };
 use oxirs_core::model::{GraphName, Literal, NamedNode, Object, Predicate, Quad, Subject};
-use rstest::rstest;
+use rstest::{fixture, rstest};
 use tempfile::tempdir;
 
 fn node(id: &str) -> TestNode {
@@ -18,7 +18,8 @@ fn edge(relationship: &str, provenance: ProvenanceKind) -> EdgePayload {
     EdgePayload::new(relationship, 0.9, provenance).expect("valid edge")
 }
 
-fn engine_with_edge(relationship: &str) -> OxiRsTdbEngine {
+#[fixture]
+fn engine_with_edge(#[default("CONTAINS")] relationship: &str) -> OxiRsTdbEngine {
     let engine = OxiRsTdbEngine::in_memory().unwrap();
     for id in ["a", "b"] {
         engine.insert_node(&node(id)).unwrap();
@@ -132,9 +133,10 @@ fn missing_nodes_are_none_and_removing_them_reports_nothing_removed() {
     assert!(engine.remove_node_by_key("a").unwrap());
 }
 
-#[test]
-fn parents_are_found_and_edge_entities_are_not_mistaken_for_parents() {
-    let engine = engine_with_edge("CONTAINS");
+#[rstest]
+fn parents_are_found_and_edge_entities_are_not_mistaken_for_parents(
+    #[from(engine_with_edge)] engine: OxiRsTdbEngine,
+) {
     let parents: Vec<TestNode> = engine.get_parents(&"b".to_string()).unwrap();
     assert_eq!(parents.len(), 1);
     assert_eq!(parents[0].id, "a");
@@ -144,8 +146,11 @@ fn parents_are_found_and_edge_entities_are_not_mistaken_for_parents() {
 #[case::any_relationship(None, true)]
 #[case::matching_relationship(Some("CONTAINS"), true)]
 #[case::other_relationship(Some("OTHER"), false)]
-fn removing_edges(#[case] relationship: Option<&str>, #[case] gone: bool) {
-    let engine = engine_with_edge("CONTAINS");
+fn removing_edges(
+    #[case] relationship: Option<&str>,
+    #[case] gone: bool,
+    #[from(engine_with_edge)] engine: OxiRsTdbEngine,
+) {
     let (a, b) = ("a".to_string(), "b".to_string());
     engine.remove_edge(&a, &b, relationship).unwrap();
     let children: Vec<TestNode> = engine.get_children(&a).unwrap();
@@ -198,9 +203,11 @@ fn sparql_and_snapshots() {
     assert!(OxiRsTdbEngine::open_persistent(dir.path()).is_ok());
 }
 
+#[rstest]
 #[tokio::test]
-async fn the_repository_traits_delegate_to_the_engine() {
-    let engine = engine_with_edge("CONTAINS");
+async fn the_repository_traits_delegate_to_the_engine(
+    #[from(engine_with_edge)] engine: OxiRsTdbEngine,
+) {
     engine.index_embedding("a", vec![1.0, 0.0]);
     let key = "b".to_string();
 
@@ -260,9 +267,8 @@ fn incomplete_edge_entities_are_skipped_when_loading(
     assert_eq!(dag.edge_count(), 0);
 }
 
-#[test]
-fn a_stored_edge_is_loaded_back_into_the_dag() {
-    let engine = engine_with_edge("CONTAINS");
+#[rstest]
+fn a_stored_edge_is_loaded_back_into_the_dag(#[from(engine_with_edge)] engine: OxiRsTdbEngine) {
     let dag = engine.load_dag::<TestNode>().unwrap();
     assert_eq!(dag.node_count(), 2);
     assert_eq!(dag.edge_count(), 1);
@@ -335,4 +341,65 @@ fn blank_node_subjects_are_not_parents() {
     engine.insert_quad(quad).unwrap();
     let parents: Vec<TestNode> = engine.get_parents(&"b".to_string()).unwrap();
     assert!(parents.is_empty());
+}
+
+mod errors {
+    use super::*;
+    use embedag_core::error::DagError;
+    use embedag_core::mutation::MutationDirective;
+    use embedag_core::testing::OtherShape;
+    use embedag_core::traits::TransactionalGraphRepository;
+    use embedag_oxirs::OxiRsStorageError;
+
+    #[rstest]
+    #[tokio::test]
+    async fn reading_the_wrong_shape_fails_through_every_port(
+        #[from(engine_with_edge)] engine: OxiRsTdbEngine,
+    ) {
+        engine.index_embedding("a", vec![1.0, 0.0]);
+        let (a, b) = ("a".to_string(), "b".to_string());
+
+        assert!(
+            ReadOnlyGraphRepository::<OtherShape>::get_node(&engine, &a)
+                .await
+                .is_err()
+        );
+        assert!(
+            ReadOnlyGraphRepository::<OtherShape>::get_children(&engine, &a)
+                .await
+                .is_err()
+        );
+        assert!(
+            ReadOnlyGraphRepository::<OtherShape>::get_parents(&engine, &b)
+                .await
+                .is_err()
+        );
+        let near =
+            VectorSearchRepository::<OtherShape>::find_nearest_neighbors(&engine, &[1.0, 0.0], 1)
+                .await;
+        assert!(near.is_err());
+
+        let removal = MutationDirective::<TestNode>::RemoveEdge {
+            parent: a.clone(),
+            child: b,
+            relationship: None,
+        };
+        engine.apply_mutation_batch(&[removal]).await.unwrap();
+        assert!(engine.get_children::<TestNode>(&a).unwrap().is_empty());
+    }
+
+    #[test]
+    fn every_error_kind_converts_into_a_dag_error() {
+        let cycle = DagError::CycleDetected {
+            node_indices: vec![1],
+        };
+        assert!(matches!(
+            DagError::from(OxiRsStorageError::Dag(cycle)),
+            DagError::CycleDetected { .. }
+        ));
+        let missing = DagError::from(OxiRsStorageError::NodeNotFound("k".into()));
+        assert!(matches!(missing, DagError::NodeNotFound { ref key } if key == "k"));
+        let other = DagError::from(OxiRsStorageError::Snapshot("boom".into()));
+        assert!(matches!(other, DagError::StorageError(ref m) if m.contains("boom")));
+    }
 }

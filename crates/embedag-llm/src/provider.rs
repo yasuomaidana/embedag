@@ -659,7 +659,7 @@ mod tests {
         }
     }
 
-    use rstest::rstest;
+    use rstest::{fixture, rstest};
     use serde_json::json;
 
     /// A provider whose "model" answers with something that is not an extraction envelope.
@@ -688,19 +688,21 @@ mod tests {
         assert_eq!(Babbler.model_info().provider_name, "babbler");
     }
 
-    fn root(name: &str) -> ExtractionDirective {
+    #[fixture]
+    fn root() -> ExtractionDirective {
         ExtractionDirective::CreateRootNode {
-            entity_name: name.into(),
+            entity_name: "Forced".into(),
             entity_level: "category".into(),
             confidence: 0.5,
         }
     }
 
+    #[rstest]
     #[tokio::test]
-    async fn simulated_output_overrides_the_inference() {
-        let candle = CandleProvider::with_simulated_output("c", root("Forced"));
-        let oxillama = OxillamaProvider::with_simulated_output("o", root("Forced"))
-            .with_model_path("/models/o.gguf");
+    async fn simulated_output_overrides_the_inference(root: ExtractionDirective) {
+        let candle = CandleProvider::with_simulated_output("c", root.clone());
+        let oxillama =
+            OxillamaProvider::with_simulated_output("o", root).with_model_path("/models/o.gguf");
         assert!(oxillama.model_path.is_some());
         for directive in [
             candle.extract_directive("p").await.unwrap().0,
@@ -820,9 +822,10 @@ mod tests {
         assert!(value.unwrap().to_string().contains("S-1"));
     }
 
+    #[rstest]
     #[tokio::test]
-    async fn oxibonsai_can_be_forced_to_a_simulated_answer() {
-        let provider = OxibonsaiProvider::with_simulated_output("bonsai", root("Forced"));
+    async fn oxibonsai_can_be_forced_to_a_simulated_answer(root: ExtractionDirective) {
+        let provider = OxibonsaiProvider::with_simulated_output("bonsai", root);
         let (directive, _) = provider.extract_directive("p").await.unwrap();
         assert!(matches!(
             directive,

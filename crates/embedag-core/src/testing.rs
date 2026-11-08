@@ -50,6 +50,22 @@ crate::impl_node_payload!(
     attributes = |n| { serde_json::json!({ "title": n.title, "category": n.category }) }
 );
 
+/// A node whose stored JSON cannot be read back as a [`StoredNode`] (and vice versa).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct OtherShape {
+    /// Business key.
+    pub code: String,
+    /// A field no [`StoredNode`] has.
+    pub count: u64,
+}
+
+crate::impl_node_payload!(
+    OtherShape,
+    key = |n| &n.code,
+    name = |n| &n.code,
+    level = |_| "Other"
+);
+
 /// Defines the persistence tests every storage adapter must pass. `$engine` is a future that
 /// opens an empty engine; attributes after it (such as `#[ignore = "..."]` for engines that need a
 /// container) are put on every generated test; the engine must offer `insert_node`, `get_node`, `insert_edge`,
@@ -284,6 +300,71 @@ macro_rules! persistence_suite {
             assert!(loaded.contains_key(&"ROOT".to_string()));
             assert!(loaded.contains_key(&"C1".to_string()));
             assert!(loaded.contains_key(&"C2".to_string()));
+        }
+    };
+}
+
+/// Defines the error-handling tests of an in-memory storage adapter: reading a stored node as a
+/// type it does not fit fails through every repository port, removals go through the
+/// transactional port, and each of the adapter's error kinds converts into a [`DagError`].
+/// `$engine` is a future that opens an empty engine, `$err` the adapter's error enum.
+///
+/// [`DagError`]: crate::error::DagError
+#[macro_export]
+macro_rules! persistence_error_suite {
+    ($engine:expr, $err:ident) => {
+        #[tokio::test]
+        async fn test_reading_the_wrong_shape_fails_through_every_port() {
+            use $crate::model::{EdgePayload, ProvenanceKind};
+            use $crate::mutation::MutationDirective;
+            use $crate::testing::{OtherShape, StoredNode};
+            use $crate::traits::{
+                ReadOnlyGraphRepository, TransactionalGraphRepository, VectorSearchRepository,
+            };
+            let engine = $engine.await.expect("engine start");
+            let node = |sku: &str| StoredNode {
+                sku: sku.into(),
+                title: sku.into(),
+                category: "Category".into(),
+            };
+            engine.insert_node(&node("P")).await.unwrap();
+            engine.insert_node(&node("C")).await.unwrap();
+            let edge = EdgePayload::new("CONTAINS", 1.0, ProvenanceKind::DeterministicRule).unwrap();
+            engine.insert_edge(&"P".to_string(), &"C".to_string(), &edge).await.unwrap();
+            engine.index_embedding("P", vec![1.0, 0.0]);
+            let (parent, child) = ("P".to_string(), "C".to_string());
+
+            let read = ReadOnlyGraphRepository::<OtherShape>::get_node(&engine, &parent).await;
+            assert!(read.is_err());
+            let children = ReadOnlyGraphRepository::<OtherShape>::get_children(&engine, &parent).await;
+            assert!(children.is_err());
+            let parents = ReadOnlyGraphRepository::<OtherShape>::get_parents(&engine, &child).await;
+            assert!(parents.is_err());
+            let near =
+                VectorSearchRepository::<OtherShape>::find_nearest_neighbors(&engine, &[1.0, 0.0], 1)
+                    .await;
+            assert!(near.is_err());
+
+            let removal = MutationDirective::<StoredNode>::RemoveEdge {
+                parent: parent.clone(),
+                child: child.clone(),
+                relationship: None,
+            };
+            engine.apply_mutation_batch(&[removal]).await.unwrap();
+            let remaining = ReadOnlyGraphRepository::<StoredNode>::get_children(&engine, &parent).await;
+            assert!(remaining.unwrap().is_empty());
+        }
+
+        #[test]
+        fn test_every_error_kind_converts_into_a_dag_error() {
+            use $crate::error::DagError;
+            let cycle = DagError::CycleDetected { node_indices: vec![1] };
+            let converted: DagError = $err::Dag(cycle).into();
+            assert!(matches!(converted, DagError::CycleDetected { .. }));
+            let missing: DagError = $err::NodeNotFound("k".into()).into();
+            assert!(matches!(missing, DagError::NodeNotFound { ref key } if key == "k"));
+            let other: DagError = $err::Other("boom".into()).into();
+            assert!(matches!(other, DagError::StorageError(ref m) if m.contains("boom")));
         }
     };
 }

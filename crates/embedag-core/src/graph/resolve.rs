@@ -405,14 +405,11 @@ mod tests {
         dag.add_edge(idx_c, idx_a, dep_edge());
 
         let err = toposort(&dag).unwrap_err();
-        match err {
-            DagError::CycleDetected { node_indices } => {
-                assert!(node_indices.contains(&idx_a.index()));
-                assert!(node_indices.contains(&idx_b.index()));
-                assert!(node_indices.contains(&idx_c.index()));
-            }
-            other => panic!("expected CycleDetected, got {other:?}"),
-        }
+        assert!(matches!(
+            &err,
+            DagError::CycleDetected { node_indices }
+                if [idx_a, idx_b, idx_c].iter().all(|i| node_indices.contains(&i.index()))
+        ));
 
         assert!(matches!(levels(&dag), Err(DagError::CycleDetected { .. })));
         assert!(matches!(

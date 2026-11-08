@@ -305,6 +305,7 @@ fn merge_nodes<T: NodePayload>(
 mod tests {
     use super::*;
     use crate::testing::TestNode;
+    use rstest::{fixture, rstest};
 
     #[test]
     fn test_category_split_migration() {
@@ -394,6 +395,7 @@ mod tests {
     }
 
     /// `P1` and `P2` roots; `P1 -> C`.
+    #[fixture]
     fn two_parents_one_child() -> MemoryDag<TestNode> {
         let mut dag = MemoryDag::new();
         for (key, level) in [("P1", "L0"), ("P2", "L0"), ("C", "L1")] {
@@ -404,9 +406,10 @@ mod tests {
         dag
     }
 
-    #[test]
-    fn reparent_moves_the_edge_and_records_both_directives() {
-        let mut dag = two_parents_one_child();
+    #[rstest]
+    fn reparent_moves_the_edge_and_records_both_directives(
+        #[from(two_parents_one_child)] mut dag: MemoryDag<TestNode>,
+    ) {
         let mut migration = GraphMigration::new();
         migration.add_step(MigrationStep::Reparent {
             child_key: "C".into(),
@@ -427,9 +430,10 @@ mod tests {
         assert_eq!(dag.parents_of(&"C".into())[0].key(), "P2");
     }
 
-    #[test]
-    fn split_refuses_a_route_that_closes_a_loop() {
-        let mut dag = two_parents_one_child();
+    #[rstest]
+    fn split_refuses_a_route_that_closes_a_loop(
+        #[from(two_parents_one_child)] mut dag: MemoryDag<TestNode>,
+    ) {
         let mut migration = GraphMigration::new();
         migration.add_step(MigrationStep::SplitCategory {
             source_category: "P1".into(),
@@ -444,9 +448,10 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn merge_moves_every_child_of_every_source_under_the_target() {
-        let mut dag = two_parents_one_child();
+    #[rstest]
+    fn merge_moves_every_child_of_every_source_under_the_target(
+        #[from(two_parents_one_child)] mut dag: MemoryDag<TestNode>,
+    ) {
         let mut migration = GraphMigration::new();
         migration.add_step(MigrationStep::MergeNodes {
             sources: vec!["P1".into(), "P2".into()],
@@ -494,5 +499,20 @@ mod tests {
         }
         let cloned = steps.clone();
         assert_eq!(cloned.len(), 3);
+    }
+
+    #[rstest]
+    fn a_confidence_that_is_not_a_number_aborts_the_migration(
+        #[from(two_parents_one_child)] mut dag: MemoryDag<TestNode>,
+    ) {
+        let mut migration = GraphMigration::new();
+        migration.add_step(MigrationStep::Reparent {
+            child_key: "C".into(),
+            old_parent_key: "P1".into(),
+            new_parent_key: "P2".into(),
+            relationship: "PARENT_OF".into(),
+            confidence: f32::NAN,
+        });
+        assert!(migration.apply(&mut dag).is_err());
     }
 }

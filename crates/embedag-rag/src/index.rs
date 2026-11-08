@@ -361,4 +361,15 @@ mod tests {
         }
         assert!(compute_trigrams("").is_empty());
     }
+
+    #[test]
+    fn queries_without_word_characters_and_empty_documents_score_nothing() {
+        let mut index = SparseLexicalIndex::new();
+        index.insert(Uuid::new_v4(), "", "");
+        index.insert(Uuid::new_v4(), "K", "plain words");
+        // No tokens in the query, only trigrams of the punctuation: nothing overlaps.
+        assert!(index.search("!!", 5).is_empty());
+        // The empty document has no trigrams, so only the other one can match.
+        assert_eq!(index.search("plain", 5).len(), 1);
+    }
 }

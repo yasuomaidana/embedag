@@ -143,6 +143,7 @@ mod tests {
 
     use crate::expansion::{ExpandedEdge, ExpandedNode, SeedRelationship};
     use embedag_core::model::ProvenanceKind;
+    use rstest::rstest;
     use std::collections::HashMap;
 
     #[test]
@@ -151,22 +152,20 @@ mod tests {
         assert_eq!(OxiRagEngine::new(8).embedding_dim(), 8);
     }
 
+    #[rstest]
+    #[case::empty_chunk(&[""], "anything", "Failed to index")]
+    #[case::empty_query(&["some text"], "", "query failed")]
     #[tokio::test]
-    async fn an_empty_chunk_cannot_be_indexed() {
+    async fn empty_chunks_and_queries_are_rejected(
+        #[case] corpus: &[&str],
+        #[case] query: &str,
+        #[case] message: &str,
+    ) {
         let err = OxiRagEngine::new(8)
-            .query_verified(&[""], "anything")
+            .query_verified(corpus, query)
             .await
             .unwrap_err();
-        assert!(matches!(err, RagError::IndexError(ref m) if m.contains("Failed to index")));
-    }
-
-    #[tokio::test]
-    async fn an_empty_query_fails() {
-        let err = OxiRagEngine::new(8)
-            .query_verified(&["some text"], "")
-            .await
-            .unwrap_err();
-        assert!(matches!(err, RagError::IndexError(ref m) if m.contains("query failed")));
+        assert!(matches!(err, RagError::IndexError(ref m) if m.contains(message)));
     }
 
     #[test]

@@ -1,4 +1,4 @@
-use embedag_neo4j::{Neo4jConfig, Neo4jEngine, StorageMode};
+use embedag_neo4j::{Neo4jConfig, Neo4jEngine, Neo4jStorageError, StorageMode};
 
 embedag_core::persistence_suite!(Neo4jEngine::in_memory());
 
@@ -16,3 +16,5 @@ fn test_bolt_configuration_builder() {
     assert_eq!(config.node_label, "CustomNode");
     assert_eq!(config.default_relation, "CUSTOM_REL");
 }
+
+embedag_core::persistence_error_suite!(Neo4jEngine::in_memory(), Neo4jStorageError);

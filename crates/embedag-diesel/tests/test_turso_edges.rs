@@ -1,11 +1,11 @@
 #![cfg(all(feature = "turso", feature = "turso-async"))]
 
+mod common;
+
+use common::attach_directives;
 use embedag_diesel::harness::TursoHarness;
 use embedag_diesel::migrations::run_turso_migration_async;
-use embedag_diesel::ops::{
-    MutationDirectiveRecord, NodeUpsertRecord, apply_mutation_lifecycle_turso,
-    batch_upsert_edges_turso,
-};
+use embedag_diesel::ops::{apply_mutation_lifecycle_turso, batch_upsert_edges_turso};
 use uuid::Uuid;
 
 const SCHEMA_SQL: &str = r#"
@@ -31,17 +31,7 @@ async fn empty_edge_batches_and_attached_parents() {
     assert_eq!(batch_upsert_edges_turso(&mut conn, &[]).await.unwrap(), 0);
 
     let (parent, child) = (Uuid::new_v4(), Uuid::new_v4());
-    let directives = [
-        MutationDirectiveRecord::InsertNode(NodeUpsertRecord::new(parent, "p", "dept", "P")),
-        MutationDirectiveRecord::InsertNode(NodeUpsertRecord::new(child, "c", "sku", "C")),
-        MutationDirectiveRecord::AttachParent {
-            parent_id: parent,
-            child_id: child,
-            relationship_type: "PARENT_OF".into(),
-            confidence: 1.0,
-            provenance: "test".into(),
-        },
-    ];
+    let directives = attach_directives(parent, child);
     apply_mutation_lifecycle_turso(&mut conn, &directives)
         .await
         .expect("apply");

@@ -1,33 +1,17 @@
 //! The hierarchy builders, the model trait and the table configuration, on SQLite.
 
+mod common;
+
+use common::{Dept, names};
 use diesel::connection::SimpleConnection;
 use diesel::prelude::*;
-use embedag_diesel::cte::{
-    CteHierarchyBuilder, HierarchicalModel, HierarchicalTableConfig, HierarchyItem,
-};
+use embedag_diesel::cte::{CteHierarchyBuilder, HierarchicalModel, HierarchicalTableConfig};
 use embedag_diesel::harness::connect_with_retry;
 use embedag_diesel::ops::{EdgeUpsertRecord, MutationDirectiveRecord};
 use embedag_diesel::traversal::RecursiveTraversalBuilder;
 use rstest::{fixture, rstest};
 use std::time::Duration;
 use uuid::Uuid;
-
-struct Dept;
-
-impl HierarchicalModel for Dept {
-    fn table_name() -> &'static str {
-        "dept"
-    }
-    fn id_column() -> &'static str {
-        "id"
-    }
-    fn parent_column() -> &'static str {
-        "parent_id"
-    }
-    fn name_column() -> &'static str {
-        "name"
-    }
-}
 
 struct Described;
 
@@ -62,10 +46,6 @@ fn conn() -> SqliteConnection {
         .expect("seed");
     }
     conn
-}
-
-fn names(items: &[HierarchyItem]) -> Vec<&str> {
-    items.iter().map(|i| i.name.as_str()).collect()
 }
 
 #[test]
@@ -160,4 +140,38 @@ async fn connecting_to_nothing_gives_up_after_the_attempts() {
             .await
             .is_none()
     );
+}
+
+#[test]
+fn models_generate_the_recursive_cte_seed_and_step_sql() {
+    assert_eq!(
+        Dept::ancestor_seed_sql("x'y"),
+        "SELECT id AS curr_id, parent_id AS parent_ref, 0 AS depth, name AS curr_name \
+         FROM dept WHERE id = 'x''y'"
+    );
+    assert!(Dept::descendant_step_sql(3).contains("d.depth < 3"));
+    assert!(Dept::descendant_seed_sql("root").contains("WHERE id = 'root'"));
+    assert!(Dept::ancestor_step_sql(2).contains("a.depth < 2"));
+}
+
+#[cfg(feature = "turso-async")]
+#[test]
+fn the_turso_row_types_can_be_cloned_and_printed() {
+    use embedag_diesel::cte::builder::TursoHierarchyRow;
+    use embedag_diesel::traversal::TursoTraversalRow;
+
+    let hierarchy = TursoHierarchyRow {
+        curr_id: "a".into(),
+        depth: 1,
+        curr_name: "A".into(),
+    };
+    assert!(format!("{:?}", hierarchy.clone()).contains("curr_id"));
+    let traversal = TursoTraversalRow {
+        node_id: "a".into(),
+        depth: 1,
+        business_key: "k".into(),
+        entity_level: "l".into(),
+        name: "n".into(),
+    };
+    assert!(format!("{:?}", traversal.clone()).contains("node_id"));
 }

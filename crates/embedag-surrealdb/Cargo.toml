@@ -26,3 +26,4 @@ tokio = { workspace = true }
 embedag-core = { workspace = true, features = ["testing"] }
 #tempfile = { workspace = true }
 testcontainers = { workspace = true }
+rstest = { workspace = true }

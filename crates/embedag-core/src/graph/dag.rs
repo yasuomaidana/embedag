@@ -333,18 +333,11 @@ impl<T: NodePayload> MemoryDag<T> {
     pub fn validate_acyclic(&self) -> Result<(), DagError> {
         let sccs = tarjan_scc(&self.graph);
         for scc in sccs {
-            if scc.len() > 1 {
+            // A component of several nodes is a cycle, and so is a node with an edge to itself.
+            if scc.len() > 1 || self.graph.contains_edge(scc[0], scc[0]) {
                 return Err(DagError::CycleDetected {
                     node_indices: scc.iter().map(|n| n.index()).collect(),
                 });
-            }
-            if scc.len() == 1 {
-                let single = scc[0];
-                if self.graph.contains_edge(single, single) {
-                    return Err(DagError::CycleDetected {
-                        node_indices: vec![single.index()],
-                    });
-                }
             }
         }
         Ok(())
@@ -582,6 +575,7 @@ mod tests {
     use super::*;
     use crate::model::ProvenanceKind;
     use crate::testing::TestNode;
+    use rstest::{fixture, rstest};
 
     fn test_edge(rel: &str) -> EdgePayload {
         EdgePayload::new(rel, 1.0, ProvenanceKind::DeterministicRule).unwrap()
@@ -961,6 +955,7 @@ mod tests {
     }
 
     /// `A -> B -> C`, all edges `PARENT_OF` with the given relationship.
+    #[fixture]
     fn chain() -> MemoryDag<TestNode> {
         let mut dag = MemoryDag::with_capacity(3, 2);
         for key in ["A", "B", "C"] {
@@ -973,9 +968,8 @@ mod tests {
         dag
     }
 
-    #[test]
-    fn debug_default_and_clear() {
-        let mut dag = chain();
+    #[rstest]
+    fn debug_default_and_clear(#[from(chain)] mut dag: MemoryDag<TestNode>) {
         let printed = format!("{dag:?}");
         assert!(printed.contains("revision") && printed.contains("keys"));
         assert!(MemoryDag::<TestNode>::default().is_empty());
@@ -986,9 +980,8 @@ mod tests {
         assert!(dag.revision() > before);
     }
 
-    #[test]
-    fn nodes_can_be_mutated_by_key_and_by_index() {
-        let mut dag = chain();
+    #[rstest]
+    fn nodes_can_be_mutated_by_key_and_by_index(#[from(chain)] mut dag: MemoryDag<TestNode>) {
         dag.node_mut(&"A".to_string()).unwrap().name = "renamed".into();
         assert_eq!(dag.node(&"A".to_string()).unwrap().name, "renamed");
         assert!(dag.node_mut(&"missing".to_string()).is_none());
@@ -1009,8 +1002,8 @@ mod tests {
         #[case] child: &str,
         #[case] relationship: Option<&str>,
         #[case] removed: bool,
+        #[from(chain)] mut dag: MemoryDag<TestNode>,
     ) {
-        let mut dag = chain();
         let result = dag.remove_edge_by_keys(&parent.to_string(), &child.to_string(), relationship);
         assert_eq!(result, removed);
     }
@@ -1020,16 +1013,20 @@ mod tests {
     #[case::closing_the_chain("C", "A", true)]
     #[case::forward_is_fine("A", "C", false)]
     #[case::unknown_node("A", "X", false)]
-    fn cycle_prediction_by_key(#[case] from: &str, #[case] to: &str, #[case] cycle: bool) {
+    fn cycle_prediction_by_key(
+        #[case] from: &str,
+        #[case] to: &str,
+        #[case] cycle: bool,
+        chain: MemoryDag<TestNode>,
+    ) {
         assert_eq!(
-            chain().would_create_cycle(&from.to_string(), &to.to_string()),
+            chain.would_create_cycle(&from.to_string(), &to.to_string()),
             cycle
         );
     }
 
-    #[test]
-    fn guarded_edges_refuse_cycles_and_unknown_nodes() {
-        let mut dag = chain();
+    #[rstest]
+    fn guarded_edges_refuse_cycles_and_unknown_nodes(#[from(chain)] mut dag: MemoryDag<TestNode>) {
         let (a, c) = (
             dag.node_index(&"A".to_string()).unwrap(),
             dag.node_index(&"C".to_string()).unwrap(),
@@ -1057,9 +1054,11 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn validation_finds_loops_of_any_size() {
-        let mut dag = chain();
+    #[rstest]
+    fn validation_finds_loops_of_any_size(
+        #[from(chain)] mut dag: MemoryDag<TestNode>,
+        #[from(chain)] mut selfish: MemoryDag<TestNode>,
+    ) {
         let c = dag.node_index(&"C".to_string()).unwrap();
         let a = dag.node_index(&"A".to_string()).unwrap();
         dag.add_edge(c, a, test_edge("BACK"));
@@ -1067,7 +1066,6 @@ mod tests {
             matches!(dag.validate_acyclic(), Err(DagError::CycleDetected { node_indices }) if node_indices.len() == 3)
         );
 
-        let mut selfish = chain();
         let b = selfish.node_index(&"B".to_string()).unwrap();
         selfish.add_edge(b, b, test_edge("SELF"));
         assert!(
@@ -1075,18 +1073,16 @@ mod tests {
         );
     }
 
-    #[test]
-    fn unknown_keys_have_no_neighbours() {
-        let dag = chain();
+    #[rstest]
+    fn unknown_keys_have_no_neighbours(#[from(chain)] dag: MemoryDag<TestNode>) {
         let missing = "missing".to_string();
         assert!(dag.children_of(&missing).is_empty());
         assert!(dag.transitive_ancestors(&missing).is_empty());
         assert!(dag.transitive_descendants(&missing).is_empty());
     }
 
-    #[test]
-    fn pagination_follows_direction_and_relationship() {
-        let mut dag = chain();
+    #[rstest]
+    fn pagination_follows_direction_and_relationship(#[from(chain)] mut dag: MemoryDag<TestNode>) {
         let (a, c) = (
             dag.node_index(&"A".to_string()).unwrap(),
             dag.node_index(&"C".to_string()).unwrap(),
