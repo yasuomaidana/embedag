@@ -2143,7 +2143,7 @@ dependencies = [
 
 [[package]]
 name = "embedag"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "diesel",
@@ -2166,7 +2166,7 @@ dependencies = [
 
 [[package]]
 name = "embedag-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "blake3",
@@ -2182,7 +2182,7 @@ dependencies = [
 
 [[package]]
 name = "embedag-derive"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "embedag-core",
@@ -2194,7 +2194,7 @@ dependencies = [
 
 [[package]]
 name = "embedag-diesel"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "diesel",
@@ -2220,7 +2220,7 @@ dependencies = [
 
 [[package]]
 name = "embedag-example-receipts"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "diesel",
@@ -2238,7 +2238,7 @@ dependencies = [
 
 [[package]]
 name = "embedag-llm"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "candle-core",
@@ -2256,7 +2256,7 @@ dependencies = [
 
 [[package]]
 name = "embedag-matcher"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "blake3",
  "petgraph",
@@ -2265,7 +2265,7 @@ dependencies = [
 
 [[package]]
 name = "embedag-neo4j"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "embedag-core",
@@ -2281,7 +2281,7 @@ dependencies = [
 
 [[package]]
 name = "embedag-oxirs"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "embedag-core",
@@ -2298,7 +2298,7 @@ dependencies = [
 
 [[package]]
 name = "embedag-rag"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "embedag-core",
  "oxirag",
@@ -2311,7 +2311,7 @@ dependencies = [
 
 [[package]]
 name = "embedag-surrealdb"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "embedag-core",
