@@ -15,7 +15,7 @@ members = [
 resolver = "3"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/yasuomaidana/embedag"
@@ -23,16 +23,16 @@ homepage = "https://github.com/yasuomaidana/embedag"
 
 [workspace.dependencies]
 # Internal crates
-embedag = { path = "crates/embedag", version = "0.1.0" }
-embedag-core = { path = "crates/embedag-core", version = "0.1.0" }
-embedag-derive = { path = "crates/embedag-derive", version = "0.1.0" }
-embedag-llm = { path = "crates/embedag-llm", version = "0.1.0" }
-embedag-diesel = { path = "crates/embedag-diesel", version = "0.1.0" }
-embedag-rag = { path = "crates/embedag-rag", version = "0.1.0" }
-embedag-oxirs = { path = "crates/embedag-oxirs", version = "0.1.0" }
-embedag-surrealdb = { path = "crates/embedag-surrealdb", version = "0.1.0" }
-embedag-neo4j = { path = "crates/embedag-neo4j", version = "0.1.0" }
-embedag-matcher = { path = "crates/embedag-matcher", version = "0.1.0" }
+embedag = { path = "crates/embedag", version = "0.1.1" }
+embedag-core = { path = "crates/embedag-core", version = "0.1.1" }
+embedag-derive = { path = "crates/embedag-derive", version = "0.1.1" }
+embedag-llm = { path = "crates/embedag-llm", version = "0.1.1" }
+embedag-diesel = { path = "crates/embedag-diesel", version = "0.1.1" }
+embedag-rag = { path = "crates/embedag-rag", version = "0.1.1" }
+embedag-oxirs = { path = "crates/embedag-oxirs", version = "0.1.1" }
+embedag-surrealdb = { path = "crates/embedag-surrealdb", version = "0.1.1" }
+embedag-neo4j = { path = "crates/embedag-neo4j", version = "0.1.1" }
+embedag-matcher = { path = "crates/embedag-matcher", version = "0.1.1" }
 diesel-libsql = { version = "0.1.4", default-features = false }
 
 # Core domain
