@@ -1,0 +1,8 @@
+# Exceptions to scripts/check-db-access.sh (SQL only through Diesel).
+# Format: <path prefix> <reason>. Every entry names the ticket that removes it; the list only shrinks.
+crates/embedag-diesel/src/ops/ EMBEDAG-112: Postgres operations still use tokio_postgres clients and transactions; port to diesel-async
+crates/embedag-diesel/src/traversal.rs EMBEDAG-112: Postgres traversal reads rows through tokio_postgres; port to diesel-async
+crates/embedag-diesel/src/migrations.rs EMBEDAG-112: Postgres setup runs batch SQL through a tokio_postgres client; port to diesel-async
+crates/embedag-diesel/src/harness.rs EMBEDAG-112: the test harness hands out tokio_postgres clients; hand out AsyncPgConnection instead
+crates/embedag-diesel/tests/ EMBEDAG-112: integration tests set up schemas through tokio_postgres and sql_query; move behind a raw module
+crates/embedag-derive/src/hierarchical_model/codegen.rs EMBEDAG-112: the generated CTE helpers call diesel::sql_query; move them into a raw module

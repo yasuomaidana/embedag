@@ -234,12 +234,12 @@ pub fn run_receipt_categories_sqlite_migration(
     Ok(())
 }
 
-/// Runs the developer's custom PostgreSQL migration on the given async client.
+/// Runs the developer's custom PostgreSQL migration on the given Diesel async connection.
 pub async fn run_receipt_categories_postgres_migration(
-    client: &tokio_postgres::Client,
-) -> Result<(), tokio_postgres::Error> {
-    client
-        .batch_execute(RECEIPT_CATEGORIES_POSTGRES_MIGRATION)
+    conn: &mut diesel_async::AsyncPgConnection,
+) -> Result<(), diesel::result::Error> {
+    use diesel_async::SimpleAsyncConnection;
+    conn.batch_execute(RECEIPT_CATEGORIES_POSTGRES_MIGRATION)
         .await?;
     Ok(())
 }

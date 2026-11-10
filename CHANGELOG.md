@@ -5,7 +5,11 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 ## [Unreleased]
 
 ### Added
+- CI: job `db-access (diesel only)` runs `scripts/check-db-access.sh` on every pull request and push: SQL is reached only through Diesel; the exceptions that exist today are in `.github/db-access-allow.txt` and removed by EMBEDAG-112 (EMBEDAG-110).
 - CI: `.github/workflows/complexity.yml` cross-checks function complexity with clippy `cognitive_complexity` and `lizard`; report only while EMBEDAG-86 is open (EMBEDAG-85).
+
+### Changed
+- `embedag-example-receipts`: `run_receipt_categories_postgres_migration` takes `&mut diesel_async::AsyncPgConnection` instead of a `tokio_postgres::Client`, and the crate no longer depends on `tokio-postgres` (EMBEDAG-110).
 
 ## [0.1.0]
 

@@ -12,6 +12,19 @@ env:
   RUSTFLAGS: "-D warnings"
 
 jobs:
+  db-access:
+    name: db-access (diesel only)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Test the guard
+        run: sh scripts/test-check-db-access.sh
+
+      - name: SQL is reached only through Diesel
+        run: sh scripts/check-db-access.sh
+
   format:
     name: Code Formatting (rustfmt)
     runs-on: ubuntu-latest

@@ -22,7 +22,7 @@ Do not depend on `embedag-example-receipts` in production libraries or unrelated
 - **Receipt and category hierarchy (`lib.rs`)**:
   - `ReceiptCategoryNode` (`ReceiptCategoryRecord`): Annotated with `#[derive(HierarchicalModel)]` (`table = "receipt_categories"`, `id = "category_id"`, `parent = "parent_category_id"`, `name = "category_name"`).
   - `ReceiptGraphPipeline<P>` and `StageExecutionReport`: Dynamic on-the-fly receipt item categorization and DAG deduplication pipeline.
-  - `run_receipt_categories_sqlite_migration(&mut SqliteConnection)` and `run_receipt_categories_postgres_migration(&tokio_postgres::Client)`: Initialize the `receipt_categories` schema.
+  - `run_receipt_categories_sqlite_migration(&mut SqliteConnection)` and `run_receipt_categories_postgres_migration(&mut diesel_async::AsyncPgConnection)`: Initialize the `receipt_categories` schema.
   - `categorize_ticket_invoice(&FinanceInvoice) -> Vec<ReceiptCategoryRecord>`: Deterministic heuristic categorization for relational persistence tests.
 - **Multi-DAG financial invoice engine (`finance`)**:
   - DTOs (`finance::dto`): `FinanceInvoice` (`InvoiceTicket`), `InvoiceItem`, `ProductVariant`, `FinanceMerchant`, `CategorizedInvoice`, `InvoiceCategorizationMode` (`LlmDecided`, `CustomDensity`), `parse_date`.

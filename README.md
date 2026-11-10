@@ -42,6 +42,17 @@ cargo fmt --check && cargo clippy --workspace --all-targets -- -D warnings
 
 Quality gates (`loom-gate loc`, `clones`, `rstest`) run in CI; tests use the `rstest` crate. Known upstream advisories are listed in `.cargo/audit.toml`.
 
+## Database access
+
+SQL is reached only through Diesel: `diesel`, `diesel-async`, `diesel-libsql` and `diesel-cte-ext` are the
+database layer, and raw drivers (`tokio-postgres`, `libsql`) appear only as their backends. CI runs
+`scripts/check-db-access.sh` on every pull request (job `db-access (diesel only)`). It fails when a manifest
+declares `sqlx`, `rusqlite`, `sea-orm`, `mysql`, `mysql_async` or a bare `postgres`, `tokio-postgres` or `libsql`
+crate without `diesel`, when a source uses `rusqlite::`, `sqlx::`, `sea_orm::`, `tokio_postgres::` or `libsql::`,
+or when `sql_query` is used outside a module named `raw`. Existing exceptions are listed with a reason and a ticket in
+`.github/db-access-allow.txt`; the list only shrinks (EMBEDAG-112). `sh scripts/test-check-db-access.sh` tests the guard.
+Graph and document stores (`embedag-neo4j`, `embedag-surrealdb`) are not SQL and are outside this rule.
+
 ## Specifications
 
 `doc/00_MASTER_SPECIFICATIONS.md` indexes the specifications in `doc/`; `doc/22_Dependency_Resolution_and_Merkle_Delta_API.md` defines the slim DAG facade other projects consume.

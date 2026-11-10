@@ -231,14 +231,8 @@ async fn test_developer_custom_migration_and_invoice_categorization_cte_postgres
     let harness = PostgresHarness::start()
         .await
         .expect("start postgres harness");
-    let client = harness.connect().await.expect("connect client");
 
-    // 1. Run developer's custom PostgreSQL migration
-    run_receipt_categories_postgres_migration(&client)
-        .await
-        .expect("run pg custom receipt migration");
-
-    // 2. Establish diesel-async AsyncPgConnection
+    // 1. Establish the diesel-async AsyncPgConnection
     let db_url = format!(
         "postgres://postgres:postgres@{}:{}/postgres",
         harness.host, harness.port
@@ -246,6 +240,11 @@ async fn test_developer_custom_migration_and_invoice_categorization_cte_postgres
     let mut async_conn = AsyncPgConnection::establish(&db_url)
         .await
         .expect("connect async pg connection");
+
+    // 2. Run developer's custom PostgreSQL migration
+    run_receipt_categories_postgres_migration(&mut async_conn)
+        .await
+        .expect("run pg custom receipt migration");
 
     // 3. Prepare pure ticket DTO and generate categories
     let ticket = FinanceInvoice {
