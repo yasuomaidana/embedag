@@ -2,9 +2,8 @@ name: Rust CI/CD
 
 on:
   push:
-    branches: [ "main", "master", "develop" ]
+    branches: [ main ]
   pull_request:
-    branches: [ "main", "master", "develop" ]
   workflow_dispatch:
 
 env:
@@ -243,3 +242,16 @@ jobs:
 
       - name: Check Semantic Versioning Compatibility
         run: cargo semver-checks check-release --verbose || echo "Initial release or baseline not published yet; semver check passed advisory mode."
+
+  pr-triggers:
+    name: pr-triggers (every pull request is checked)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Test the guard
+        run: sh scripts/test-check-pr-triggers.sh
+
+      - name: Every workflow runs on every pull request
+        run: sh scripts/check-pr-triggers.sh

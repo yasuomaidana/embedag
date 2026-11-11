@@ -1,14 +1,13 @@
 name: audit ignores
 
 # Fails when an advisory ignored in .cargo/audit.toml no longer applies, so the list only shrinks (issue #2).
+# Runs on every pull request: no branch or path filter, so no change reaches main unchecked.
 on:
   schedule:
     - cron: '0 6 * * 1'
   push:
-    branches: [ develop, main ]
-    paths: [ 'Cargo.lock', '.cargo/audit.toml', 'scripts/check-audit-ignores.sh' ]
+    branches: [ main ]
   pull_request:
-    paths: [ 'Cargo.lock', '.cargo/audit.toml', 'scripts/check-audit-ignores.sh' ]
   workflow_dispatch:
 
 jobs:

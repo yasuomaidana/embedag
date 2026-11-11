@@ -7,6 +7,9 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 ### Security
 - Audit: `RUSTSEC-2026-0459` (`libsqlite3-sys` 0.37, fixed in 0.39) is ignored with a reason in `.cargo/audit.toml` because diesel 2.3.14, the latest release, requires `libsqlite3-sys <0.39`. Remove the entry when diesel accepts 0.39 (EMBEDAG-113).
 
+### Changed
+- CI: every workflow runs on every pull request (no `branches` or `paths` filter), and on pushes to `main`; the audit-ignores workflow no longer skips pull requests that do not touch the lockfile (EMBEDAG-111). Job `pr-triggers` (`scripts/check-pr-triggers.sh`) fails when a workflow gains a branch or path filter on `pull_request`, lacks the trigger, or has a job-level `if:`.
+
 ### Added
 - CI: `.github/workflows/complexity.yml` cross-checks function complexity with clippy `cognitive_complexity` and `lizard`; report only while EMBEDAG-86 is open (EMBEDAG-85).
 
