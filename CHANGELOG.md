@@ -4,6 +4,9 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ## [Unreleased]
 
+### Security
+- Audit: `RUSTSEC-2026-0459` (`libsqlite3-sys` 0.37, fixed in 0.39) is ignored with a reason in `.cargo/audit.toml` because diesel 2.3.14, the latest release, requires `libsqlite3-sys <0.39`. Remove the entry when diesel accepts 0.39 (EMBEDAG-113).
+
 ### Added
 - CI: job `db-access (diesel only)` runs `scripts/check-db-access.sh` on every pull request and push: SQL is reached only through Diesel; the exceptions that exist today are in `.github/db-access-allow.txt` and removed by EMBEDAG-112 (EMBEDAG-110).
 - CI: `.github/workflows/complexity.yml` cross-checks function complexity with clippy `cognitive_complexity` and `lizard`; report only while EMBEDAG-86 is open (EMBEDAG-85).
