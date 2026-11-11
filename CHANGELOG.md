@@ -11,7 +11,11 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - CI: every workflow runs on every pull request (no `branches` or `paths` filter), and on pushes to `main`; the audit-ignores workflow no longer skips pull requests that do not touch the lockfile (EMBEDAG-111). Job `pr-triggers` (`scripts/check-pr-triggers.sh`) fails when a workflow gains a branch or path filter on `pull_request`, lacks the trigger, or has a job-level `if:`.
 
 ### Added
+- CI: job `db-access (diesel only)` runs `scripts/check-db-access.sh` on every pull request and push: SQL is reached only through Diesel; the exceptions that exist today are in `.github/db-access-allow.txt` and removed by EMBEDAG-112 (EMBEDAG-110).
 - CI: `.github/workflows/complexity.yml` cross-checks function complexity with clippy `cognitive_complexity` and `lizard`; report only while EMBEDAG-86 is open (EMBEDAG-85).
+
+### Changed
+- `embedag-example-receipts`: `run_receipt_categories_postgres_migration` takes `&mut diesel_async::AsyncPgConnection` instead of a `tokio_postgres::Client`, and the crate no longer depends on `tokio-postgres` (EMBEDAG-110).
 
 ## [0.1.0]
 
