@@ -15,6 +15,10 @@ ignore = [
     "RUSTSEC-2026-0099",
     "RUSTSEC-2026-0104",
     "RUSTSEC-2026-0382",
+    # libsqlite3-sys 0.37 (bundled C SQLite, CVE-2026-119375, fixed in >= 0.39.0): diesel 2.3.14, the
+    # latest release, requires libsqlite3-sys >=0.17.2, <0.39.0, so no fixed version can be resolved.
+    # Remove it when a diesel release accepts 0.39 (EMBEDAG-113); review by 2026-12-10.
+    "RUSTSEC-2026-0459",
     # quick-xml 0.37 (oxirs-core via oxrdfxml) and 0.39 (surrealdb-core via object_store).
     "RUSTSEC-2026-0194",
     "RUSTSEC-2026-0195",
