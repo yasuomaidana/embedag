@@ -24,6 +24,21 @@ jobs:
       - name: SQL is reached only through Diesel
         run: sh scripts/check-db-access.sh
 
+  release-refs:
+    # A final version references sibling repositories by tag, version or main, never by a moving
+    # branch (scripts/check-release-refs.sh); runs on every pull request and push.
+    name: release refs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Test the guard
+        run: sh scripts/tests/check-release-refs.test.sh
+
+      - name: Siblings are referenced by tag, version or main
+        run: sh scripts/check-release-refs.sh
+
   format:
     name: Code Formatting (rustfmt)
     runs-on: ubuntu-latest

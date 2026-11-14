@@ -8,6 +8,8 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - Audit: `RUSTSEC-2026-0459` (`libsqlite3-sys` 0.37, fixed in 0.39) is ignored with a reason in `.cargo/audit.toml` because diesel 2.3.14, the latest release, requires `libsqlite3-sys <0.39`. Remove the entry when diesel accepts 0.39 (EMBEDAG-113).
 
 ### Changed
+- CI: job `release refs` (`scripts/check-release-refs.sh`) fails when a sibling is referenced by a git dependency without a tag, a branch other than `main`, a `rev`, a path outside the repository, a Go pseudo-version, a workflow checkout of a moving ref, or a link to a sibling's `develop`. `main` is accepted to be ahead of the `v0.1.1` tag (CI files only) because dependents use the crates.io release (EMBEDAG-115).
+- README: the dependency example uses the crates.io release instead of `branch = "develop"` (EMBEDAG-115).
 - CI: every workflow runs on every pull request (no `branches` or `paths` filter), and on pushes to `main`; the audit-ignores workflow no longer skips pull requests that do not touch the lockfile (EMBEDAG-111). Job `pr-triggers` (`scripts/check-pr-triggers.sh`) fails when a workflow gains a branch or path filter on `pull_request`, lacks the trigger, or has a job-level `if:`.
 
 ### Added
