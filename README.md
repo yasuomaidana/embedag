@@ -22,7 +22,7 @@ Version 0.1.0. Milestones 1 to 8 are complete. Milestone 9 (dependency resolutio
 
 ```toml
 # a slim dependency: only the DAG algorithms and the AST matcher
-embedag = { git = "https://github.com/yasuomaidana/embedag", branch = "develop", default-features = false, features = ["core", "matcher"] }
+embedag = { version = "0.1.1", default-features = false, features = ["core", "matcher"] }
 ```
 
 Features of the `embedag` facade: `core`, `matcher`, `derive`, `llm`, `diesel`, `turso`, `turso-async`, `rag`, `oxirs-tdb`, `surrealdb`, `neo4j`; `full` (the default) turns all of them on.
@@ -56,3 +56,11 @@ Graph and document stores (`embedag-neo4j`, `embedag-surrealdb`) are not SQL and
 ## Specifications
 
 `doc/00_MASTER_SPECIFICATIONS.md` indexes the specifications in `doc/`; `doc/22_Dependency_Resolution_and_Merkle_Delta_API.md` defines the slim DAG facade other projects consume.
+
+## Release references
+
+A final version refers to its sibling projects by release tag, or by their `main` branch, never by `develop`, a
+`rev` or a bare git dependency. `scripts/check-release-refs.sh` (job `release refs`, on every pull request and on
+pushes to main) fails when a `Cargo.toml` git dependency has no `tag = "vX.Y.Z"` and is not on `branch = "main"`,
+when it names a `rev` or another branch, when a workflow checks out a `develop` ref, or when a Markdown file links
+to a `develop` branch. `scripts/tests/check-release-refs.test.sh` tests the guard with passing and failing fixtures.
