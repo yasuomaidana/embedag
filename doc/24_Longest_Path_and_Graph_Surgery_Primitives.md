@@ -12,6 +12,10 @@ This document specifies graph primitives for callers that need timing analysis o
 4. `change/merkle.rs` builds a tree from paths and diffs two trees. It rebuilds on every change and cannot fingerprint a range of an ordered set, which range-based reconciliation between two replicas needs. (Incremental updates are already requested in document 23.)
 5. No primitive models bounded tokens on ordered pairs of node classes.
 
+### Relation to module 22
+
+Module 22 already specifies a `critical_path` query and a Merkle diff. `PATH-1` and `PATH-2` extend that query with a backward pass, slack, and a second weight; `SYNC-1` extends the diff with fingerprints that are maintained incrementally and compared by range. Nothing in module 22 changes.
+
 ## 3. Requirements
 
 | ID | Priority | Crate | Requirement |
@@ -65,6 +69,6 @@ Iteration order within a topological level must be deterministic (by node key). 
 
 ### TOKEN-1: Bounded tokens on class pairs (optional)
 
-**Request:** Given a mapping from nodes to classes and a token count per ordered class pair, provide acquire/release bookkeeping and a static check that the class-pair graph admits no circular wait; if it does, report the cycle.
+**Request:** Given a mapping from nodes to classes and a token count per ordered class pair, provide acquire/release bookkeeping keyed by a caller-supplied holder (so that several nodes of one holder share one token) and a static check that the class-pair graph admits no circular wait; if it does, report the cycle.
 
 **Acceptance criteria:** tokens in use plus free equals the total at all times; an acyclic class-pair graph passes the check; a two-class back-and-forth configuration is reported.
