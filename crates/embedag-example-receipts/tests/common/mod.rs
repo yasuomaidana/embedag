@@ -1,16 +1,13 @@
 //! Provider support shared by the categorization tests: every scenario runs once per local runtime.
 
 use embedag_llm::async_trait;
-use embedag_llm::provider::{
-    CandleProvider, LlmError, LlmProvider, ModelMetadata, OxillamaProvider,
-};
+use embedag_llm::provider::{CandleProvider, LlmError, LlmProvider, ModelMetadata};
 use serde_json::Value;
 
 /// The local inference runtimes the scenarios run against.
 #[derive(Debug, Clone, Copy)]
 pub enum Backend {
     Candle,
-    Oxillama,
 }
 
 impl Backend {
@@ -18,10 +15,6 @@ impl Backend {
     pub fn provider(self) -> AnyProvider {
         match self {
             Self::Candle => AnyProvider(Box::new(CandleProvider::new("candle-smollm"))),
-            Self::Oxillama => AnyProvider(Box::new(OxillamaProvider::new(
-                "llama-3-8b-instruct",
-                "q4_k_m",
-            ))),
         }
     }
 }

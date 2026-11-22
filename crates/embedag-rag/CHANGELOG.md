@@ -4,6 +4,9 @@ All notable changes to this crate are documented here. The format follows [Keep 
 
 ## [Unreleased]
 
+### Changed
+- BREAKING: `OxiRagEngine` (module `oxirag_engine`) is replaced by the pure-Rust `VerifiedRagEngine` (module `verified_engine`): lexical retrieval, RRF fusion and an answer cited as `[n]` from the retrieved chunks. A query no chunk supports returns `RagError::VerificationFailure`. The `oxirag` dependency (relicensed to BUSL-1.1) is removed (EMBEDAG-119).
+
 ## [0.1.0]
 
 ### Added

@@ -2244,7 +2244,6 @@ dependencies = [
  "embedag-core",
  "gbnf",
  "jsonschema",
- "oxillama",
  "rstest",
  "schemars 1.2.3",
  "serde",
@@ -2300,7 +2299,6 @@ name = "embedag-rag"
 version = "0.1.1"
 dependencies = [
  "embedag-core",
- "oxirag",
  "petgraph",
  "rstest",
  "thiserror 2.0.21",
@@ -2464,17 +2462,6 @@ dependencies = [
 
 [[package]]
 name = "fancy-regex"
-version = "0.19.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d301f5bf187b3c295fce6468d3875037a0bccc5f6b151c63cac2f85babf21912"
-dependencies = [
- "bit-set",
- "regex-automata",
- "regex-syntax",
-]
-
-[[package]]
-name = "fancy-regex"
 version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20ed7f62ce0ae0da1a8b93c3c7104ab7e0760a74491e097c701fff966e945390"
@@ -2626,9 +2613,9 @@ checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
 name = "form_urlencoded"
-version = "1.2.2"
+version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
+checksum = "afa489199eaffb1211795df1c6236ce1ad0d41a6fa45250add73e3b02420f06e"
 dependencies = [
  "percent-encoding",
 ]
@@ -3136,7 +3123,6 @@ dependencies = [
  "num-traits",
  "rand 0.9.5",
  "rand_distr 0.5.1",
- "serde",
  "zerocopy 0.8.63",
 ]
 
@@ -5263,86 +5249,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "oxiblas"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0b2ca2b72c09801437a3e7064bbd80c27caaff015a26973e6988a759f1edd76"
-dependencies = [
- "bytemuck",
- "half",
- "num-traits",
- "oxiblas-blas",
- "oxiblas-core",
- "oxiblas-lapack",
- "oxiblas-matrix",
- "oxiblas-sparse",
-]
-
-[[package]]
-name = "oxiblas-blas"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b9e1346a6fb0c859ba99a0c46d54c3b6f620b132ce1be4aa7ef93634002009b"
-dependencies = [
- "bytemuck",
- "num-complex",
- "num-traits",
- "oxiblas-core",
- "oxiblas-matrix",
-]
-
-[[package]]
-name = "oxiblas-core"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb71a758e4b67699331dc2f01a20ddc05a5b952b66be9e46857f2aafe19db353"
-dependencies = [
- "bytemuck",
- "half",
- "libc",
- "num-complex",
- "num-traits",
-]
-
-[[package]]
-name = "oxiblas-lapack"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a31dc82201c233fbadc57e7583644062c364f4eb8e77fa8c9fb830722ec8b7e8"
-dependencies = [
- "bytemuck",
- "num-complex",
- "num-traits",
- "oxiblas-blas",
- "oxiblas-core",
- "oxiblas-matrix",
-]
-
-[[package]]
-name = "oxiblas-matrix"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3b5d0050e3dea737a5d9c7c30d0029a73f270c5edb59281cef991a4d13c9fb9"
-dependencies = [
- "bytemuck",
- "num-complex",
- "num-traits",
- "oxiblas-core",
-]
-
-[[package]]
-name = "oxiblas-sparse"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c8b236f34eafa2076c173102d26698a8708ce9c7991f7fab08d5e80504f1df6"
-dependencies = [
- "bytemuck",
- "num-traits",
- "oxiblas-core",
- "oxiblas-matrix",
-]
-
-[[package]]
 name = "oxicode"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5371,102 +5277,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d3b4eb570abd4a1dcb062c31fd37b832264d9dc7292c3e69acfe926c87b063f"
 dependencies = [
  "serde",
-]
-
-[[package]]
-name = "oxillama"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97c1dd07cf6747df8a9bc306564851281102c5cb1fb4952452831e381ffe9143"
-dependencies = [
- "anyhow",
- "oxillama-arch",
- "oxillama-gguf",
- "oxillama-quant",
- "oxillama-runtime",
-]
-
-[[package]]
-name = "oxillama-arch"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c583895a17cd2a46ff3bf70e60147847fa1aac0aa70ea0a7b7fbf89e806ff6b1"
-dependencies = [
- "half",
- "oxillama-gguf",
- "oxillama-quant",
- "thiserror 2.0.21",
- "tracing",
-]
-
-[[package]]
-name = "oxillama-gguf"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c96f33cad3bea81c879b10924cd6c950ea128bedaf180503af3f3bf89e9ec9a"
-dependencies = [
- "blake3",
- "half",
- "memmap2",
- "oxicode",
- "serde_json",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "oxillama-quant"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "301d03ea5711bc8b49fa1d778e9632eed3be7f7ed83a01d865ce0f56a1ce999d"
-dependencies = [
- "half",
- "oxiblas",
- "oxillama-gguf",
- "rayon",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "oxillama-runtime"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec5e2a627527c79bb9f139b9590a8fbc8bed44c6f8f5867d28225ec31198d1ae"
-dependencies = [
- "blake3",
- "fancy-regex 0.19.2",
- "half",
- "memmap2",
- "oxicode",
- "oxillama-arch",
- "oxillama-gguf",
- "oxillama-quant",
- "rayon",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.21",
- "tokenizers",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "oxirag"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1fce0bdd5cfacf719346bb624df6efe802b077cfe9f6fa2dd0c6303464d2491"
-dependencies = [
- "async-trait",
- "chrono",
- "futures",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "tokio",
- "tokio-stream",
- "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -9309,11 +9119,8 @@ dependencies = [
  "futures-core",
  "futures-io",
  "futures-sink",
- "futures-util",
- "hashbrown 0.15.5",
  "libc",
  "pin-project-lite",
- "slab",
  "tokio",
 ]
 
@@ -9794,9 +9601,9 @@ checksum = "7dbe8d477efbc6c70a1dea1f9f1e0482168983a9147dee6b3a619f666f3aeac6"
 
 [[package]]
 name = "url"
-version = "2.5.8"
+version = "2.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff67a8a4397373c3ef660812acab3268222035010ab8680ec4215f38ba3d0eed"
+checksum = "f00cd2407bb42c0ef17be88d4cf020f5cceffd121665bac9b8b9493a369b3b1a"
 dependencies = [
  "form_urlencoded",
  "idna",

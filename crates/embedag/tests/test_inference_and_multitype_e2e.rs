@@ -2,7 +2,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use diesel::Connection;
 use diesel::connection::SimpleConnection;
 use embedag::llm::{
-    ExtractionDirective, ExtractionEnvelope, LlmProvider, OxibonsaiProvider, OxillamaProvider,
+    CandleProvider, ExtractionDirective, ExtractionEnvelope, LlmProvider,
     generate_extraction_schema,
 };
 use embedag::persistence::harness::PostgresHarness;
@@ -200,67 +200,36 @@ async fn test_inference_and_multitype_e2e_pipeline() {
     assert_eq!(root_asset, deserialized_asset);
 
     // =========================================================================
-    // SECTION 2: Constrained LLM Inference with Oxibonsai & Pure-Rust Oxillama
+    // SECTION 2: Constrained LLM Inference with the Pure-Rust Candle Provider
     // =========================================================================
     let extraction_schema = generate_extraction_schema();
 
-    // 2A. Oxibonsai Provider (Sub-2-bit ternary quantization, PDA logit masking)
-    let bonsai_directive = ExtractionDirective::InsertNode {
-        parent_key: "FACILITY-GLOBAL-ALPHA".into(),
-        entity_name: "Solar Generation Array Alpha".into(),
-        entity_level: "GenerationSubsystem".into(),
-        relationship: "CONTAINS_GENERATOR".into(),
-        confidence: 0.97,
-    };
-    let oxibonsai_engine = OxibonsaiProvider::with_simulated_output(
-        "oxibonsai-ternary-0.5b",
-        bonsai_directive.clone(),
-    );
-
-    let bonsai_meta = oxibonsai_engine.model_info();
-    assert_eq!(bonsai_meta.provider_name, "oxibonsai");
-    assert!(bonsai_meta.is_local_zero_ffi);
-
-    let bonsai_output = oxibonsai_engine
-        .generate_structured(
-            "Extract generation asset hierarchy from facility manifest",
-            &extraction_schema,
-        )
-        .await
-        .expect("oxibonsai structured generation");
-
-    let bonsai_envelope: ExtractionEnvelope =
-        serde_json::from_value(bonsai_output).expect("parse oxibonsai envelope");
-    assert_eq!(bonsai_envelope.directive, bonsai_directive);
-    assert!(bonsai_envelope.chain_of_thought.contains("oxibonsai"));
-
-    // 2B. Oxillama Provider (Pure-Rust GGUF engine, zero C/C++ FFI)
-    let llama_directive = ExtractionDirective::InsertNode {
+    let candle_directive = ExtractionDirective::InsertNode {
         parent_key: "FACILITY-GLOBAL-ALPHA".into(),
         entity_name: "Battery Energy Storage System".into(),
         entity_level: "StorageSubsystem".into(),
         relationship: "CONTAINS_STORAGE".into(),
         confidence: 0.99,
     };
-    let oxillama_engine =
-        OxillamaProvider::with_simulated_output("oxillama-q4km-3b", llama_directive.clone());
+    let candle_engine =
+        CandleProvider::with_simulated_output("candle-storage-3b", candle_directive.clone());
 
-    let llama_meta = oxillama_engine.model_info();
-    assert_eq!(llama_meta.provider_name, "oxillama");
-    assert!(llama_meta.is_local_zero_ffi);
+    let candle_meta = candle_engine.model_info();
+    assert_eq!(candle_meta.provider_name, "candle");
+    assert!(candle_meta.is_local_zero_ffi);
 
-    let llama_output = oxillama_engine
+    let candle_output = candle_engine
         .generate_structured(
             "Extract storage subsystem specifications from technical telemetry",
             &extraction_schema,
         )
         .await
-        .expect("oxillama structured generation");
+        .expect("candle structured generation");
 
-    let llama_envelope: ExtractionEnvelope =
-        serde_json::from_value(llama_output).expect("parse oxillama envelope");
-    assert_eq!(llama_envelope.directive, llama_directive);
-    assert!(llama_envelope.chain_of_thought.contains("oxillama"));
+    let candle_envelope: ExtractionEnvelope =
+        serde_json::from_value(candle_output).expect("parse candle envelope");
+    assert_eq!(candle_envelope.directive, candle_directive);
+    assert!(candle_envelope.chain_of_thought.contains("andle"));
 
     // =========================================================================
     // SECTION 3: Construct Memory DAG with Multi-Parent Diamond & Cycle Guards

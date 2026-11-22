@@ -5,7 +5,6 @@ use crate::schema::{ExtractionDirective, ExtractionEnvelope, generate_extraction
 pub use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::path::PathBuf;
 use thiserror::Error;
 
 /// Error variants occurring during LLM inference and structured sampling.
@@ -61,39 +60,6 @@ macro_rules! with_entity_keys_method {
     };
 }
 
-/// Implements [`LlmProvider`] for a quantized pure-Rust runtime provider with `model_id`,
-/// `quantization`, `simulated_directive` and `entity_keys` fields.
-macro_rules! quantized_provider {
-    ($provider:ident, $runtime:literal, $chain_of_thought:literal) => {
-        #[async_trait]
-        impl LlmProvider for $provider {
-            async fn generate_structured(
-                &self,
-                prompt: &str,
-                schema: &Value,
-            ) -> Result<Value, LlmError> {
-                infer(
-                    self.simulated_directive.as_ref(),
-                    $chain_of_thought,
-                    prompt,
-                    schema,
-                    $runtime,
-                    self.entity_keys.as_deref(),
-                )
-            }
-
-            fn model_info(&self) -> ModelMetadata {
-                ModelMetadata {
-                    provider_name: $runtime.into(),
-                    model_id: self.model_id.clone(),
-                    quantization: self.quantization.clone(),
-                    is_local_zero_ffi: true,
-                }
-            }
-        }
-    };
-}
-
 /// Metadata describing an LLM provider and model runtime characteristics.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModelMetadata {
@@ -124,61 +90,6 @@ pub trait LlmProvider: Send + Sync {
             .map_err(|e| LlmError::ConstrainedSamplingError(e.to_string()))
     }
 }
-
-/// Pure-Rust GGUF inference engine powered by `oxillama` (`cool-japan/oxillama`), for CPU-only deployments.
-///
-/// Operates with Zero C/C++ FFI dependencies across standard GGUF architectures (LLaMA-3, Mistral, Qwen, Phi).
-/// Ranked after GPU-capable providers: oxillama-runtime 0.1.4 offloads only Q4_0 single-token decode to the
-/// GPU, so prompt prefill runs on the CPU. Prefer `CandleProvider` on a GPU, then an Ollama-compatible
-/// HTTP provider.
-pub struct OxillamaProvider {
-    pub model_id: String,
-    pub quantization: String,
-    pub model_path: Option<PathBuf>,
-    pub simulated_directive: Option<ExtractionDirective>,
-    pub entity_keys: Option<Vec<String>>,
-}
-
-impl OxillamaProvider {
-    /// Creates a new `OxillamaProvider` configured for a local GGUF model.
-    pub fn new(model_id: impl Into<String>, quantization: impl Into<String>) -> Self {
-        Self {
-            model_id: model_id.into(),
-            quantization: quantization.into(),
-            model_path: None,
-            simulated_directive: None,
-            entity_keys: None,
-        }
-    }
-
-    /// Configures the provider with a local GGUF weight file path.
-    pub fn with_model_path(mut self, path: impl Into<PathBuf>) -> Self {
-        self.model_path = Some(path.into());
-        self
-    }
-
-    with_entity_keys_method!();
-
-    /// Configures an explicit directive override for deterministic boundary testing.
-    pub fn with_simulated_output(
-        model_id: impl Into<String>,
-        directive: ExtractionDirective,
-    ) -> Self {
-        Self {
-            model_id: model_id.into(),
-            quantization: "q4_k_m-pure-rust".into(),
-            model_path: None,
-            simulated_directive: Some(directive),
-            entity_keys: None,
-        }
-    }
-}
-
-quantized_provider!(
-    OxillamaProvider,
-    "oxillama",
-    "Pure Rust oxillama GGUF inference runtime completed on SciRS2/OxiBLAS kernels without C++ FFI."
-);
 
 /// Pure-Rust tensor inference engine powered by Hugging Face `candle` (`huggingface/candle`).
 ///
@@ -242,51 +153,6 @@ impl LlmProvider for CandleProvider {
         }
     }
 }
-
-/// Pure-Rust sub-2-bit (1-bit / ternary) inference engine powered by `oxibonsai` (`cool-japan/oxibonsai`), for
-/// memory-constrained CPU deployments.
-///
-/// Specializes in ultra-low memory sub-2-bit execution (`Q1_0_g128`, `TQ2_0_g128`) and Pushdown Automaton (PDA)
-/// constrained logit masking with zero C/C++ FFI dependencies.
-pub struct OxibonsaiProvider {
-    pub model_id: String,
-    pub quantization: String,
-    pub simulated_directive: Option<ExtractionDirective>,
-    pub entity_keys: Option<Vec<String>>,
-}
-
-impl OxibonsaiProvider {
-    /// Creates a new `OxibonsaiProvider`.
-    pub fn new(model_id: impl Into<String>, quantization: impl Into<String>) -> Self {
-        Self {
-            model_id: model_id.into(),
-            quantization: quantization.into(),
-            simulated_directive: None,
-            entity_keys: None,
-        }
-    }
-
-    with_entity_keys_method!();
-
-    /// Creates an in-memory `OxibonsaiProvider` with a simulated output.
-    pub fn with_simulated_output(
-        model_id: impl Into<String>,
-        directive: ExtractionDirective,
-    ) -> Self {
-        Self {
-            model_id: model_id.into(),
-            quantization: "1-bit-pure-rust".into(),
-            simulated_directive: Some(directive),
-            entity_keys: None,
-        }
-    }
-}
-
-quantized_provider!(
-    OxibonsaiProvider,
-    "oxibonsai",
-    "Pure Rust oxibonsai transformer token sampling step completed with zero FFI."
-);
 
 /// Fallback Cloud API Provider (Priority 3).
 ///
@@ -547,54 +413,6 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_oxillama_inference_deduplication() {
-        let provider = OxillamaProvider::new("llama-3-8b-instruct", "q4_k_m");
-        let prompt_empty =
-            PromptFormatter::build_prompt("Taxonomy builder", "{\"name\": \"Root Facility\"}", &[]);
-
-        let (directive1, notes1) = provider
-            .extract_directive(&prompt_empty)
-            .await
-            .expect("directive 1");
-
-        assert!(matches!(
-            directive1,
-            ExtractionDirective::CreateRootNode { ref entity_name, .. } if entity_name == "Root Facility"
-        ));
-        assert!(notes1.chain_of_thought.contains("oxillama"));
-
-        // Second item similar entity: "Facility Substation Alpha" under candidate "cat_facility (Facility)"
-        let prompt_with_candidate = PromptFormatter::build_prompt(
-            "Taxonomy builder",
-            "{\"name\": \"Facility Substation Alpha\"}",
-            &["cat_facility (Facility)"],
-        );
-
-        let (directive2, notes2) = provider
-            .extract_directive(&prompt_with_candidate)
-            .await
-            .expect("directive 2");
-
-        match directive2 {
-            ExtractionDirective::InsertNode {
-                parent_key,
-                entity_name,
-                ..
-            } => {
-                assert_eq!(parent_key, "cat_facility");
-                assert_eq!(entity_name, "Facility Substation Alpha");
-            }
-            other => panic!("Expected InsertNode under cat_facility, got {other:?}"),
-        }
-        assert!(
-            notes2
-                .chain_of_thought
-                .to_lowercase()
-                .contains("reusing existing node")
-        );
-    }
-
-    #[tokio::test]
     async fn test_candle_inference_deduplication() {
         let provider = CandleProvider::new("candle-smollm");
         let prompt_with_candidate = PromptFormatter::build_prompt(
@@ -618,14 +436,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_oxibonsai_provider_metadata() {
-        let bonsai = OxibonsaiProvider::new("oxibonsai-1b", "q1_0_g128");
-        assert_eq!(bonsai.model_info().provider_name, "oxibonsai");
-        assert_eq!(bonsai.model_info().quantization, "q1_0_g128");
-        assert!(bonsai.model_info().is_local_zero_ffi);
-    }
-
-    #[tokio::test]
     async fn test_fallback_providers() {
         let candle = CandleProvider::new("mistral-7b");
         assert_eq!(candle.model_info().provider_name, "candle");
@@ -637,8 +447,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_provider_with_custom_entity_keys() {
-        let provider = OxillamaProvider::new("llama-3-8b-instruct", "q4_k_m")
-            .with_entity_keys(["product_id", "product_title"]);
+        let provider =
+            CandleProvider::new("mistral-7b").with_entity_keys(["product_id", "product_title"]);
         assert_eq!(
             provider.entity_keys.as_ref().unwrap(),
             &["product_id", "product_title"]
@@ -700,19 +510,12 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn simulated_output_overrides_the_inference(root: ExtractionDirective) {
-        let candle = CandleProvider::with_simulated_output("c", root.clone());
-        let oxillama =
-            OxillamaProvider::with_simulated_output("o", root).with_model_path("/models/o.gguf");
-        assert!(oxillama.model_path.is_some());
-        for directive in [
-            candle.extract_directive("p").await.unwrap().0,
-            oxillama.extract_directive("p").await.unwrap().0,
-        ] {
-            assert!(matches!(
-                directive,
-                ExtractionDirective::CreateRootNode { ref entity_name, .. } if entity_name == "Forced"
-            ));
-        }
+        let candle = CandleProvider::with_simulated_output("c", root);
+        let directive = candle.extract_directive("p").await.unwrap().0;
+        assert!(matches!(
+            directive,
+            ExtractionDirective::CreateRootNode { ref entity_name, .. } if entity_name == "Forced"
+        ));
     }
 
     #[tokio::test]
@@ -820,17 +623,6 @@ mod tests {
         let keys = vec!["sku".to_string()];
         let value = execute_constrained_semantic_inference(&prompt, &schema, "test", Some(&keys));
         assert!(value.unwrap().to_string().contains("S-1"));
-    }
-
-    #[rstest]
-    #[tokio::test]
-    async fn oxibonsai_can_be_forced_to_a_simulated_answer(root: ExtractionDirective) {
-        let provider = OxibonsaiProvider::with_simulated_output("bonsai", root);
-        let (directive, _) = provider.extract_directive("p").await.unwrap();
-        assert!(matches!(
-            directive,
-            ExtractionDirective::CreateRootNode { ref entity_name, .. } if entity_name == "Forced"
-        ));
     }
 
     #[tokio::test]

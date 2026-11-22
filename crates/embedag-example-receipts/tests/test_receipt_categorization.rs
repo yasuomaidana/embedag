@@ -67,7 +67,7 @@ impl LlmProvider for TestReceiptProvider {
 #[rstest]
 #[tokio::test]
 async fn test_dynamic_graph_generation_and_deduplication(
-    #[values(Backend::Candle, Backend::Oxillama)] backend: Backend,
+    #[values(Backend::Candle)] backend: Backend,
 ) {
     let provider = TestReceiptProvider {
         inner: backend.provider(),

@@ -4,7 +4,7 @@
 | :--- | :--- |
 | **Document ID** | `18_Topological_Subgraph_Expansion_and_GraphRAG` |
 | **Domain** | Topological Context Expansion & Grounded Evidence Synthesis |
-| **Responsibility** | Stage 2 Subgraph Expansion (`oxirag` Layer 4), SMT-Based Logic Verification (`oxirag` Layer 3 via OxiZ), Distance Decay, and Citation Packaging |
+| **Responsibility** | Stage 2 Subgraph Expansion, Grounded Verification via `VerifiedRagEngine`, Distance Decay, and Citation Packaging |
 | **Target Crates** | `embedag-rag`, `embedag-core` |
 | **Status** | Definitive Architectural Specification |
 
@@ -14,15 +14,15 @@
 
 Traditional vector RAG returns isolated text chunks without contextual awareness of taxonomy, categorization, or parent relationships. A query about a specific product variant often misses critical facts defined at the category or brand level.
 
-`embedag-rag` implements **Stage 2 Topological Subgraph Expansion & Formal Verification** powered by **`cool-japan/oxirag`**:
-- **Layer 4 (Graph)**: Expands outward from candidate anchor nodes retrieved in Stage 1 along graph edges, traversing ancestor hierarchies and sibling clusters while applying **topological distance decay**.
-- **Layer 2 (Speculator)**: Fast draft verification evaluating candidate claims.
-- **Layer 3 (Judge)**: Formal logic verification encoding extracted claims into **SMT-LIB** formulas solved by the pure-Rust **`OxiZ` SMT solver** to prove non-contradiction and factual soundness.
+`embedag-rag` implements **Stage 2 Topological Subgraph Expansion & Grounded Verification**:
+- **Graph Expansion**: Expands outward from candidate anchor nodes retrieved in Stage 1 along graph edges, traversing ancestor hierarchies and sibling clusters while applying **topological distance decay** via `SubgraphExpander`.
+- **Verified Retrieval**: `VerifiedRagEngine` composes answers strictly from retrieved chunks, citing each as `[n]`. Queries not supported by any chunk fail with `RagError::VerificationFailure`.
 - **Semantic Interoperability**: Formats subgraphs into structured evidence blocks and W3C RDF-Star / JSON-LD graphs via **`cool-japan/oxirs`**.
+- *(Not Implemented Capabilities)*: The former 4-layer `oxirag` pipeline (Layer 2 Speculator, Layer 3 Judge SMT logic verification via `OxiZ` solver, and Layer 4 Graph) is **not implemented**; it was removed due to upstream licence change to BUSL-1.1 (2026-11).
 
 ---
 
-## 2. Topological Expansion with Distance Decay (`oxirag` Layer 4: Graph)
+## 2. Topological Expansion with Distance Decay
 
 ```mermaid
 flowchart TD
@@ -62,23 +62,15 @@ impl SubgraphExpander {
 
 ---
 
-## 3. Four-Layer Verification Pipeline (`oxirag` Layers 2 & 3)
+## 3. Grounded Verification Pipeline (`VerifiedRagEngine`)
 
-To eradicate hallucinations and circular logic in complex RAG workflows, `embedag-rag` executes `oxirag`'s Speculator and Judge pipeline:
+To prevent hallucinations without complex neural solvers, `embedag-rag` provides `VerifiedRagEngine`:
+- Queries are answered strictly from the top retrieved chunks (via `SparseLexicalIndex` and `RrfRanker`).
+- Each supporting chunk is explicitly cited as `[n]`.
+- If no indexed chunk supports the query, execution returns `RagError::VerificationFailure` instead of generating an unsupported guess.
 
-```mermaid
-flowchart LR
-    Candidates["Expanded Subgraph & Context"] --> Speculator["oxirag Layer 2: Speculator<br/>- Draft candidate extraction<br/>- Quick heuristic & SLM checks<br/>- Accept / Revise / Reject"]
-    Speculator --> ClaimExtraction["Claim Extraction<br/>Temporal, Causal, Taxonomic"]
-    ClaimExtraction --> SmtLib["SMT-LIB Logic Formulation"]
-    SmtLib --> Judge["oxirag Layer 3: Judge<br/>OxiZ Pure-Rust SMT Solver<br/>(SAT / UNSAT Proof)"]
-    Judge --> VerifiedAnswer["Verified Grounded Evidence Context"]
-```
-
-### 3.1 Formal SMT Verification with `OxiZ`
-When an LLM synthesizes statements involving constraints (e.g. *"Product A is gluten-free, yet classified under Wheat Confectionery"* or temporal validity intervals), claims are translated into first-order logic formulas:
-- **Consistent Context**: Solved as `SAT` by `OxiZ`; assertion accepted into response evidence.
-- **Contradictory Context**: Flagged as `UNSAT`; contradictory edge or node discarded with automated warning telemetry.
+### 3.1 SMT Logic Judge & Speculator (Not Implemented)
+The formal SMT logic verification (Layer 3 Judge with `OxiZ` solver) and draft verification (Layer 2 Speculator) from `oxirag` are **not implemented** (removed due to upstream licence change to BUSL-1.1, 2026-11). Formal logic proofs via SMT-LIB and automated SAT/UNSAT solvers are not provided.
 
 ---
 
@@ -97,7 +89,7 @@ flowchart LR
 The verified subgraph is formatted into a markdown evidence block with explicit node IDs, guaranteeing verifiable citations:
 
 ```markdown
-### Grounded Evidence Context (Verified by oxirag & OxiZ)
+### Grounded Evidence Context (Verified by VerifiedRagEngine)
 [Node: SKU-100] (Hop: 0, Confidence: 1.0)
 - Name: Carlos V Chocolate Bar 50g
 - Attributes: { "weight_grams": 50.0, "price_usd": 1.25 }
@@ -116,5 +108,5 @@ When answering the user prompt, every factual assertion MUST cite its node ID (e
 ## 5. Invariants & Traceability
 
 1. **Hallucination Prevention**: Answers are strictly constrained by the verified subgraph. Missing attributes are explicitly identified as absent.
-2. **Audit Telemetry**: Every generated answer is paired with cited node IDs and SMT verification solver status, enabling full compliance provenance.
-3. **Pure-Rust Guarantees**: Graph expansion, BFS queries, and SMT solving run entirely in-process in pure Rust without external solver binaries (e.g. Z3 C libraries) or database roundtrips.
+2. **Audit Telemetry**: Every generated answer is paired with cited chunk numbers `[n]` and node IDs, enabling compliance provenance. (Note: `oxirag` and `OxiZ` SMT verification solver are not implemented due to BUSL-1.1 licence change, 2026-11).
+3. **Pure-Rust Guarantees**: Graph expansion, BFS queries, and verified retrieval run entirely in-process in pure Rust without external solver binaries or database roundtrips.

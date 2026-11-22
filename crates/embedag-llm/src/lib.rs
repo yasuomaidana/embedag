@@ -22,10 +22,7 @@ pub use extractor::{
 };
 pub use gbnf::{GbnfError, PushdownAutomaton, compile_schema_to_gbnf, dereference_schema};
 pub use prompt::{PromptError, PromptFormatter, ProvenanceNotes};
-pub use provider::{
-    CandleProvider, CloudProvider, LlmError, LlmProvider, ModelMetadata, OxibonsaiProvider,
-    OxillamaProvider,
-};
+pub use provider::{CandleProvider, CloudProvider, LlmError, LlmProvider, ModelMetadata};
 pub use schema::{
     ExtractionDirective, ExtractionEnvelope, generate_extraction_schema, generate_schema_for,
 };

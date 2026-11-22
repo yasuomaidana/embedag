@@ -16,7 +16,6 @@ embedag-core = { workspace = true }
 uuid = { workspace = true }
 thiserror = { workspace = true }
 petgraph = { workspace = true }
-oxirag = { workspace = true }
 
 [dev-dependencies]
 embedag-core = { workspace = true, features = ["testing"] }

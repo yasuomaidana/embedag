@@ -30,7 +30,7 @@ flowchart TD
     Tier1 -- "Hit (100% Conf)" --> DirectMatch["Resolve Existing Node"]
     Tier1 -- "Miss" --> Tier2{"Tier 2:<br/>Composite Distance<br/>D <= Threshold?"}
     Tier2 -- "D < 0.15 (High Conf)" --> NearMatch["Auto-Link / Update Attributes"]
-    Tier2 -- "0.15 <= D < 0.40 (Ambiguous)" --> Tier3{"Tier 3:<br/>oxibonsai Constrained LLM<br/>Candidate Subgraph"}
+    Tier2 -- "0.15 <= D < 0.40 (Ambiguous)" --> Tier3{"Tier 3:<br/>Candle / HTTP Constrained LLM<br/>Candidate Subgraph"}
     Tier2 -- "D >= 0.40 (Novel)" --> NewBranch["Insert New Category / Product Branch"]
     Tier3 -- "LLM Confidence >= 0.80" --> ApplyDirective["Execute Mutation Directive"]
     Tier3 -- "LLM Confidence < 0.80" --> Tier4["Tier 4: Dead-Letter Queue<br/>Human-in-the-Loop Review Gate"]
@@ -54,9 +54,9 @@ flowchart TD
   - $0.15 \le D_{\text{composite}} < 0.40$: Ambiguous candidate; routed to Tier 3.
   - $D_{\text{composite}} \ge 0.40$: Record represents an entirely novel entity; classified as `NewRoot` or `NewChildOf`.
 
-### 3.3 Tier 3: Constrained Pure-Rust LLM Inference (`oxibonsai`)
+### 3.3 Tier 3: Constrained Pure-Rust LLM Inference (`CandleProvider` / HTTP)
 - **Latency**: $\approx 10\,\text{ms} - 50\,\text{ms}$.
-- **Mechanism**: The top-3 candidate nodes and their immediate ancestral subgraphs are assembled into a structured prompt with pre-computed numerical and spatial deltas. `oxibonsai` emits an `ExtractionEnvelope` via PDA logit masking.
+- **Mechanism**: The top-3 candidate nodes and their immediate ancestral subgraphs are assembled into a structured prompt with pre-computed numerical and spatial deltas. `CandleProvider` (or HTTP provider) emits an `ExtractionEnvelope` via PDA logit masking. (Note: `oxibonsai` sub-2-bit engine is not implemented due to upstream licence change to BUSL-1.1, 2026-11).
 - **Outcome**: Directives with confidence $\ge 0.80$ proceed to the Mutation Lifecycle.
 
 ### 3.4 Tier 4: Dead-Letter Queue & Human-in-the-Loop Review Gate

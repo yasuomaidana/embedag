@@ -89,7 +89,7 @@ Slim, dependency-light graph APIs for dependency schedulers, change detectors an
 
 ### Milestone 10: Text Embeddings, Vector Search & Classification Primitives
 - [x] Ticket 10.0.1: Local inference priority: GPU-capable candle first, Ollama-compatible HTTP next, oxillama last (CPU-only prefill) (`embedag-llm`)
-- [ ] Ticket 10.1.1: Embedder trait + real text embeddings per spec 08 (trustformers/oxirag pure-Rust; fastembed/ONNX optional) (`embedag-core`)
+- [ ] Ticket 10.1.1: Embedder trait + real text embeddings per spec 08 (trustformers pure-Rust; fastembed/ONNX optional) (`embedag-core`)
 - [ ] Ticket 10.1.2: Diesel VectorSearchRepository for pgvector and SQLite (BLOB brute-force / sqlite-vec) (`embedag-diesel`)
 - [ ] Ticket 10.2.1: Fuzzy merchant-descriptor normalization (bank descriptor cleaning + trigram/Jaro-Winkler) (`embedag-llm`)
 - [ ] Ticket 10.2.2: kNN categorizer over labelled history producing CandidateMatch (`embedag-llm`)

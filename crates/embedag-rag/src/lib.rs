@@ -8,8 +8,8 @@ pub mod community;
 pub mod evidence;
 pub mod expansion;
 pub mod index;
-pub mod oxirag_engine;
 pub mod rrf;
+pub mod verified_engine;
 
 pub use community::{CommunityDetector, CommunityPartition};
 pub use evidence::GroundedEvidencePackager;
@@ -17,8 +17,8 @@ pub use expansion::{
     ExpandedEdge, ExpandedNode, ExpandedSubgraph, SeedRelationship, SubgraphExpander,
 };
 pub use index::{DenseVectorIndex, IndexError, LexicalDocument, SparseLexicalIndex};
-pub use oxirag_engine::{OxiRagEngine, RagError};
 pub use rrf::{RrfCandidate, RrfRanker};
+pub use verified_engine::{RagError, VerifiedRagEngine};
 
 /// Compiles the Rust examples of the crate README as doctests, so they cannot drift from the code.
 #[cfg(doctest)]

@@ -13,8 +13,8 @@ This document specifies the capabilities that move embedag's waterfall from call
 
 ## 2. Assessment of the Current Implementation
 
-1. **Text embeddings exist only in the spec.** `08_Neural_and_Multimodal_Embeddings.md` specifies pure-Rust `trustformers` / `oxirag` embeddings, but no `Embedder` exists. "Embeddings" today means the hand-built feature encoders, so callers have to supply their own vectors.
-2. **Inference is simulated.** The LLM providers (`OxillamaProvider`, `CandleProvider`, `OxibonsaiProvider`) choose directives with heuristics (`embedag-llm/src/provider.rs:337`), and `CloudProvider` has no transport.
+1. **Text embeddings exist only in the spec.** `08_Neural_and_Multimodal_Embeddings.md` specifies pure-Rust `trustformers` embeddings (note: `oxirag` is not implemented due to BUSL-1.1 licence change, 2026-11), but no `Embedder` exists. "Embeddings" today means the hand-built feature encoders, so callers have to supply their own vectors.
+2. **Inference is simulated.** The local LLM providers (`CandleProvider` and HTTP provider; note: `OxillamaProvider` and `OxibonsaiProvider` are not implemented due to upstream BUSL-1.1 licence change, 2026-11) choose directives with heuristics (`embedag-llm/src/provider.rs`), and `CloudProvider` has no transport.
 3. **`VectorSearchRepository` has no Diesel implementation.** `embedag-diesel` only runs `CREATE EXTENSION vector`, and there is no SQLite vector path.
 4. **`AliasStore::normalize_token` only matches exactly.** It has no trigram or Jaro-Winkler scoring and no cleaning of bank- or processor-style descriptors.
 5. **The `HierarchicalModel` derive is table-per-hierarchy and hard-codes `ON DELETE CASCADE`** in the generated DDL.
@@ -25,8 +25,8 @@ This document specifies the capabilities that move embedag's waterfall from call
 
 | Ticket | Priority | Points | Crate | Requirement |
 |---|---|---|---|---|
-| `10.0.1` | high | 1 | `embedag-llm` | Local inference priority: GPU-capable candle first, Ollama-compatible HTTP next, oxillama last (CPU-only prefill) |
-| `10.1.1` | high | 5 | `embedag-core` | Embedder trait + real text embeddings per spec 08 (trustformers/oxirag pure-Rust; fastembed/ONNX optional) |
+| `10.0.1` | high | 1 | `embedag-llm` | Local inference priority: GPU-capable candle first, Ollama-compatible HTTP next (oxillama and oxibonsai removed due to licence change) |
+| `10.1.1` | high | 5 | `embedag-core` | Embedder trait + real text embeddings per spec 08 (trustformers pure-Rust; fastembed/ONNX optional) |
 | `10.1.2` | high | 5 | `embedag-diesel` | Diesel VectorSearchRepository for pgvector and SQLite (BLOB brute-force / sqlite-vec) |
 | `10.2.1` | high | 5 | `embedag-llm` | Fuzzy merchant-descriptor normalization (bank descriptor cleaning + trigram/Jaro-Winkler) |
 | `10.3.1` | high | 3 | `embedag-llm` | Real HTTP LlmProvider (Anthropic / OpenAI / Ollama-compatible) for Tier-3 |
@@ -41,17 +41,17 @@ This document specifies the capabilities that move embedag's waterfall from call
 
 ### 10.0.1: Local inference priority
 
-oxillama-runtime 0.1.4 offloads only Q4_0 single-token decode to the GPU (`oxillama-gpu`, wgpu); multi-token prefill, and therefore prompt processing and embeddings, runs on the CPU (measured: over 3 s per 500-token embedding on Apple Silicon, against about 0.1 s for a GPU runtime). Provider documentation and the embedding backends below are ranked GPU first: `candle` on Metal or CUDA, then an Ollama-compatible or Text Embeddings Inference HTTP server, then CPU runtimes. See [11](11_Pure_Rust_LLM_Inference_and_Constrained_Decoding.md) §2.3.
+oxillama runtime was evaluated but is not implemented (removed due to upstream BUSL-1.1 licence change, 2026-11). Provider documentation and the embedding backends below are ranked GPU first: `candle` on Metal or CUDA, then an Ollama-compatible or Text Embeddings Inference HTTP server, then CPU runtimes. See [11](11_Pure_Rust_LLM_Inference_and_Constrained_Decoding.md) §2.4.
 
-### 10.1.1: Embedder trait + real text embeddings per spec 08 (trustformers/oxirag pure-Rust; fastembed/ONNX optional)
+### 10.1.1: Embedder trait + real text embeddings per spec 08 (trustformers pure-Rust; fastembed/ONNX optional)
 
-`doc/08_Neural_and_Multimodal_Embeddings.md` specifies pure-Rust transformer embeddings (`trustformers` / `oxirag`), with ONNX via `fastembed-rs` only as an optional secondary backend. The code has no text-embedding model, so callers must supply their own vectors.
+`doc/08_Neural_and_Multimodal_Embeddings.md` specifies pure-Rust transformer embeddings (`trustformers`; note: `oxirag` is not implemented due to BUSL-1.1 licence change, 2026-11), with ONNX via `fastembed-rs` only as an optional secondary backend. The code has no text-embedding model, so callers must supply their own vectors.
 
 **Request:**
 - A trait `Embedder { fn embed(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>>; fn dim(); fn model_id(); }`.
 - A pure-Rust multilingual small model behind `embed-local` (the data is Spanish and English merchant and item names), on `candle` with `embed-local-metal` / `embed-local-cuda` features so the forward pass runs on the GPU. Encoder families supported by candle-transformers (BERT, XLM-RoBERTa, NomicBERT, JinaBERT) cover multilingual-e5-small and similar models.
 - Optional `embed-http` (Ollama `/api/embed`, Text Embeddings Inference `/embed`, OpenAI-compatible `/v1/embeddings`) and `embed-onnx` implementations.
-- Not an oxillama-based embedder: its embeddings run on the CPU (see 10.0.1).
+- Not an oxillama-based embedder: oxillama is not implemented (removed due to BUSL-1.1 licence change, 2026-11).
 
 **Acceptance criteria:** deterministic output, with a recorded `model_id` and `dim` so they can be stored.
 

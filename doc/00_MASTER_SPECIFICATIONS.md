@@ -27,23 +27,18 @@ topologies.
    libraries) or Python. The entire machine learning inference, tokenization, computer vision, vector search, and graph
    traversal stack compiles natively with standard `cargo build`.
 2. **Priority 1 Foundation (The KitaSan Open Source Stack)**: Primary machine learning inference, computer vision,
-   semantic web, and GraphRAG capabilities are powered strictly by the **KitaSan open-source ecosystem (`cool-japan` /
-   COOLJAPAN OÜ)**:
-    - `cool-japan/oxibonsai`: Zero-FFI pure Rust sub-2-bit (1-bit and ternary) LLM execution engine with pushdown
-      automaton logit masking.
-    - `cool-japan/oxillama`: Sovereign pure Rust alternative to `llama.cpp` for GGUF model loading, multi-quantized
-      inference (Q4_0..Q8_0, K-quants, I-quants), and 25 model architectures built upon `SciRS2`, `OxiBLAS`, and
-      `OxiFFT`.
-    - `cool-japan/oxirag`: Four-layer pure-Rust RAG engine featuring Echo (vector store & similarity), Speculator (draft
-      verification with SLM), Judge (SMT-based logic verification with SMT-LIB via the `OxiZ` solver), Layer 4 GraphRAG
-      (BFS/N-hop queries), and context-aware prefix caching.
+   semantic web, and GraphRAG capabilities are powered by the **KitaSan open-source ecosystem (`cool-japan` /
+   COOLJAPAN OÜ)** (`oxirs`, `oximedia`), Hugging Face `candle`, and pure-Rust `VerifiedRagEngine`:
+    - `cool-japan/oxibonsai`: (Not implemented; removed due to upstream licence change to BUSL-1.1, 2026-11). Sub-2-bit (1-bit and ternary) LLM execution engine with pushdown automaton logit masking.
+    - `cool-japan/oxillama`: (Not implemented; removed due to upstream licence change to BUSL-1.1, 2026-11). Sovereign pure Rust alternative to `llama.cpp` for GGUF model loading, multi-quantized inference, and 25 model architectures.
+    - `cool-japan/oxirag`: (Not implemented; removed due to upstream licence change to BUSL-1.1, 2026-11). Four-layer pure-Rust RAG engine (Echo vector store, Speculator, Judge SMT-based logic verification via `OxiZ` solver, and Layer 4 GraphRAG). Replaced by pure-Rust `VerifiedRagEngine`.
     - `cool-japan/oxirs`: Modular Semantic Web platform providing SPARQL 1.1/1.2 query execution (`oxirs-arq`), durable
       on-disk TDB2 storage (`oxirs-tdb`), RDF-Star, and GraphML/JSON-LD serialization.
     - `cool-japan/oximedia`: Patent-free multimedia and computer vision framework (pure Rust clean-room reconstruction
       of FFmpeg + OpenCV) providing royalty-free codec decoding (AV1, VP9, VP8, Opus, FLAC), video frame extraction, and
       forensic image analysis.
     - *Strict Open-Source Boundary*: Only free Apache-2.0 open-source repositories from `cool-japan/cool-japan` are
-      utilized; commercial licensed vertical workspaces (`autors`, `med`, `cad`, etc.) are strictly excluded.
+      utilized; commercial licensed vertical workspaces (`autors`, `med`, `cad`, etc.) and BUSL-1.1 relicensed repositories (`oxirag`, `oxillama`, `oxibonsai`) are strictly excluded and guarded by `deny.toml`. Local inference uses `candle` (GPU first) and an HTTP provider; verified retrieval uses `VerifiedRagEngine`.
 3. **Multi-Parent DAG Topologies**: Entities can belong to multiple conceptual parents simultaneously (e.g., a product
    node belonging to both *Confectionery -> Chocolate* and *Dietary -> Gluten-Free*), strictly guarded against circular
    loops.
@@ -76,11 +71,11 @@ flowchart TD
 
     subgraph Encoders ["2. PARALLEL FEATURE EXTRACTION"]
         Derive --> Det["Deterministic Feature Encoding<br/>- Continuous Scalars (MinMax / Z-Score)<br/>- Cyclical Temporal Trigonometry [sin, cos]<br/>- Uber H3 Spatial Hexagonal Cells"]
-        Derive --> Neural["Neural & Multimodal Embeddings<br/>- trustformers / oxirag Echo Vector Store<br/>- Pure-Rust BPE Tokenizer<br/>- Multimodal Asset Vectors via oximedia"]
+        Derive --> Neural["Neural & Multimodal Embeddings<br/>- trustformers Embeddings<br/>- Pure-Rust BPE Tokenizer<br/>- Multimodal Asset Vectors via oximedia"]
     end
 
     subgraph Resolution ["3. MULTI-TIERED WATERFALL RESOLUTION"]
-        Det & Neural --> Tiers["Waterfall Resolution Pipeline<br/>- Tier 1: Exact Key & Alias Cache (O(1))<br/>- Tier 2: Composite Hybrid Distance (Gower + Angular + Geo)<br/>- Tier 3: Pure-Rust LLM Inference (oxibonsai / oxillama)<br/>- Tier 4: Dead-Letter Queue & Human Review"]
+        Det & Neural --> Tiers["Waterfall Resolution Pipeline<br/>- Tier 1: Exact Key & Alias Cache (O(1))<br/>- Tier 2: Composite Hybrid Distance (Gower + Angular + Geo)<br/>- Tier 3: Pure-Rust LLM Inference (Candle / HTTP)<br/>- Tier 4: Dead-Letter Queue & Human Review"]
     end
 
     subgraph Mutation ["4. MUTATION LIFECYCLE & CYCLE GUARDS"]
@@ -91,8 +86,8 @@ flowchart TD
         Mut --> DB["Relational Persistence Engine<br/>- Atomic Multi-Row Upserts (diesel-async PostgreSQL / SQLite)<br/>- Recursive CTE Traversals via leynos/diesel-cte-ext<br/>- SQL Visited Path Cycle Prevention (with_recursive_not_all)<br/>- Mandatory Testcontainers Harness (rust.testcontainers.org)"]
     end
 
-    subgraph GraphRAG ["6. HYBRID TWO-STAGE GRAPHRAG & FORMAL VERIFICATION"]
-        DB --> RAG["Hybrid GraphRAG (oxirag & oxirs)<br/>- Stage 1: Dual Vector (Echo HNSW) + Sparse (BM25) with RRF<br/>- Stage 2: Topological Subgraph Expansion & Grounded Citations<br/>- Formal Verification: oxirag SMT Logic Judge (OxiZ Solver)<br/>- Semantic Interop: oxirs SPARQL 1.2 & RDF-Star Serialization"]
+    subgraph GraphRAG ["6. HYBRID TWO-STAGE GRAPHRAG & VERIFICATION"]
+        DB --> RAG["Hybrid GraphRAG (VerifiedRagEngine & oxirs)<br/>- Stage 1: Dual Vector + Sparse (BM25) with RRF<br/>- Stage 2: Topological Subgraph Expansion & Grounded Citations<br/>- Verification: Pure-Rust VerifiedRagEngine Chunk Citations<br/>- Semantic Interop: oxirs SPARQL 1.2 & RDF-Star Serialization"]
     end
 ```
 
@@ -113,18 +108,18 @@ dedicated specifications:
 | `05` | [05_In_Memory_DAG_and_Arena_Topology.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/05_In_Memory_DAG_and_Arena_Topology.md)                                 | Graph Topology                 | `MemoryDag<T>`, generational indices, `petgraph`, arena memory layout.                                             |
 | `06` | [06_Procedural_Derive_Macros.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/06_Procedural_Derive_Macros.md)                                                 | Metaprogramming                | `embedag-derive`, `#[derive(AsGraphContext)]`, syn/quote compile-time AST generation.                              |
 | `07` | [07_Deterministic_Feature_Encoding.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/07_Deterministic_Feature_Encoding.md)                                     | Feature Engineering            | Mathematical feature encoders: scalars, cyclical time, and Uber H3 spatial cells.                                  |
-| `08` | [08_Neural_and_Multimodal_Embeddings.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/08_Neural_and_Multimodal_Embeddings.md)                                 | Neural & Multimodal            | Local embeddings via `trustformers`/`oxirag`, `oximedia` multimedia/CV pipelines.                                  |
+| `08` | [08_Neural_and_Multimodal_Embeddings.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/08_Neural_and_Multimodal_Embeddings.md)                                 | Neural & Multimodal            | Local embeddings via `trustformers`, `oximedia` multimedia/CV pipelines (oxirag Echo store not implemented).        |
 | `09` | [09_Mixed_Modality_Representation_and_Similarity.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/09_Mixed_Modality_Representation_and_Similarity.md)         | Similarity Engine              | `UnifiedNode<T>`, composite hybrid distance (Gower + Angular + H3), LLM delta cards.                               |
 | `10` | [10_Structured_Extraction_and_Schema_Derivation.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/10_Structured_Extraction_and_Schema_Derivation.md)           | Extraction Schemas             | Universal schema synthesis (`schemars`), `ExtractionDirective`, Draft-Then-Decode.                                 |
-| `11` | [11_Pure_Rust_LLM_Inference_and_Constrained_Decoding.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/11_Pure_Rust_LLM_Inference_and_Constrained_Decoding.md) | LLM Inference                  | `oxibonsai` sub-2-bit PDA logit masking & `oxillama` GGUF multi-quant pure Rust execution.                         |
+| `11` | [11_Pure_Rust_LLM_Inference_and_Constrained_Decoding.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/11_Pure_Rust_LLM_Inference_and_Constrained_Decoding.md) | LLM Inference                  | `CandleProvider` GPU-first inference, HTTP provider, PDA logit masking (oxibonsai and oxillama not implemented).  |
 | `12` | [12_Multi_Tiered_Waterfall_Resolution.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/12_Multi_Tiered_Waterfall_Resolution.md)                               | Entity Resolution              | 4-tier waterfall: exact match, hybrid distance, LLM arbitration, human review.                                     |
 | `13` | [13_Topological_Cycle_Detection_and_Guards.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/13_Topological_Cycle_Detection_and_Guards.md)                     | Topological Invariants         | Cycle prevention algorithms: Tarjan SCC, `would_create_cycle`, typestate validation.                               |
 | `14` | [14_Dynamic_Graph_Mutations_and_Diffing.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/14_Dynamic_Graph_Mutations_and_Diffing.md)                           | Change Management              | `GraphDiff`, Mutation Directives execution lifecycle, shadow DAG simulation, upserts.                              |
 | `15` | [15_Relational_Persistence_and_Schema_Engine.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/15_Relational_Persistence_and_Schema_Engine.md)                 | Persistence                    | `GraphRepository` port, Diesel schema, PostgreSQL `pgvector`, SQLite, batch transactions.                          |
 | `16` | [16_Hierarchical_Recursive_CTE_Traversals.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/16_Hierarchical_Recursive_CTE_Traversals.md)                       | SQL Graph Queries              | Recursive CTE queries via `leynos/diesel-cte-ext`, path tracking, depth limits, indices.                           |
-| `17` | [17_Hybrid_Vector_and_Lexical_Retrieval.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/17_Hybrid_Vector_and_Lexical_Retrieval.md)                           | Retrieval Fusion               | Stage 1 search: `oxirag` Echo vector store, BM25 sparse lexical tokens, RRF fusion.                                |
-| `18` | [18_Topological_Subgraph_Expansion_and_GraphRAG.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/18_Topological_Subgraph_Expansion_and_GraphRAG.md)           | GraphRAG Synthesis             | Stage 2 subgraph expansion, `oxirag` Layer 4 GraphRAG, SMT logic judge (OxiZ solver).                              |
-| `19` | [19_External_Ecosystem_and_KitaSan_Stack.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/19_External_Ecosystem_and_KitaSan_Stack.md)                         | Vendor Evaluation              | Deep technical audit of `cool-japan/oxibonsai`, `oxillama`, `oxirag`, `oxirs`, `oximedia`, `diesel-cte-ext`.       |
+| `17` | [17_Hybrid_Vector_and_Lexical_Retrieval.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/17_Hybrid_Vector_and_Lexical_Retrieval.md)                           | Retrieval Fusion               | Stage 1 search: Dense vector store, BM25 sparse lexical tokens, RRF fusion (oxirag not implemented).              |
+| `18` | [18_Topological_Subgraph_Expansion_and_GraphRAG.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/18_Topological_Subgraph_Expansion_and_GraphRAG.md)           | GraphRAG Synthesis             | Stage 2 subgraph expansion, topological decay, grounded citations via `VerifiedRagEngine` (oxirag not implemented).|
+| `19` | [19_External_Ecosystem_and_KitaSan_Stack.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/19_External_Ecosystem_and_KitaSan_Stack.md)                         | Vendor Evaluation              | Technical audit of KitaSan stack (`oxirs`, `oximedia`), diesel-cte-ext, and licence change notes.                 |
 | `20` | [20_Multi_Database_Extensibility_and_Future_Adapters.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/20_Multi_Database_Extensibility_and_Future_Adapters.md) | Future Adapters                | Native adapters: `oxirs` (TDB2 / SPARQL 1.2), SurrealDB, Neo4j, LanceDB.                                           |
 | `21` | [21_Heavy_Graph_Handling_and_Topological_Pagination.md](file:///Users/yasuomaidana/RustRoverProjects/embedag/doc/21_Heavy_Graph_Handling_and_Topological_Pagination.md)   | Graph Scalability & Pagination | Streaming traversal iterators, degree pagination (hub slicing), differential cycle check, windowed recursive CTEs. |
 | `22` | [22_Dependency_Resolution_and_Merkle_Delta_API.md](22_Dependency_Resolution_and_Merkle_Delta_API.md) | Dependency Resolution & Deltas | Slim `core,matcher` API: deterministic toposort / levels / reverse_deps / critical_path, BLAKE3 Merkle diff, AST similarity graphs. |

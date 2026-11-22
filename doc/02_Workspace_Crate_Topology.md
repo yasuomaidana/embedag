@@ -16,7 +16,7 @@
 
 No circular dependencies are permitted. Leaf crates (`embedag-core`) contain zero foreign database or inference dependencies. Higher-level adapter crates (`embedag-diesel`, `embedag-llm`, `embedag-rag`) depend strictly on `embedag-core` or each other through well-defined unidirectional interfaces.
 
-All machine learning, multimedia, semantic web, and GraphRAG capabilities are powered strictly by the **KitaSan open-source stack (`cool-japan` / COOLJAPAN OÜ)** (`oxibonsai`, `oxillama`, `oxirag`, `oxirs`, `oximedia`) and **`leynos/diesel-cte-ext`**.
+All machine learning, multimedia, semantic web, and GraphRAG capabilities are powered strictly by the **KitaSan open-source stack (`cool-japan` / COOLJAPAN OÜ)** (`oxirs`, `oximedia`), Hugging Face `candle`, pure-Rust `VerifiedRagEngine`, and **`leynos/diesel-cte-ext`**. (`oxibonsai`, `oxillama`, and `oxirag` are not implemented / removed due to upstream licence change to BUSL-1.1, 2026-11).
 
 ---
 
@@ -32,9 +32,9 @@ flowchart TD
 
     Facade["embedag<br/>(Facade & Prelude)"]:::facade
     Derive["embedag-derive<br/>(Proc Macro)"]:::macro
-    RAG["embedag-rag<br/>(oxirag 4-Layer Engine & oxirs SPARQL)"]:::adapter
+    RAG["embedag-rag<br/>(VerifiedRagEngine & oxirs SPARQL)"]:::adapter
     Diesel["embedag-diesel<br/>(PostgreSQL pgvector & diesel-cte-ext CTEs)"]:::adapter
-    LLM["embedag-llm<br/>(oxibonsai Sub-2-Bit & oxillama GGUF)"]:::adapter
+    LLM["embedag-llm<br/>(Candle GPU-First & HTTP Provider)"]:::adapter
     Core["embedag-core<br/>(Domain Contracts, MemoryDag, Encoders, oximedia)"]:::core
     TC["Testcontainers<br/>(rust.testcontainers.org)"]:::testTool
 
@@ -74,8 +74,9 @@ flowchart TD
 - **Role**: Zero-FFI local inference, schema derivation, and constrained logit masking.
 - **Primary Engines**:
   - `huggingface/candle`: priority 1 local runtime on Metal or CUDA (whole forward passes on the GPU).
-  - `cool-japan/oxibonsai`: sub-2-bit (1-bit / ternary) inference engine with Pushdown Automaton (PDA) token logit masking, for memory-constrained CPU deployments.
-  - `cool-japan/oxillama`: pure-Rust GGUF inference engine (sovereign alternative to `llama.cpp`) supporting 25 architectures and Q4_0..Q8_0 quants. CPU-only for prompt prefill and embeddings (GPU offload covers only Q4_0 single-token decode), so it ranks after GPU-capable providers ([11](11_Pure_Rust_LLM_Inference_and_Constrained_Decoding.md) §2.3).
+  - Ollama-compatible HTTP provider: external GPU inference.
+  - `CloudProvider`: managed API fallback.
+  - Note: `cool-japan/oxibonsai` (sub-2-bit engine) and `cool-japan/oxillama` (GGUF engine) are **not implemented** (removed due to upstream licence change to BUSL-1.1, 2026-11).
 - **Key Modules**: Pushdown automaton (PDA) logit mask generation, `schemars` JSON schema reflection, Draft-Then-Decode cognitive scratchpad.
 
 ### 3.4 `embedag-diesel` (Relational Persistence Adapter)
@@ -84,18 +85,18 @@ flowchart TD
 - **Mandatory Testing Harness**: **[Testcontainers for Rust](https://rust.testcontainers.org)** (`testcontainers = "0.27"`, `testcontainers-modules = { version = "0.15", features = ["postgres"] }`). Real containerized PostgreSQL + `pgvector` execution is mandatory for all persistence integration tests.
 
 ### 3.5 `embedag-rag` (Hybrid Retrieval & Query Engine)
-- **Role**: Two-stage hybrid GraphRAG orchestration and formal SMT verification.
+- **Role**: Two-stage hybrid GraphRAG orchestration and grounded citation synthesis.
 - **Primary Engines**:
-  - `cool-japan/oxirag`: Four-layer RAG engine (Layer 1 Echo vector store, Layer 2 Speculator draft verification, Layer 3 Judge SMT logic verification via OxiZ solver, Layer 4 GraphRAG expansion & prefix caching).
+  - `VerifiedRagEngine`: Pure-Rust verified retrieval using `SparseLexicalIndex`, `RrfRanker` fusion, and grounded citations `[n]`.
   - `cool-japan/oxirs`: Semantic Web query execution (SPARQL 1.1/1.2 via `oxirs-arq`) and RDF-Star serialization.
+  - Note: `cool-japan/oxirag` (Echo vector store, Speculator, Judge SMT logic verification via OxiZ) is **not implemented** (removed due to upstream licence change to BUSL-1.1, 2026-11).
 - **Pipeline**:
-  1. Dense vector HNSW similarity combined with BM25 sparse lexical tokens via Reciprocal Rank Fusion (RRF).
+  1. Dense vector similarity combined with BM25 / trigram sparse lexical tokens via Reciprocal Rank Fusion (RRF).
   2. Multi-hop topological subgraph expansion with exponential distance decay.
-  3. Formal SMT logic verification of claims via `OxiZ`.
-  4. Grounded evidence packaging and citation attribution.
+  3. Grounded evidence packaging and citation attribution `[n]`.
 
 ### 3.6 `embedag` (Facade Crate)
-- **Role**: Top-level developer ergonomic entry point. Re-exports the entire stack under a clean prelude, gated by Cargo feature flags (`diesel`, `oxibonsai`, `oxillama`, `oxirag`, `oxirs`, `oximedia`, `derive`).
+- **Role**: Top-level developer ergonomic entry point. Re-exports the entire stack under a clean prelude, gated by Cargo feature flags (`diesel`, `candle`, `rag`, `oxirs-tdb`, `surrealdb`, `neo4j`, `derive`).
 
 ---
 
@@ -118,9 +119,9 @@ resolver = "3"
 | :--- | :--- | :--- |
 | `embedag-core` | `std` | `serde`, `h3o`, `chrono`, `oximedia` |
 | `embedag-derive` | - | - |
-| `embedag-llm` | `oxibonsai`, `oxillama` | `fastembed`, `cloud-fallback` |
+| `embedag-llm` | `candle` | `fastembed`, `cloud-fallback` |
 | `embedag-diesel` | `postgres-async`, `sqlite`, `diesel-cte-ext` | `pgvector`, `test-harness` |
-| `embedag-rag` | `full`, `oxirag` | `oxirs`, `bm25`, `metrics` |
+| `embedag-rag` | `full` | `oxirs`, `bm25`, `metrics` |
 | `embedag` | `all` | `minimal`, `sqlite-only`, `pg-only` |
 
 ### 4.1 Mandatory Test Dependencies Matrix
@@ -139,4 +140,4 @@ resolver = "3"
 2. **Feature Gate Isolation**: Compiling `embedag-core` without database features must never trigger SQL compilation.
 3. **No Dynamic Runtime Linkage**: Every workspace crate must link statically, ensuring a single self-contained binary artifact.
 4. **Mandatory Containerized Persistence Verification**: Persistent layer adapters must provide integration test suites backed by real throwaway Docker containers managed via [Testcontainers for Rust](https://rust.testcontainers.org). No PR touching persistence code may be merged without passing containerized tests in CI.
-5. **Open Source KitaSan Compliance**: Only free Apache-2.0 crates from `cool-japan/cool-japan` are permitted; commercial vertical workspaces are strictly forbidden.
+5. **Open Source KitaSan Compliance**: Only free Apache-2.0 crates from `cool-japan/cool-japan` are permitted; commercial vertical workspaces and BUSL-1.1 relicensed crates (`oxirag`, `oxillama`, `oxibonsai`) are strictly forbidden and guarded by `deny.toml`.

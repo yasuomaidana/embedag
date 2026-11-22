@@ -5,7 +5,7 @@
 //! 2. Derives `#[derive(HierarchicalModel)]` to automatically generate table configuration, context for LLM, and type-safe CRUD operations.
 //! 3. Passes field-level context instructions via `#[schemars(description = "...")]`.
 //! 4. Generates the taxonomy graph dynamically on-the-fly starting from an empty graph.
-//! 5. Uses real inference models (`OxillamaProvider` and `CandleProvider`) to validate that similar items with the same categories
+//! 5. Uses real inference models (`CandleProvider`) to validate that similar items with the same categories
 //!    reuse existing category nodes without creating unnecessary duplicate nodes.
 
 use embedag_core::dag::MemoryDag;

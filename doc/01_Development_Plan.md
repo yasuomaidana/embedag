@@ -8,13 +8,13 @@
   - Complete round-trip executes without errors.
   - Persisted graph matches expected topological relationships.
   - Exercises multi-typed domain struct (scalars, booleans, timestamps, UUIDs, H3 cells, multimodal media blobs, options).
-  - Validates active pure-Rust LLM inference with both `oxillama` (GGUF sampling) and `oxibonsai` (sub-2-bit ternary PDA masking).
+  - Validates active pure-Rust LLM inference with `CandleProvider` (note: `oxillama` and `oxibonsai` are not implemented due to upstream BUSL-1.1 licence change, 2026-11).
   - Validates topological DAG invariants (multi-parent diamond DAG convergence, cycle prevention guardrails).
-  - Validates two-stage hybrid GraphRAG (dense + sparse lexical FTS, RRF fusion, topological expansion with decay, grounded context packaging with citations).
+  - Validates two-stage hybrid GraphRAG (dense + sparse lexical FTS, RRF fusion, topological expansion with decay, grounded context packaging with citations via `VerifiedRagEngine`).
   - Validates relational persistence layers on both PostgreSQL (`pgvector` via `testcontainers`) and SQLite (in-memory migrations up/down, foreign key constraint enforcement).
 - **Tests**:
   - `tests/e2e_pipeline_test.rs`: Full automated test suite against ephemeral PostgreSQL container via `testcontainers` (https://rust.testcontainers.org) and in-memory SQLite.
-  - `tests/test_inference_and_multitype_e2e.rs`: Multi-type, `oxillama` + `oxibonsai` inference, diamond DAG, hybrid Graph-RAG, and dual-database (Postgres + SQLite) integration suite.
+  - `tests/test_inference_and_multitype_e2e.rs`: Multi-type, `candle` inference, diamond DAG, hybrid Graph-RAG, and dual-database (Postgres + SQLite) integration suite.
 
 ---
 

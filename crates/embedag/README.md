@@ -15,9 +15,9 @@ When features are enabled, `embedag` re-exports each sub-crate as a module (`emb
 - From `core`: `MemoryDag`, `DagError`, `EdgePayload`, `ProvenanceKind`, `GraphTarget`, `MultimodalBlob`, `NodePayload`, `AsGraphContext`, `MutationPlan`, `MutationDirective`, `Unverified`, `CycleValidated`, `Committed`, `Condensation`.
 - From `derive`: `AsGraphContext`, `GraphTarget`, `HierarchicalModel` (via `embedag::derive`).
 - From `matcher`: `AstMatcher`, `Matcher`, `SimilarityGraph`, `Tree` (via `embedag::matcher`).
-- From `llm`: `LlmProvider`, `OxillamaProvider`, `OxibonsaiProvider`, `ExtractionDirective`, `ExtractionEnvelope`, `EntityExtractor`, `EntityExtractorConfig`, `EntityProperties`, `LlmError`, `ModelMetadata`.
+- From `llm`: `LlmProvider`, `ExtractionDirective`, `ExtractionEnvelope`, `EntityExtractor`, `EntityExtractorConfig`, `EntityProperties`, `LlmError`, `ModelMetadata`.
 - From `persistence` (`embedag-diesel`): `HierarchicalTableConfig`, `HierarchyItem`, `CteHierarchyBuilder`, `UpsertDescriptor`, `ConflictStrategy`, `run_sqlite_migration`, `run_postgres_migration`.
-- From `rag`: `GroundedEvidencePackager`, `ExpandedNode`, `ExpandedSubgraph`, `SeedRelationship`, `SubgraphExpander`, `DenseVectorIndex`, `SparseLexicalIndex`, `OxiRagEngine`, `RagError`, `RrfCandidate`, `RrfRanker`.
+- From `rag`: `GroundedEvidencePackager`, `ExpandedNode`, `ExpandedSubgraph`, `SeedRelationship`, `SubgraphExpander`, `DenseVectorIndex`, `SparseLexicalIndex`, `VerifiedRagEngine`, `RagError`, `RrfCandidate`, `RrfRanker`.
 - From `oxirs`, `surrealdb_backend`, and `neo4j_backend`: `OxiRsTdbEngine`, `OxiRsTdbConfig`, `SurrealDbEngine`, `SurrealDbConfig`, `Neo4jEngine`, `Neo4jConfig`.
 
 ### Example

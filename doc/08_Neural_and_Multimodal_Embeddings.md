@@ -4,7 +4,7 @@
 | :--- | :--- |
 | **Document ID** | `08_Neural_and_Multimodal_Embeddings` |
 | **Domain** | Neural Linguistic & Multimodal Vector Pipelines |
-| **Responsibility** | Local Dense Neural Text Embeddings, BPE Tokenization, Pure-Rust Multimedia Ingestion via `oximedia`, and Vector Management via `oxirag` |
+| **Responsibility** | Local Dense Neural Text Embeddings, BPE Tokenization, Pure-Rust Multimedia Ingestion via `oximedia`, and Dense Vector Indexing |
 | **Target Crates** | `embedag-llm`, `embedag-core`, `embedag-rag` |
 | **Status** | Definitive Architectural Specification |
 
@@ -15,17 +15,17 @@
 While continuous numbers and coordinates are encoded deterministically, natural language text requires **dense semantic vector embeddings** to capture synonymy, intent, and semantic proximity. Furthermore, multimodal entities (scanned invoices, product catalog photographs, video keyframes, audio telemetry) require patent-free, memory-safe media processing.
 
 To satisfy `embedag`'s core tenet of **100% Pure Rust with Zero C/C++ FFI**, neural embeddings and multimodal pipelines are powered strictly by the **KitaSan open-source foundation (`cool-japan` / COOLJAPAN OÜ)**:
-- **`cool-japan/trustformers` & `cool-japan/oxirag` (Priority 1)** for pure-Rust transformer embeddings and in-memory vector storage (Layer 1: Echo).
+- **`cool-japan/trustformers` (Priority 1)** for pure-Rust transformer embeddings (note: `cool-japan/oxirag` is not implemented due to upstream licence change to BUSL-1.1, 2026-11; in-memory vector storage is provided by `DenseVectorIndex`).
 - **`cool-japan/oximedia` (Priority 1)** for pure-Rust multimedia codec processing and computer vision without FFmpeg/OpenCV C shared libraries.
 
 Secondary backends (such as ONNX Runtime via `fastembed-rs`) are available only behind optional feature gates.
 
 ---
 
-## 2. In-Process Neural Embedding Engine: `trustformers` & `oxirag` (Priority 1)
+## 2. In-Process Neural Embedding Engine: `trustformers` (Priority 1)
 
 ### 2.1 The KitaSan Foundation
-- **Crates**: `trustformers` and `oxirag` (Layer 1: Echo vector store).
+- **Crates**: `trustformers` and in-memory `DenseVectorIndex`. (Note: `oxirag` Layer 1: Echo vector store is not implemented due to upstream licence change to BUSL-1.1, 2026-11).
 - **Zero FFI**: 100% written in Rust. No Python, no LibTorch, no C++ compilation required.
 - **Embedded Inference**: Runs in-process with the Rust application binary, eliminating network round-trip overhead.
 - **Supported Models**: BGE-M3 (1024-dimension multilingual), MiniLM-L6-v2 (384-dimension lightweight).
@@ -37,7 +37,7 @@ flowchart LR
     Tokens --> Layers["Pure Rust Transformer Layers<br/>(SIMD / Apple Metal / AVX-512)"]
     Layers --> Pooling["Mean / CLS Pooling"]
     Pooling --> Vector["Normalized Dense Vector<br/>Vec<f32> (1024-dim)"]
-    Vector --> EchoStore["oxirag Layer 1: Echo Store<br/>Cosine / Euclidean / Dot Product"]
+    Vector --> EchoStore["In-Memory DenseVectorIndex<br/>Cosine / Euclidean / Dot Product"]
 ```
 
 ### 2.2 The Embedding Engine Interface
@@ -103,7 +103,7 @@ For environments where specific ONNX model weights or external APIs are mandated
 
 ```rust
 pub enum EmbeddingBackend {
-    /// Priority 1: Pure Rust trustformers & oxirag in-process engine
+    /// Priority 1: Pure Rust trustformers in-process engine (oxirag not implemented due to BUSL-1.1 licence change)
     Trustformers,
     /// Priority 2: ONNX Runtime via fastembed-rs (optional feature)
     FastEmbedOnnx,

@@ -17,7 +17,7 @@ Do not use `embedag-llm` expecting out-of-the-box remote HTTP calls to OpenAI/An
 
 Per [`doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md) (§2):
 
-- **Local providers (`CandleProvider`, `OxillamaProvider`, `OxibonsaiProvider`)**: Currently evaluate prompts using deterministic token-overlap and candidate-matching heuristics (`src/provider.rs`) validated step-by-step through `PushdownAutomaton`, or return a caller-configured `simulated_directive` (`with_simulated_response`). Under the `oxillama` feature, `OxillamaProvider::validate_gbnf_grammar` compiles GBNF grammars via `oxillama::grammar::Grammar::from_gbnf`.
+- **Local providers (`CandleProvider`, HTTP, `CloudProvider`)**: `CandleProvider` evaluates prompts using Hugging Face candle (GPU first) or deterministic token-overlap and candidate-matching heuristics (`src/provider.rs`) validated step-by-step through `PushdownAutomaton`, or returns a caller-configured `simulated_directive` (`with_simulated_output`). The sovereign GGUF runtime (`OxillamaProvider`) and sub-2-bit PDA engine (`OxibonsaiProvider`) are not implemented (removed due to upstream licence change to BUSL-1.1, 2026-11).
 - **`CloudProvider`**: Currently a configuration stub that returns `LlmError::ProviderFailure` when `extract_directive` is called without a simulated response (`src/provider.rs:412`). A real OpenAI-compatible HTTP `JsonSchemaHttpProvider` (`/v1/chat/completions` with `response_format: { type: "json_schema" }`) is planned in Ticket 10.3.1.
 - **Merchant normalization and kNN classification**: Deterministic merchant-descriptor cleaning (Ticket 10.2.1) and weighted kNN majority-vote categorization in `WaterfallPipeline` (Ticket 10.2.2) are planned in Milestone 10.
 
@@ -32,7 +32,7 @@ Per [`doc/23_Text_Embeddings_Vector_Search_and_Classification_Primitives.md`](ht
 - **Prompts and providers (`prompt`, `provider`)**:
   - `PromptFormatter::build_prompt` and `PromptFormatter::build_prompt_full` (`ProvenanceNotes`).
   - `LlmProvider` async trait (`generate_structured`, `model_info`, `extract_directive`).
-  - `CandleProvider`, `OxillamaProvider`, `OxibonsaiProvider`, `CloudProvider`.
+  - `CandleProvider`, `CloudProvider` (and Ollama-compatible HTTP provider).
 - **Waterfall resolution and synthesis (`waterfall`, `delta_synthesizer`, `diff`, `extractor`)**:
   - `WaterfallPipeline<P>`, `AliasStore`, `CandidateMatch`, `ResolutionOutcome` (`Tier1DirectMatch`, `Tier2NearMatch`, `Tier2NovelEntity`, `Tier3LlmResolved`, `Tier4HumanReview`).
   - `SemanticDeltaSynthesizer<P>`, `DeltaSynthesizerConfig`, `ScalarRatioRule`, `CandidateEntity`, `IncomingEntity`.
@@ -73,7 +73,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 | Feature | Default | Description |
 |---|---|---|
 | `candle` | Yes | Enables optional `dep:candle-core` tensor/device integration |
-| `oxillama` | Yes | Enables `dep:oxillama` GBNF grammar validation in `OxillamaProvider::validate_gbnf_grammar` |
 
 ## Workspace relationship
 

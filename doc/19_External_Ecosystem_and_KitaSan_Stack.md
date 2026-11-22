@@ -21,6 +21,9 @@ To satisfy the ironclad requirement that `embedag` must be **100% written in Rus
 - **Zero FFI / fail0 + Clippy0**: Every adopted crate in the KitaSan foundation enforces 100% pure Rust, zero C/C++/Fortran FFI, and zero Clippy warnings (`fail0 + Clippy0`).
 - **Relational Persistence Partner**: In relational persistence and hierarchical graph queries, [`leynos/diesel-cte-ext`](https://github.com/leynos/diesel-cte-ext) provides first-class recursive CTE support directly atop Diesel and `diesel-async`.
 
+### 1.2 Licence change (2026-11)
+oxirag 0.2.0+ and oxillama 0.1.5+ are BUSL-1.1; the Apache-2.0 0.1.x releases are yanked on 2026-11-26; embedag removed them. The other KitaSan crates still used (oxirs, scirs2, oxitls, oxiarc, oximedia) were Apache-2.0 on 2026-11-22 and are guarded by `deny.toml`. Consequently, `oxirag`, `oxillama`, and `oxibonsai` are no longer dependencies of `embedag`.
+
 ---
 
 ## 2. In-Depth Technical Audit: The KitaSan Open-Source Stack
@@ -33,8 +36,9 @@ flowchart TD
     end
 
     subgraph LLMExecution ["embedag-llm Inference & Structured Extraction"]
-        OxiBonsai["oxibonsai (Sub-2-Bit Engine)<br/>- 1-Bit (Q1_0_g128) & Ternary (TQ2_0_g128)<br/>- Pushdown Automaton (PDA) Logit Masking<br/>- Zero-FFI CPU SIMD / Apple Metal / CUDA"]
-        OxiLLaMA["oxillama (General GGUF Engine)<br/>- Pure Rust llama.cpp Sovereign Alternative<br/>- Q4_0..Q8_0, K-Quants, I-Quants, 25 Architectures<br/>- Built on SciRS2, OxiBLAS & OxiFFT"]
+        CandleLLM["Hugging Face candle & HTTP Provider<br/>- GPU-first tensor inference<br/>- Ollama-compatible HTTP provider"]
+        OxiBonsai["oxibonsai (Sub-2-Bit Engine)<br/>(Not implemented; removed BUSL-1.1)"]
+        OxiLLaMA["oxillama (General GGUF Engine)<br/>(Not implemented; removed BUSL-1.1)"]
     end
 
     subgraph RelationalCTE ["embedag-diesel Relational Persistence"]
@@ -42,51 +46,34 @@ flowchart TD
     end
 
     subgraph GraphRAGSemantic ["embedag-rag Hybrid Retrieval & Semantic Web"]
-        OxiRAG["oxirag (4-Layer RAG Engine)<br/>- Layer 1: Echo (Vector Store & Similarity)<br/>- Layer 2: Speculator (Draft Verification with SLM)<br/>- Layer 3: Judge (SMT-LIB Logic Verification via OxiZ)<br/>- Layer 4: Graph (Knowledge Graph / GraphRAG & BFS)<br/>- Context-Aware Prefix KV Caching"]
+        VerifiedRAG["VerifiedRagEngine<br/>- Pure-Rust SparseLexicalIndex & RrfRanker<br/>- Grounded citations [n]"]
+        OxiRAG["oxirag (4-Layer RAG Engine)<br/>(Not implemented; removed BUSL-1.1)"]
         OxiRS["oxirs (Semantic Web & Graph Interop)<br/>- SPARQL 1.1/1.2 Query Engine (oxirs-arq)<br/>- RDF-Star, JSON-LD, GraphML Export<br/>- Durable TDB2 Persistent Storage Engine"]
     end
 
     Core --> OxiMedia
     Core --> OxiRS
-    Core --> OxiBonsai
-    Core --> OxiLLaMA
+    Core --> CandleLLM
     Core --> DieselCTE
-    Core --> OxiRAG
+    Core --> VerifiedRAG
 ```
 
 ---
 
-### 2.1 `oxibonsai`: Zero-FFI Sub-2-Bit LLM Inference Engine (Priority 1)
+### 2.1 `oxibonsai`: Zero-FFI Sub-2-Bit LLM Inference Engine (Not Implemented)
+- **Status in embedag**: **Not implemented** (sub-2-bit PDA engine was removed due to upstream licence change to BUSL-1.1, 2026-11).
 - **Repository**: [`cool-japan/oxibonsai`](https://github.com/cool-japan/oxibonsai)
-- **License**: Apache-2.0 (Open Source)
-- **Crates**: `oxibonsai`, `oxibonsai-core`, `oxibonsai-runtime`, `oxibonsai-tokenizer`, `oxibonsai-kernels`
-- **Architectural Strengths**:
-  - **Zero C/C++ / Zero-FFI**: Compiles cleanly with standard `cargo build` on macOS, Linux, and Windows without CMake or LibTorch.
-  - **Sub-2-Bit & Ternary Quantization**: Natively runs 1-bit (`Q1_0_g128`) and ternary (`TQ2_0_g128`) models with minimal memory footprint on edge devices, CPU SIMD (AVX-512, NEON), and Apple Metal.
-  - **Pushdown Automaton (PDA) Token Masking**: Integrates directly with `embedag-llm` grammar compiler to apply $-\infty$ logit masks on invalid tokens before Softmax, guaranteeing 100% schema compliance.
-  - **In-Process Integration**: Embedded directly into the `embedag-llm` binary with zero network latency.
+- **Historical Context**: Formerly used for 1-bit and ternary quantized execution and PDA logit masking on CPU/edge.
 
-### 2.2 `oxillama`: Pure-Rust GGUF LLM Inference Engine (Priority 1 Sovereign Alternative to llama.cpp)
+### 2.2 `oxillama`: Pure-Rust GGUF LLM Inference Engine (Not Implemented)
+- **Status in embedag**: **Not implemented** (sovereign GGUF runtime was removed due to upstream licence change to BUSL-1.1, 2026-11; oxillama 0.1.5+ is BUSL-1.1 and 0.1.x is yanked 2026-11-26).
 - **Repository**: [`cool-japan/oxillama`](https://github.com/cool-japan/oxillama)
-- **License**: Apache-2.0 (Open Source)
-- **Crates**: `oxillama`, `oxillama-gguf`, `oxillama-quant`, `oxillama-arch`, `oxillama-runtime`, `oxillama-server`, `oxillama-gpu`
-- **Architectural Strengths**:
-  - **Full GGUF Model Loading**: Complete native parser for GGUF model formats without external C libraries.
-  - **Multi-Format Quantization**: Supports standard integer quants (`Q4_0` through `Q8_0`), K-quants (`Q2_K`..`Q6_K`), I-quants (`IQ1_S`..`IQ4_NL`), and `Q1_0_G128`.
-  - **25 Architectures Supported**: Broad coverage including LLaMA, Qwen3, Mistral, Gemma, Phi, Command-R, StarCoder, Falcon, DeepSeek-V2/V3, DBRX, Grok-1, Mamba-2, OLMo2, Yi, Granite, LLaVA, BLOOM.
-  - **COOLJAPAN Foundation Layer**: Directly built upon pure Rust scientific computing building blocks: `SciRS2` (Tensor), `OxiBLAS` (GEMM), and `OxiFFT` (RoPE).
-  - **Role in `embedag`**: Works alongside `oxibonsai` in `embedag-llm` to provide general GGUF model execution when general-purpose weights (e.g. Mistral-7B, Qwen-2.5-3B) are deployed.
+- **Historical Context**: Formerly evaluated for general GGUF model parsing and multi-quant execution.
 
-### 2.3 `oxirag`: Four-Layer RAG Engine with SMT Logic Verification (Priority 1 GraphRAG)
+### 2.3 `oxirag`: Four-Layer RAG Engine with SMT Logic Verification (Not Implemented)
+- **Status in embedag**: **Not implemented** (4-layer RAG engine, SMT logic judge via OxiZ, and Speculator were removed due to upstream licence change to BUSL-1.1, 2026-11; oxirag 0.2.0+ is BUSL-1.1 and 0.1.x is yanked 2026-11-26; replaced by pure-Rust `VerifiedRagEngine`).
 - **Repository**: [`cool-japan/oxirag`](https://github.com/cool-japan/oxirag)
-- **License**: Apache-2.0 (Open Source)
-- **Architectural Strengths**:
-  - **Layer 1 (Echo)**: Pure Rust in-memory vector store with configurable capacity and Cosine, Euclidean, and Dot Product similarity metrics.
-  - **Layer 2 (Speculator)**: Speculative RAG verification using SLM or rule-based draft checkers (Accept / Revise / Reject decision pipeline).
-  - **Layer 3 (Judge)**: SMT-based logic verification using SMT-LIB encoding and the pure-Rust `OxiZ` SMT solver. Verifies causal, temporal, and modal consistency of extracted graph claims to prevent hallucinated assertions.
-  - **Layer 4 (Graph)**: Native GraphRAG knowledge graph retrieval with BFS traversal, shortest-path calculation, N-hop bounded queries, and hybrid vector+graph search.
-  - **Context-Aware Prefix Caching**: Efficient KV cache management for recurring premise knowledge.
-  - **Role in `embedag`**: Directly integrates into `embedag-rag` for candidate vector retrieval, draft verification, formal logic checking, and topological subgraph expansion.
+- **Historical Context**: Formerly provided Echo vector store, Speculator draft verification, and OxiZ SMT logic checking.
 
 ### 2.4 `oxirs`: Modular Semantic Web, SPARQL 1.2 & RDF-Star Platform (Priority 1)
 - **Repository**: [`cool-japan/oxirs`](https://github.com/cool-japan/oxirs)
@@ -131,13 +118,16 @@ flowchart TD
 
 | Technology | Category | Priority Tier | License | Primary Architectural Rationale |
 | :--- | :--- | :--- | :--- | :--- |
-| `cool-japan/oxibonsai` | LLM Inference | **Priority 1 (Default)** | Apache-2.0 (Open Source) | Zero-FFI, sub-2-bit ternary/1-bit quantization, grammar PDA logit masking. |
-| `cool-japan/oxillama` | LLM Inference | **Priority 1 (Default)** | Apache-2.0 (Open Source) | Pure Rust sovereign llama.cpp replacement, GGUF parser, 25 architectures, Q4..Q8 quants. |
-| `cool-japan/oxirag` | RAG & Logic Verifier | **Priority 1 (Default)** | Apache-2.0 (Open Source) | 4-layer engine (Echo vector store, Speculator, Judge SMT logic checking with OxiZ, GraphRAG). |
+| `huggingface/candle` | LLM Inference | **Priority 1 (Default)** | Apache-2.0 / MIT | GPU-first pure-Rust tensor inference (Metal / CUDA / CPU) in `CandleProvider`. |
+| Ollama HTTP Provider | LLM Inference | **Priority 2 (External GPU)** | Open API | External GPU inference via Ollama-compatible HTTP endpoint. |
+| `VerifiedRagEngine` | RAG & Verification | **Priority 1 (Default)** | In-house / Workspace | Pure-Rust verified retrieval with `SparseLexicalIndex`, `RrfRanker`, and cited chunks `[n]`. |
 | `cool-japan/oxirs` | Semantic Web & Graph | **Priority 1 (Default)** | Apache-2.0 (Open Source) | RDF-Star, SPARQL 1.1/1.2, TDB2 persistent storage, JSON-LD / GraphML export. |
 | `cool-japan/oximedia` | Multimodal Processing | **Priority 1 (Default)** | Apache-2.0 (Open Source) | Pure Rust FFmpeg + OpenCV reconstruction, patent-free codecs, image/video frame extraction. |
 | `leynos/diesel-cte-ext` | SQL CTE Builder | **Priority 1 (Default)** | ISC (Open Source) | `RecursiveCTEExt` typed recursive queries (`UNION ALL` & `UNION`), async support for Diesel. |
 | `cool-japan/trustformers`| Neural Embeddings | **Priority 1 (Default)** | Apache-2.0 (Open Source) | Pure Rust transformer layers, BGE-M3 & MiniLM tokenization and inference. |
 | `fastembed-rs` | Neural Embeddings | **Priority 2 (Fallback)** | Apache-2.0 | Requires ONNX Runtime C library; secondary fallback for legacy models. |
 | Cloud APIs (OpenAI / Anthropic)| LLM Inference | **Priority 3 (Optional)** | Proprietary / Cloud | Remote fallback; introduces network roundtrip latency and privacy concerns. |
+| `cool-japan/oxibonsai` | LLM Inference | **Not Implemented / Removed** | BUSL-1.1 | Sub-2-bit PDA engine removed due to upstream licence change (2026-11). |
+| `cool-japan/oxillama` | LLM Inference | **Not Implemented / Removed** | BUSL-1.1 | GGUF engine removed due to upstream licence change (2026-11; 0.1.x yanked 2026-11-26). |
+| `cool-japan/oxirag` | RAG & Logic Verifier | **Not Implemented / Removed** | BUSL-1.1 | 4-layer RAG and SMT judge removed due to licence change (2026-11; 0.1.x yanked 2026-11-26). |
 | COOLJAPAN Vertical Workspaces | Vertical Applications | **Excluded (Commercial)** | Commercial | `autors`, `med`, `cad`, `aero`, `eda`, `3d`, `car` are commercial licensed products; NOT used in `embedag`. |

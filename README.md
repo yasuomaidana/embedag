@@ -10,7 +10,7 @@ Version 0.1.0. Milestones 1 to 8 are complete. Milestone 9 (dependency resolutio
 |---|---|
 | `embedag-core` | domain contracts, the `MemoryDag` arena, cycle guards, typestate mutation plans, deterministic scalar, temporal and H3 encoders, DAG algorithms (toposort, levels, reverse dependencies, critical path), BLAKE3 Merkle delta trees |
 | `embedag-derive` | derive macros `AsGraphContext`, `GraphTarget`, `HierarchicalModel` |
-| `embedag-llm` | JSON-schema and GBNF derivation, constrained extraction, candle / oxillama / HTTP inference, multi-tier waterfall resolution, delta synthesis |
+| `embedag-llm` | JSON-schema and GBNF derivation, constrained extraction, candle / HTTP inference, multi-tier waterfall resolution, delta synthesis |
 | `embedag-diesel` | relational persistence: PostgreSQL with pgvector, SQLite and Turso / libSQL, recursive-CTE traversals, graph mutations |
 | `embedag-rag` | two-stage hybrid Graph-RAG: reciprocal rank fusion, topological distance decay, community detection |
 | `embedag-matcher` | language-agnostic structural AST similarity and similarity graphs |

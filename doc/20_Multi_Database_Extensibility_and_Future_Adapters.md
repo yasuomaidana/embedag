@@ -124,7 +124,7 @@ The implementation of `embedag-oxirs` delivers native, pure-Rust Semantic Web an
 3. **Sub-Second Cold Starts via Memory-Mapped Snapshots:**
    - High-performance frozen snapshots (`snapshot.oxsnap`) allow knowledge graphs to be loaded via `mmap` in sub-milliseconds without parsing N-Quads line-by-line or rebuilding BTree indexes on every startup.
 4. **SPARQL 1.1/1.2 Query & Graph-RAG Grounding:**
-   - Persisted graphs can be traversed via SPARQL queries (`query_sparql`) or pattern queries (`find_quads`), directly empowering `oxirag` Layer 4 retrieval in both `embedag` and `docula`.
+   - Persisted graphs can be traversed via SPARQL queries (`query_sparql`) or pattern queries (`find_quads`), directly empowering graph retrieval and `VerifiedRagEngine` in both `embedag` and `docula`. (Note: `oxirag` is not implemented due to BUSL-1.1 licence change, 2026-11).
 
 ```mermaid
 flowchart TD
