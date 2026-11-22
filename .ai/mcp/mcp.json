@@ -1,9 +1,18 @@
 {
   "mcpServers": {
-    "dendrite-synapse-dendrite-ecosystem": {
-      "command": "/Users/yasuomaidana/go/bin/dendrite",
+    "dendrite": {
+      "command": "dendrite",
       "args": [
-        "mcp",
+        "inter",
+        "serve",
+        "--profile",
+        "core"
+      ]
+    },
+    "dendrite-synapse-dendrite-ecosystem": {
+      "command": "dendrite",
+      "args": [
+        "inter",
         "serve",
         "--synapse",
         "dendrite-ecosystem"
@@ -16,6 +25,24 @@
         "serve",
         "--synapse",
         "docula-embedag"
+      ]
+    },
+    "dendrite-synapse-kakebo": {
+      "command": "dendrite",
+      "args": [
+        "inter",
+        "serve",
+        "--synapse",
+        "kakebo"
+      ]
+    },
+    "dendrite-synapse-karyo": {
+      "command": "dendrite",
+      "args": [
+        "inter",
+        "serve",
+        "--synapse",
+        "karyo"
       ]
     }
   }
