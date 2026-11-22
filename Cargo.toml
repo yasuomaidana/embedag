@@ -51,8 +51,6 @@ gbnf = "0.2"
 async-trait = "0.1"
 tokio = { version = "1", features = ["full"] }
 candle-core = { version = "0.11", default-features = false }
-oxillama = { version = "0.1.4", default-features = false }
-oxirag = "0.1.1"
 oxirs-core = "0.4.1"
 
 # Native Graph & Multi-Model Backends

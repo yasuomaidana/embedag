@@ -127,7 +127,7 @@ flowchart TD
 
 ## 4. Structured LLM Comparison Delta Synthesis
 
-When $D_{\text{composite}}$ falls into the ambiguous range ($0.15 \le D_{\text{composite}} < 0.40$), the system calls `oxibonsai` for structured classification.
+When $D_{\text{composite}}$ falls into the ambiguous range ($0.15 \le D_{\text{composite}} < 0.40$), the system calls `CandleProvider` or the HTTP provider for structured classification. (Note: `oxibonsai` sub-2-bit engine is not implemented due to upstream licence change to BUSL-1.1, 2026-11).
 
 Rather than sending raw unformatted floating point numbers to the LLM (which often triggers arithmetic hallucination), `embedag` automatically synthesizes a **normalized semantic comparison card**:
 

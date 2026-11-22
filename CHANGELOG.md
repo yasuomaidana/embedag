@@ -4,8 +4,12 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ## [Unreleased]
 
+### Removed
+- BREAKING: the `oxirag`, `oxillama` and `oxibonsai` dependencies are gone. COOLJAPAN relicensed oxirag 0.2.0+ and oxillama 0.1.5+ to BUSL-1.1 and yanks the Apache-2.0 releases on 2026-11-26. `embedag::OxiRagEngine` is now `embedag::VerifiedRagEngine`, `OxillamaProvider` and `OxibonsaiProvider` no longer exist, and the `oxillama` feature of `embedag-llm` is removed (EMBEDAG-119).
+
 ### Security
-- Audit: `RUSTSEC-2026-0459` (`libsqlite3-sys` 0.37, fixed in 0.39) is ignored with a reason in `.cargo/audit.toml` because diesel 2.3.14, the latest release, requires `libsqlite3-sys <0.39`. Remove the entry when diesel accepts 0.39 (EMBEDAG-113).
+- `deny.toml` allows permissive licences, and BUSL-1.1 only from projects with a public repository; `scripts/check-busl-public-repos.py` checks the repository is public and fails for a private one. oxirag, oxillama, oxillama-runtime and oxibonsai are also banned by name (EMBEDAG-119).
+- The optional `embedag-surrealdb` feature depends on `surrealdb` 4, licensed BUSL-1.1 by SurrealDB Ltd. (any use except offering it as a "Database Service" to third parties; Apache-2.0 from 2030-01-01). Its repository is public, so it passes the check above (EMBEDAG-119).
 
 ### Changed
 - CI: job `release refs` (`scripts/check-release-refs.sh`, the same guard as the other Dendrite repositories) fails when a git dependency has no `tag = "vX.Y.Z"` and is not on `branch = "main"`, names a `rev`, a workflow checks out a `develop` ref, or a Markdown file links to `develop`. `main` is accepted to be ahead of the `v0.1.1` tag (CI files only) because dependents use the crates.io release (EMBEDAG-115).

@@ -34,8 +34,8 @@ flowchart LR
 
     subgraph DrivenAdapters ["Driven Adapters (Infrastructure)"]
         Diesel["embedag-diesel (PostgreSQL / SQLite via diesel-cte-ext)"]
-        LLM["embedag-llm (oxibonsai / oxillama)"]
-        RAG["embedag-rag (oxirag 4-layer & oxirs)"]
+        LLM["embedag-llm (Candle / HTTP)"]
+        RAG["embedag-rag (VerifiedRagEngine & oxirs)"]
     end
 
     subgraph TestHarness ["Mandatory Test Harness"]
@@ -141,11 +141,11 @@ flowchart LR
 ### 2.8 KitaSan Sovereign Pure-Rust Ecosystem Pattern
 - **Motivation**: Eliminate dynamic C/C++ runtime linkages (LibTorch, `llama.cpp`, OpenCV, FFmpeg), CMake compilation steps, and Python runtimes that create security vulnerabilities, container bloat, and platform lock-in.
 - **Implementation**:
-  - LLM Inference: `cool-japan/oxibonsai` (sub-2-bit ternary/1-bit, PDA masking) and `cool-japan/oxillama` (GGUF, 25 architectures, Q4..Q8 quants).
-  - Retrieval & Verification: `cool-japan/oxirag` (4-layer RAG: Echo vector store, Speculator, Judge SMT verification via OxiZ, GraphRAG).
+  - LLM Inference: Hugging Face `candle` (GPU-first local inference) and Ollama-compatible HTTP provider. (Note: `cool-japan/oxibonsai` and `cool-japan/oxillama` are not implemented due to upstream licence change to BUSL-1.1, 2026-11).
+  - Retrieval & Verification: `VerifiedRagEngine` (pure-Rust lexical index, RRF, grounded citation packaging). (Note: `cool-japan/oxirag` 4-layer engine and SMT judge are not implemented due to upstream licence change to BUSL-1.1, 2026-11).
   - Semantic Web: `cool-japan/oxirs` (SPARQL 1.1/1.2, RDF-Star, TDB2 storage).
   - Multimedia & Computer Vision: `cool-japan/oximedia` (pure Rust clean-room FFmpeg + OpenCV reconstruction, patent-free codecs).
-- **Rule**: Strictly open source (Apache-2.0 / ISC); zero commercial vertical workspaces.
+- **Rule**: Strictly open source (Apache-2.0 / ISC); zero commercial vertical workspaces; BUSL-1.1 forbidden via `deny.toml`.
 - **Benefit**: 100% single-binary static compilation, `fail0 + Clippy0` compliance, and total platform sovereignty.
 
 ---

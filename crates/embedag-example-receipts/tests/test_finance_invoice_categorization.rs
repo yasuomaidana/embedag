@@ -51,7 +51,7 @@ fn merchant(
 #[rstest]
 #[tokio::test]
 async fn test_finance_invoice_categorization_llm_decided_and_time_dependency(
-    #[values(Backend::Candle, Backend::Oxillama)] backend: Backend,
+    #[values(Backend::Candle)] backend: Backend,
 ) {
     let provider = backend.provider();
     let mut engine = FinanceCategorizationEngine::new(provider);
@@ -204,7 +204,7 @@ async fn test_finance_invoice_categorization_llm_decided_and_time_dependency(
 #[rstest]
 #[tokio::test]
 async fn test_finance_invoice_categorization_custom_density_and_user_overrides(
-    #[values(Backend::Candle, Backend::Oxillama)] backend: Backend,
+    #[values(Backend::Candle)] backend: Backend,
 ) {
     let provider = backend.provider();
     let mut engine = FinanceCategorizationEngine::new(provider);
@@ -348,7 +348,7 @@ async fn test_finance_invoice_categorization_custom_density_and_user_overrides(
 #[rstest]
 #[tokio::test]
 async fn test_finance_invoice_walmart_vs_prada_tshirt_categorization(
-    #[values(Backend::Candle, Backend::Oxillama)] backend: Backend,
+    #[values(Backend::Candle)] backend: Backend,
 ) {
     let provider = backend.provider();
     let mut engine = FinanceCategorizationEngine::new(provider);
@@ -478,7 +478,7 @@ async fn test_finance_invoice_walmart_vs_prada_tshirt_categorization(
 #[rstest]
 #[tokio::test]
 async fn test_finance_invoice_pure_llm_and_purchase_content_context(
-    #[values(Backend::Candle, Backend::Oxillama)] backend: Backend,
+    #[values(Backend::Candle)] backend: Backend,
 ) {
     let provider = backend.provider();
     let mut engine = FinanceCategorizationEngine::new(provider);

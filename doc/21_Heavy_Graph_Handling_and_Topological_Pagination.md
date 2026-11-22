@@ -131,7 +131,7 @@ A directed acyclic graph remains acyclic after adding edge $U \to V$ **if and on
 ## 5. Solution 4: Hub-Bounded GraphRAG Subgraph Expansion
 
 ### 5.1 The LLM Context Window Problem
-During Stage 2 Subgraph Expansion (`oxirag` Layer 4), candidate anchor nodes are expanded across $K$ hops. If an anchor connects to a hub with 1,000 children, unbounded expansion pulls all 1,000 nodes into the reasoning context, exhausting token budgets and diluting attention.
+During Stage 2 Subgraph Expansion, candidate anchor nodes are expanded across $K$ hops. (Note: `oxirag` Layer 4 is not implemented due to BUSL-1.1 licence change, 2026-11; in-house `SubgraphExpander` is used instead). If an anchor connects to a hub with 1,000 children, unbounded expansion pulls all 1,000 nodes into the reasoning context, exhausting token budgets and diluting attention.
 
 ### 5.2 Bounded Expansion Configuration
 `embedag-rag::expansion::SubgraphExpander` is enhanced with:

@@ -195,11 +195,10 @@ fn directive_confidence(directive: &ExtractionDirective) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider::OxillamaProvider;
 
     #[tokio::test]
     async fn test_alias_resolution_fast_path() {
-        let provider = OxillamaProvider::new("llama-3-8b", "q4_k_m");
+        let provider = CandleProvider::new("llama-3-8b");
         let pipeline = WaterfallPipeline::new(provider);
 
         // Prepopulate Tier 1 store
@@ -240,7 +239,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_hybrid_threshold_routing() {
-        let provider = OxillamaProvider::new("llama-3-8b", "q4_k_m");
+        let provider = CandleProvider::new("llama-3-8b");
         let pipeline = WaterfallPipeline::new(provider);
 
         // Case 1: High similarity (>= 0.85) -> Tier 2 Near Match

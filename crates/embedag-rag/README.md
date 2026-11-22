@@ -10,7 +10,7 @@ Use `embedag-rag` when you have a `MemoryDag<T>` and want to:
 - Index nodes in memory for exact cosine similarity and term-overlap lexical search (`InMemoryHybridIndex`) or execute a complete two-stage hybrid retrieval + graph expansion query (`HybridRagEngine`).
 - Expand top-K seed nodes along directed graph edges (ancestors and descendants) with exponential hop-distance decay and edge-confidence weighting (`SubgraphExpander`).
 - Partition a `MemoryDag<T>` into modular communities via Leiden modularity optimization and generate deterministic community summaries (`LeidenClusterer`).
-- Format retrieved nodes and their ancestor lineages into token-budgeted markdown context strings (`EvidenceSynthesizer`) or run the unified 4-layer `oxirag` verification pipeline (`OxiRagUnifiedEngine`).
+- Format retrieved nodes and their ancestor lineages into token-budgeted markdown context strings (`GroundedEvidencePackager`) or run verified retrieval with grounded citations (`VerifiedRagEngine`). (Note: The former 4-layer `oxirag` Echo/Speculator/Judge pipeline and SMT logic judge are not implemented due to upstream licence change to BUSL-1.1, 2026-11; replaced by pure-Rust `VerifiedRagEngine`).
 
 Do not use `embedag-rag` as a durable storage engine; persist graphs using [`embedag-diesel`](https://docs.rs/embedag-diesel), [`embedag-oxirs`](https://docs.rs/embedag-oxirs), [`embedag-surrealdb`](https://docs.rs/embedag-surrealdb), or [`embedag-neo4j`](https://docs.rs/embedag-neo4j) and load or project the relevant subgraph into `MemoryDag<T>` for retrieval.
 
@@ -25,9 +25,9 @@ Do not use `embedag-rag` as a durable storage engine; persist graphs using [`emb
   - `SubgraphExpander`: Traverses up to `max_hops` ancestors, descendants, and optional 1-hop siblings from seed nodes with exponential distance decay (`decay_gamma.powi(hop_distance)`), returning `ExpandedSubgraph<T::Key>` (`seeds`, `nodes: HashMap<K, ExpandedNode<K>>`, `edges: Vec<ExpandedEdge<K>>`).
 - **Community detection (`community`)**:
   - `CommunityDetector` and `CommunityPartition<K>`: Partitions a `MemoryDag<T>` into topologically connected communities (`detect`, `community_count`, `community_of`, `members`).
-- **Evidence packaging and OxiRAG verification (`evidence`, `oxirag_engine`)**:
+- **Evidence packaging and verified RAG (`evidence`, `verified_engine`)**:
   - `GroundedEvidencePackager`: Formats an `ExpandedSubgraph` into a markdown context block with provenance tags (`EXTRACTED (1.0)` vs `INFERRED (< 1.0)`) and extracts `[Node: KEY]` citations (`package`, `extract_citations`).
-  - `OxiRagEngine`: Runs the 4-layer `oxirag` Echo/Speculator/Judge/Graph verification pipeline (`query_verified`, `query_graph_verified`).
+  - `VerifiedRagEngine`: Pure-Rust verified retrieval using `SparseLexicalIndex`, `RrfRanker` fusion, and answers composed strictly from cited chunks `[n]` (`query_verified`). Queries unsupported by any chunk return `RagError::VerificationFailure`.
 
 ### Example
 
@@ -79,7 +79,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Within the workspace:
 
-- `embedag-rag` depends on [`embedag-core`](https://docs.rs/embedag-core) (`MemoryDag`, `NodePayload`, `EdgePayload`, `rank_by_cosine`) and `oxirag`.
+- `embedag-rag` depends on [`embedag-core`](https://docs.rs/embedag-core) (`MemoryDag`, `NodePayload`, `EdgePayload`, `rank_by_cosine`). (Dependency on `oxirag` was removed due to upstream licence change to BUSL-1.1, 2026-11).
 - [`embedag`](https://docs.rs/embedag) re-exports `embedag-rag` under `embedag::rag` and `embedag::prelude`.
 
 
@@ -93,5 +93,5 @@ cargo test -p embedag-rag
 ## Specifications
 
 - [`doc/17_Hybrid_Vector_and_Lexical_Retrieval.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/17_Hybrid_Vector_and_Lexical_Retrieval.md) — `ReciprocalRankFusion` and `InMemoryHybridIndex`.
-- [`doc/18_Topological_Subgraph_Expansion_and_GraphRAG.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/18_Topological_Subgraph_Expansion_and_GraphRAG.md) — `SubgraphExpander`, `LeidenClusterer`, `EvidenceSynthesizer`, and `OxiRagUnifiedEngine`.
-- [`doc/19_External_Ecosystem_and_KitaSan_Stack.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/19_External_Ecosystem_and_KitaSan_Stack.md) — Integration with `oxirag`.
+- [`doc/18_Topological_Subgraph_Expansion_and_GraphRAG.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/18_Topological_Subgraph_Expansion_and_GraphRAG.md) — `SubgraphExpander`, `LeidenClusterer`, and `VerifiedRagEngine`.
+- [`doc/19_External_Ecosystem_and_KitaSan_Stack.md`](https://github.com/yasuomaidana/embedag/blob/main/doc/19_External_Ecosystem_and_KitaSan_Stack.md) — External ecosystem, KitaSan stack audit, and licence change notes.

@@ -2,6 +2,10 @@
 
 `embedag-surrealdb` is the multi-model document and graph storage adapter for the `embedag` workspace, built on the official `surrealdb` SDK (`kv-mem` and `protocol-ws`). It solves the problem of persisting `MemoryDag<T>` domain nodes and directed edges in either an embedded in-process SurrealDB instance (`mem://`) or a remote SurrealDB server over WebSocket/HTTP, while implementing the `embedag-core` repository capability traits (`ReadOnlyGraphRepository`, `VectorSearchRepository`, `TransactionalGraphRepository`).
 
+## Licence of the SurrealDB dependency
+
+`surrealdb` 4 is licensed BUSL-1.1 by SurrealDB Ltd. You may use it, including in production, unless you offer it as a "Database Service" (database functionality for third parties who create or manage schemas or tables). It becomes Apache-2.0 on 2030-01-01. `embedag-surrealdb` itself keeps the workspace licence. Check the terms in the `surrealdb` crate's `LICENSE` file before you ship a product built on it.
+
 ## When to use it
 
 Use `embedag-surrealdb` when your application targets SurrealDB as its multi-model document and graph store and you want:

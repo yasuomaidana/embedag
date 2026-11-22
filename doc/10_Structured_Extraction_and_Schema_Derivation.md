@@ -16,7 +16,7 @@ Extracting graph relationships and classification directives from unstructured i
 
 `embedag` enforces **compile-time derived extraction schemas** using `schemars`. The extracted directive taxonomy explicitly defines every permitted graph mutation, and the **Draft-Then-Decode** pattern eliminates the *alignment tax* that degrades LLM reasoning when forced into rigid formats without scratchpad space.
 
-These schemas are compiled into Pushdown Automaton (PDA) token masks for **`cool-japan/oxibonsai`** and GBNF grammar constraints for **`cool-japan/oxillama`**.
+These schemas are compiled into Pushdown Automaton (PDA) token masks and GBNF grammar constraints for structured providers like `CandleProvider` and HTTP providers. (Note: `cool-japan/oxibonsai` and `cool-japan/oxillama` are not implemented due to upstream licence change to BUSL-1.1, 2026-11).
 
 ---
 
@@ -26,7 +26,7 @@ These schemas are compiled into Pushdown Automaton (PDA) token masks for **`cool
 flowchart LR
     RustTypes["Rust Enums / Structs<br/>ExtractionDirective"] --> Schemars["schemars Universal Reflection"]
     Schemars --> JSONSchema["JSON Schema Definition"]
-    JSONSchema --> PDA["oxibonsai PDA Logit Masker &<br/>oxillama Grammar Sampler"]
+    JSONSchema --> PDA["PDA Logit Masker &<br/>Grammar Sampler"]
     PDA --> ValidJSON["Guaranteed Valid Output<br/>ExtractionEnvelope"]
 ```
 
@@ -127,4 +127,4 @@ pub fn generate_extraction_schema() -> serde_json::Value {
 ## 5. Invariants & Guarantees
 
 1. **Schema Non-Drift**: Rust type definitions are the single source of truth; JSON schemas cannot drift from Rust deserialization types.
-2. **Deterministic Validation**: Output from both `oxibonsai` and `oxillama` must deserialize cleanly into `ExtractionEnvelope` without schema violations.
+2. **Deterministic Validation**: Output from structured LLM providers (such as `CandleProvider`) must deserialize cleanly into `ExtractionEnvelope` without schema violations. (Note: `oxibonsai` and `oxillama` are not implemented due to upstream licence change to BUSL-1.1, 2026-11).
