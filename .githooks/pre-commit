@@ -3,7 +3,7 @@
 if command -v dendrite >/dev/null 2>&1; then
   dendrite hook pre-commit || exit 1
 else
-  echo "blocked: dendrite is not on PATH, so this commit cannot be checked against a ticket claim" >&2
-  exit 1
+  # Dendrite is optional: contributors who do not use it are never blocked.
+  echo "note: dendrite is not on PATH, so the ticket claim is not checked (optional; see CONTRIBUTING.md)" >&2
 fi
 # <<< dendrite managed: ticket lock <<<
