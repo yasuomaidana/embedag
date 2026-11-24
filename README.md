@@ -22,7 +22,7 @@ Version 0.1.0. Milestones 1 to 8 are complete. Milestone 9 (dependency resolutio
 
 ```toml
 # a slim dependency: only the DAG algorithms and the AST matcher
-embedag = { version = "0.1.1", default-features = false, features = ["core", "matcher"] }
+embedag = { version = "0.2.0", default-features = false, features = ["core", "matcher"] }
 ```
 
 Features of the `embedag` facade: `core`, `matcher`, `derive`, `llm`, `diesel`, `turso`, `turso-async`, `rag`, `oxirs-tdb`, `surrealdb`, `neo4j`; `full` (the default) turns all of them on.

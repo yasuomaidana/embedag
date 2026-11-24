@@ -4,6 +4,8 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-23
+
 ### Removed
 - BREAKING: the `oxirag`, `oxillama` and `oxibonsai` dependencies are gone. COOLJAPAN relicensed oxirag 0.2.0+ and oxillama 0.1.5+ to BUSL-1.1 and yanks the Apache-2.0 releases on 2026-11-26. `embedag::OxiRagEngine` is now `embedag::VerifiedRagEngine`, `OxillamaProvider` and `OxibonsaiProvider` no longer exist, and the `oxillama` feature of `embedag-llm` is removed (EMBEDAG-119).
 
