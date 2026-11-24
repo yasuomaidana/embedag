@@ -4,6 +4,8 @@ All notable changes to this crate are documented here. The format follows [Keep 
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-23
+
 ### Removed
 - BREAKING: `OxillamaProvider`, `OxibonsaiProvider` and the `oxillama` feature (oxillama and oxibonsai licence change, EMBEDAG-119). Use `CandleProvider`, the Ollama-compatible HTTP provider or `CloudProvider`. Default features are now `["candle"]`.
 
