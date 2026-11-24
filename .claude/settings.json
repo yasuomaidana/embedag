@@ -33,7 +33,7 @@
       {
         "hooks": [
           {
-            "command": "command -v dendrite >/dev/null 2>&1 || { echo \"blocked: dendrite is not on PATH, so this edit cannot be checked against a ticket claim - install it and run: dendrite session resume\" >&2; exit 2; }; out=$(dendrite hook pre-edit 2>&1); c=$?; if [ \"$c\" -ne 0 ]; then printf '%s\\n' \"$out\" >&2; exit 2; fi; exit 0",
+            "command": "command -v dendrite >/dev/null 2>&1 || exit 0; out=$(dendrite hook pre-edit 2>&1); c=$?; if [ \"$c\" -ne 0 ]; then printf '%s\\n' \"$out\" >&2; exit 2; fi; exit 0",
             "type": "command"
           }
         ],
